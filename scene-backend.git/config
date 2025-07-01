@@ -5,6 +5,6 @@
 	ignorecase = true
 	precomposeunicode = true
 [remote "origin"]
-	url = https://github.com/PrintSaud/scene-backend.git
+	url = https://PrintSaud@github.com/PrintSaud/scene-backend.git
 	fetch = +refs/*:refs/*
 	mirror = true
