@@ -83,7 +83,8 @@ io.on("connection", (socket) => {
   });
 });
 
-module.exports = { io };
+module.exports = server;
+
 
 // 6. Start server
 const PORT = process.env.PORT || 4000;
