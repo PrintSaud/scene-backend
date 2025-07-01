@@ -88,6 +88,11 @@ server.listen(PORT, () => {
   console.log(`🚀 Server + Socket.IO running on port ${PORT}`);
 });
 
+setInterval(() => {
+  console.log("⏳ Still alive...");
+}, 10000);
+
+
 // 👇 Export Express app so Railway knows it's alive
 
 module.exports = app;
