@@ -12,7 +12,10 @@ const app = express();
 // 1. Middleware
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: [
+      "http://localhost:5173",
+      "https://scene-frontend-production.up.railway.app",
+    ],    
     credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE"],
   })
@@ -57,11 +60,15 @@ app.get("/", (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: [
+      "http://localhost:5173",
+      "https://scene-frontend-production.up.railway.app",
+    ],
     credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE"],
   },
 });
+
 
 io.on("connection", (socket) => {
   console.log("⚡ New client connected:", socket.id);
