@@ -87,3 +87,6 @@ const PORT = process.env.PORT;
 server.listen(PORT, () => {
   console.log(`🚀 Server + Socket.IO running on port ${PORT}`);
 });
+
+module.exports = app; // ✅ Export the app for Railway to detect
+
