@@ -8,19 +8,28 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const crypto = require('crypto');
 
 router.post('/register', async (req, res) => {
-  const { username, email, password, avatar } = req.body; // ← avatar added
+  const { username, email, password, avatar } = req.body;
 
   try {
+    // 🔎 Check if email already exists
+    const existingUser = await User.findOne({ email });
     if (existingUser)
       return res.status(400).json({ error: 'Email already in use' });
 
-    const user = new User({ username, email, password, avatar }); // ← include avatar
+    // 🔎 Check if username is taken
+    const existingUsername = await User.findOne({ username });
+    if (existingUsername)
+      return res.status(400).json({ error: 'Username already taken' });
+
+    // ✅ Create new user
+    const user = new User({ username, email, password, avatar });
     await user.save();
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
       expiresIn: '1h',
     });
 
+    // ✅ Respond with token and user
     res.status(201).json({
       message: 'User registered successfully',
       token,
@@ -28,15 +37,13 @@ router.post('/register', async (req, res) => {
         id: user._id,
         username: user.username,
         email: user.email,
-        avatar: user.avatar, // ✅ include avatar in response
+        avatar: user.avatar,
       }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
-
-// google path
 
 // POST /api/auth/google
 router.post('/google', async (req, res) => {
@@ -249,6 +256,30 @@ router.post('/reset-password', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// backend: routes/auth.js
+router.get('/check-username', async (req, res) => {
+  const username = req.query.username?.toLowerCase();
+  if (!username || !/^[a-z0-9_]{3,20}$/.test(username)) {
+    return res.status(400).json({ available: false });
+  }
+
+  const exists = await User.findOne({ username });
+  res.json({ available: !exists });
+});
+
+router.get('/check-email', async (req, res) => {
+  const email = req.query.email?.toLowerCase();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!email || !emailRegex.test(email)) {
+    return res.status(400).json({ available: false });
+  }
+
+  const exists = await User.findOne({ email });
+  res.json({ available: !exists });
+});
+
 
 
 // Test Route

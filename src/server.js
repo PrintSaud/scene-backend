@@ -83,7 +83,12 @@ io.on("connection", (socket) => {
 });
 
 // 6. Start server
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT;
+if (!PORT) {
+  console.error("❌ No PORT provided by Railway. Exiting...");
+  process.exit(1);
+}
+
 server.listen(PORT, () => {
   console.log(`🚀 Server + Socket.IO running on port ${PORT}`);
 });
