@@ -83,10 +83,12 @@ io.on("connection", (socket) => {
 });
 
 // 6. Start server
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`🚀 Server + Socket.IO running on port ${PORT}`);
 });
 
-module.exports = app; // ✅ Export the app for Railway to detect
+// 👇 Export Express app so Railway knows it's alive
+module.exports = app;
+
 
