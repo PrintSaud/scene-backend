@@ -89,8 +89,5 @@ server.listen(PORT, () => {
 });
 
 // 👇 Export Express app so Railway knows it's alive
+
 module.exports = app;
-
-
-
-
