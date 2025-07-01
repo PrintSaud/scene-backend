@@ -15,7 +15,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://scene-frontend-production.up.railway.app",
-    ],    
+    ],
     credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE"],
   })
@@ -37,9 +37,9 @@ mongoose
 
 // 3. Routes
 app.use("/api/auth", require("./routes/auth"));
-app.use("/api/users", require("./routes/user")); // 👈 this includes /gif/recent and /:id/recent-gifs
+app.use("/api/users", require("./routes/user")); 
 app.use("/api/upload", require("./routes/upload"));
-app.use("/api/watchlist", require("./routes/watchlistRoutes")); // 🧹 merged clean path
+app.use("/api/watchlist", require("./routes/watchlistRoutes"));
 app.use("/api/logs", require("./routes/Logs"));
 app.use("/api/lists", require("./routes/listRoutes"));
 app.use("/api/polls", require("./routes/poll"));
@@ -69,7 +69,6 @@ const io = new Server(server, {
   },
 });
 
-
 io.on("connection", (socket) => {
   console.log("⚡ New client connected:", socket.id);
 
@@ -83,17 +82,8 @@ io.on("connection", (socket) => {
   });
 });
 
-module.exports = server;
-
-
 // 6. Start server
 const PORT = process.env.PORT || 4000;
-const networkInterfaces = os.networkInterfaces();
-const localIP =
-  Object.values(networkInterfaces)
-    .flat()
-    .find((iface) => iface.family === "IPv4" && !iface.internal)?.address || "localhost";
-
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server + Socket.IO running at http://${localIP}:${PORT}`);
+server.listen(PORT, () => {
+  console.log(`🚀 Server + Socket.IO running on port ${PORT}`);
 });
