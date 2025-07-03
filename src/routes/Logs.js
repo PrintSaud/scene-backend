@@ -8,6 +8,7 @@ const uploadToCloudinary = require("../utils/cloudinary");
 const upload = multer({ storage: multer.memoryStorage() }); // temp in-memory upload
 
 
+
 // GET /api/logs/:logId → Get single log with replies
 router.get('/:logId', async (req, res) => {
   try {
