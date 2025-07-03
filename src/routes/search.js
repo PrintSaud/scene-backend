@@ -5,7 +5,7 @@ const List = require('../models/list');
 const axios = require('axios');
 
 // ✅ Replace with process.env or service config later
-const TMDB_API_KEY = 'your_tmdb_key';
+const TMDB_API_KEY = '859e517235247e4dab5a5b8d7a330527';
 
 router.get('/', async (req, res) => {
   const query = req.query.q;

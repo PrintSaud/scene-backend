@@ -9,6 +9,40 @@ const {
 
 const Movie = require('../models/movieModel');
 
+// ✅ PATCH /api/movies/:tmdbId/poster → must be FIRST
+router.patch('/:tmdbId/poster', async (req, res) => {
+  console.log("✅ PATCH /api/movies/:tmdbId/poster HIT");
+
+  try {
+    const { posterUrl } = req.body;
+    const tmdbId = parseInt(req.params.tmdbId);
+
+    if (!posterUrl || isNaN(tmdbId)) {
+      return res.status(400).json({ error: 'Missing poster or invalid ID.' });
+    }
+
+    let movie = await Movie.findOneAndUpdate(
+      { tmdbId },
+      { poster: posterUrl },
+      { new: true }
+    );
+
+    // If not found, create new doc
+    if (!movie) {
+      movie = await Movie.create({
+        tmdbId,
+        poster: posterUrl,
+        title: "Untitled",
+      });
+    }
+
+    res.json({ message: 'Poster updated successfully ✅', poster: movie.poster });
+  } catch (err) {
+    console.error('🛠️ Failed to update poster:', err);
+    res.status(500).json({ error: 'Failed to update poster.' });
+  }
+});
+
 // 🔥 GET /api/movies/trending
 router.get('/trending', async (req, res) => {
   try {
@@ -49,10 +83,8 @@ router.get('/:tmdbId', async (req, res) => {
       return res.status(400).json({ error: '❌ Invalid Movie ID' });
     }
 
-    // 1. Fetch full details (includes backdrops)
     const details = await getMovieDetails(tmdbId);
 
-    // 2. Save to DB if not already exists
     let movie = await Movie.findOne({ tmdbId });
     if (!movie) {
       movie = await Movie.create({
@@ -66,12 +98,10 @@ router.get('/:tmdbId', async (req, res) => {
       });
     }
 
-    // 3. Format backdrops
     const backdrops = (details.images?.backdrops || [])
       .map((b) => b.file_path)
       .filter(Boolean);
 
-    // ✅ Return title and backdrops
     res.json({
       title: details.title,
       backdrops,

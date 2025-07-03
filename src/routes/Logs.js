@@ -283,6 +283,21 @@ router.get('/user/:userId', async (req, res) => {
   }
 });
 
+// ✅ TEMP TEST ROUTE — check user field type
+router.get("/debug/logs/:id", async (req, res) => {
+  const logs = await Log.find({ user: req.params.id }).limit(5);
+  res.json(logs.map(log => typeof log.user));
+});
+
+router.get("/debug/recent", async (req, res) => {
+  const logs = await Log.find({}).sort({ createdAt: -1 }).limit(5);
+  res.json(logs.map(log => ({
+    user: log.user,
+    movie: log.movie,
+    review: log.review,
+    createdAt: log.createdAt
+  })));
+});
 
 
 module.exports = router;

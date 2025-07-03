@@ -237,17 +237,6 @@ router.patch('/:id', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-// GET user by ID (for ProfilePage)
-router.get('/:id', async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id).select('-password');
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    res.status(200).json(user);
-  } catch (err) {
-    res.status(500).json({ message: 'Error fetching user', error: err.message });
-  }
-});
 
 // routes/userRoutes.js
 
@@ -370,19 +359,6 @@ router.get("/:id/recent-gifs", async (req, res) => {
   }
 });
 
-// GET all logs by a user
-router.get('/user/:userId', async (req, res) => {
-  try {
-    const logs = await Log.find({ user: req.params.userId })
-      .populate('movie') // to get movie title & poster
-      .sort({ createdAt: -1 });
-
-    res.json(logs);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to get logs" });
-  }
-});
-
 // GET a user's watchlist
 router.get('/:userId/watchlist', async (req, res) => {
   try {
@@ -392,6 +368,26 @@ router.get('/:userId/watchlist', async (req, res) => {
     res.json(user.watchlist || []);
   } catch (err) {
     res.status(500).json({ message: 'Failed to get watchlist', error: err.message });
+  }
+});
+
+router.get('/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+      .select('-password')
+      .lean();
+
+    const totalLogs = await Log.countDocuments({ user: req.params.id });
+    const followerCount = await User.countDocuments({ following: req.params.id });
+
+    res.json({
+      ...user,
+      totalLogs,
+      followerCount,
+      followingCount: user.following?.length || 0,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch user', error: err.message });
   }
 });
 

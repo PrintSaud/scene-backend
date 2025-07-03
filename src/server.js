@@ -1,11 +1,15 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const originalConnect = mongoose.connect;
+
 const cors = require("cors");
 const path = require("path");
 const os = require("os");
 const http = require("http");
 const { Server } = require("socket.io");
 require("dotenv").config();
+mongoose.set('debug', true); // 🔍 log all queries
+console.log("🧪 ENV CHECK — DB_URI:", process.env.DB_URI);
 
 const app = express();
 
@@ -26,10 +30,27 @@ app.use(express.static("public"));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // 2. Connect to MongoDB
-const DB_URI = process.env.DB_URI || "mongodb://localhost:27017/flick";
+const DB_URI = process.env.DB_URI;
+if (!DB_URI || !DB_URI.includes("scene")) {
+  console.error("❌ Invalid or missing DB_URI. Exiting...");
+  process.exit(1);
+}
+
+console.log("🧪 ENV CHECK — DB_URI:", process.env.DB_URI);
+
+
+
+if (!DB_URI) {
+  console.error("❌ DB_URI is missing from environment variables!");
+  process.exit(1); // Hard exit if not provided
+}
+
+
 mongoose
   .connect(DB_URI)
-  .then(() => console.log("✅ MongoDB connected"))
+  .then(() => {
+    console.log(`✅ MongoDB connected to: ${mongoose.connection.name}`);
+  })  
   .catch((err) => {
     console.error("❌ MongoDB connection error:", err);
     process.exit(1);
@@ -49,9 +70,9 @@ app.use("/api/ai", require("./routes/ai"));
 app.use("/api/home", require("./routes/home"));
 app.use("/api/movies", require("./routes/movieRoutes"));
 app.use("/api/scenebot", require("./routes/sceneBot"));
-app.use("/api/posters", require("./routes/posterRoutes"));
-app.use("/api/movies/daily", require("./routes/dailyMovie"));
+app.use("/api/posters", require("./routes/posterRoutes")); // ✅ now it works
 
+app.use("/api/movies/daily", require("./routes/dailyMovie"));
 // 4. Health check
 app.get("/", (req, res) => {
   res.send("Root route is working!");
@@ -93,10 +114,6 @@ if (!PORT) {
 server.listen(PORT, () => {
   console.log(`🚀 Server + Socket.IO running on port ${PORT}`);
 });
-
-setInterval(() => {
-  console.log("⏳ Still alive...");
-}, 10000);
 
 
 // 👇 Export Express app so Railway knows it's alive
