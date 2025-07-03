@@ -12,7 +12,7 @@ const saveImageFromUrl = require('../utils/saveImageFromUrl');
 // 📥 Register
 router.post('/register', async (req, res) => {
   try {
-    let { username, email, password, avatar } = req.body;
+    let { name, username, email, password, avatar } = req.body;
 
     username = username.trim().toLowerCase();
     email = email.trim().toLowerCase();
@@ -21,13 +21,13 @@ router.post('/register', async (req, res) => {
     if (existingUser)
       return res.status(400).json({ error: 'Email already in use' });
 
-    const exists = await User.findOne({
+    const existingUsername = await User.findOne({
       username: { $regex: `^${username}$`, $options: "i" }
-    });    
+    });
     if (existingUsername)
-    return res.status(400).json({ error: 'Username already taken' });
+      return res.status(400).json({ error: 'Username already taken' });
 
-    const user = new User({ username, email, password, avatar });
+    const user = new User({ name, username, email, password, avatar });
     await user.save();
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
@@ -39,7 +39,7 @@ router.post('/register', async (req, res) => {
       token,
       user: {
         _id: user._id,
-        name: newUser.name,
+        name: user.name,
         username: user.username,
         email: user.email,
         avatar: user.avatar,
@@ -50,6 +50,7 @@ router.post('/register', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // 🧠 Google OAuth
 router.post('/google', async (req, res) => {
