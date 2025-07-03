@@ -50,6 +50,7 @@ app.use("/api/home", require("./routes/home"));
 app.use("/api/movies", require("./routes/movieRoutes"));
 app.use("/api/scenebot", require("./routes/sceneBot"));
 app.use("/api/posters", require("./routes/posterRoutes"));
+app.use("/api/movies/daily", require("./routes/dailyMovie"));
 
 // 4. Health check
 app.get("/", (req, res) => {

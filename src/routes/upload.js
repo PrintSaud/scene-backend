@@ -24,7 +24,7 @@ router.post("/list-cover", protect, upload.single("image"), async (req, res) => 
     }
   });
 
-router.post("/:id/upload-avatar", upload.single("avatar"), async (req, res) => {
+  router.post("/:id/upload-avatar", protect, upload.single("avatar"), async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });

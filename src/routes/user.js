@@ -15,9 +15,15 @@ router.get('/', async (req, res) => {
   }
 });
 
-
-
-// Add to favorites
+// ✅ PLACE THIS ABOVE any `/:id` route
+router.get('/all', async (req, res) => {
+  try {
+    const users = await User.find({}, 'username email avatar createdAt');
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching users', error: err.message });
+  }
+});
 
 // Follow another user
 router.post('/:userId/follow/:targetId', async (req, res) => {
@@ -116,44 +122,13 @@ router.post('/:id/custom-poster', async (req, res) => {
       res.status(500).json({ message: 'Error fetching backdrop', error: err.message });
     }
   });
-
-  router.put('/:id/favorites', async (req, res) => {
-    const { favoriteCharacter, favoriteActor } = req.body;
-  
-    try {
-      const user = await User.findById(req.params.id);
-      if (!user) return res.status(404).json({ message: 'User not found' });
-  
-      if (favoriteCharacter !== undefined) user.favoriteCharacter = favoriteCharacter;
-      if (favoriteActor !== undefined) user.favoriteActor = favoriteActor;
-  
-      await user.save();
-  
-      res.status(200).json({ message: 'Favorites updated successfully' });
-    } catch (err) {
-      res.status(500).json({ message: 'Error updating favorites', error: err.message });
-    }
-  });
-
-  router.get('/:id/favorites', async (req, res) => {
-    try {
-      const user = await User.findById(req.params.id);
-      if (!user) return res.status(404).json({ message: 'User not found' });
-  
-      res.status(200).json({
-        favoriteCharacter: user.favoriteCharacter,
-        favoriteActor: user.favoriteActor
-      });
-    } catch (err) {
-      res.status(500).json({ message: 'Error fetching favorites', error: err.message });
-    }
-  });
+ 
 
   router.put('/:id/top-movies', async (req, res) => {
     const { topMovies } = req.body;
 
   
-    if (!Array.isArray(topMovies) || topMovies.length > 5) {
+    if (!Array.isArray(topMovies) || topMovies.length > 4) {
       return res.status(400).json({ message: 'Top movies must be an array with max 5 items.' });
     }
   

@@ -4,6 +4,7 @@ const Log = require('../models/log');
 const User = require('../models/user');
 const protect = require('../middleware/authMiddleware');
 const multer = require("multer");
+const uploadToCloudinary = require("../utils/cloudinary");
 const upload = multer({ storage: multer.memoryStorage() }); // temp in-memory upload
 
 
@@ -183,10 +184,10 @@ router.post('/', async (req, res) => {
 });
 
 // POST /api/logs/full → Full-featured log (text, rating, gif, image, etc.)
-router.post('/full', upload.single('image'), async (req, res) => {
+// POST /api/logs/full → Full-featured log (text, rating, gif, image, etc.)
+router.post('/full', protect, upload.single('image'), async (req, res) => {
   try {
     const {
-      userId,
       movieId,
       review,
       rating,
@@ -197,10 +198,12 @@ router.post('/full', upload.single('image'), async (req, res) => {
       poster,
     } = req.body;
 
-    const uploadedImage = req.file ? `/uploads/${req.file.originalname}` : "";
+    const uploadedImage = req.file
+      ? await uploadToCloudinary(req.file.buffer, "scene/logs")
+      : "";
 
     const newLog = await Log.create({
-      user: userId,
+      user: req.user._id, // ✅ use token user ID
       movie: movieId,
       review: review || "",
       rating: parseFloat(rating) || 0,
@@ -218,6 +221,7 @@ router.post('/full', upload.single('image'), async (req, res) => {
     res.status(500).json({ message: "Failed to save full log", error: err.message });
   }
 });
+
 
 
 // GET /api/logs/feed — Get logs from user + following

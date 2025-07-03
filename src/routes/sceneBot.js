@@ -77,7 +77,8 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
     usage.count += 1;
     await usage.save();
 
-    res.json({ reply: completion.choices[0].message.content });
+    const reply = completion.choices?.[0]?.message?.content;
+    res.json({ reply: typeof reply === "string" ? reply : String(reply) });    
   } catch (err) {
     console.error("SceneBot error:", err);
     res.status(500).json({ message: "SceneBot is currently unavailable. Please try again later." });

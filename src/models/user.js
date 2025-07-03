@@ -15,7 +15,6 @@ const UserSchema = new mongoose.Schema({
   }},
   
   bio:      { type: String },
-  avatar:   { type: String },
 
   watchlist: {
     type: [Number],
