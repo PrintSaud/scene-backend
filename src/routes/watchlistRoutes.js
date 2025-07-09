@@ -84,19 +84,33 @@ router.delete("/:userId/watchlist/:tmdbId", async (req, res) => {
   }
 });
 
+// ✅ Full Watchlist with Sorting: GET /api/users/:userId/watchlist?sort=title&order=asc
 router.get("/:userId/watchlist", async (req, res) => {
+  const { userId } = req.params;
+  const sort = req.query.sort || "title";
+  const order = req.query.order === "desc" ? -1 : 1;
+
   try {
-    const user = await User.findById(req.params.userId);
+    const user = await User.findById(userId);
     if (!user || !user.watchlist)
       return res.status(404).json({ error: "User or watchlist not found" });
 
-    const movieDetails = await Promise.all(
+    let movieDetails = await Promise.all(
       user.watchlist.map((tmdbId) => getMovieDetails(tmdbId))
     );
 
+    // ✨ Sorting logic
+    movieDetails.sort((a, b) => {
+      if (sort === "runtime") return (a.runtime - b.runtime) * order;
+      if (sort === "rating") return ((a.vote_average || 0) - (b.vote_average || 0)) * order;
+      if (sort === "release")
+        return (new Date(a.release_date) - new Date(b.release_date)) * order;
+      return (a.title || "").localeCompare(b.title || "") * order;
+    });
+
     res.json(movieDetails);
   } catch (err) {
-    console.error(err);
+    console.error("❌ Failed to fetch watchlist", err);
     res.status(500).json({ error: "Could not fetch full movie data from watchlist" });
   }
 });
