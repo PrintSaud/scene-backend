@@ -60,7 +60,7 @@ mongoose
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/users", require("./routes/user")); 
 app.use("/api/upload", require("./routes/upload"));
-app.use("/api/watchlist", require("./routes/watchlistRoutes"));
+app.use('/api/watchlist', require('./routes/watchlistRoutes'));
 app.use("/api/logs", require("./routes/Logs"));
 app.use("/api/lists", require("./routes/listRoutes"));
 app.use("/api/polls", require("./routes/poll"));
