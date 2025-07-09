@@ -104,7 +104,7 @@ router.get("/:userId/watchlist", async (req, res) => {
     let movieDetails = await Promise.all(
       user.watchlist.map(async (tmdbId) => {
         const movie = await getMovieDetails(tmdbId);
-        return movie && movie.id && movie.poster_path ? movie : null;
+        return movie && movie.id && movie.poster_path ? { ...movie, tmdbId: movie.id } : null;
       })
     );
 
@@ -124,5 +124,6 @@ router.get("/:userId/watchlist", async (req, res) => {
     res.status(500).json({ error: "Could not fetch watchlist" });
   }
 });
+
 
 module.exports = router;
