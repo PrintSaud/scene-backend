@@ -4,7 +4,7 @@ const User = require("../models/user");
 const protect = require("../middleware/authMiddleware");
 const { getMovieDetails } = require("../services/tmdbService");
 
-// ✅ Auth-only routes first
+// ✅ Check watchlist status (auth only)
 router.get("/status/:movieId", protect, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
@@ -17,6 +17,7 @@ router.get("/status/:movieId", protect, async (req, res) => {
   }
 });
 
+// ✅ Toggle watchlist (auth only)
 router.post("/toggle", protect, async (req, res) => {
   const { movieId } = req.body;
   const userId = req.user._id;
@@ -43,7 +44,7 @@ router.post("/toggle", protect, async (req, res) => {
   }
 });
 
-// ✅ User-specific routes after
+// ✅ Add to watchlist manually (non-auth)
 router.post("/:userId/watchlist", async (req, res) => {
   const { userId } = req.params;
   const { tmdbId } = req.body;
@@ -56,9 +57,11 @@ router.post("/:userId/watchlist", async (req, res) => {
       { new: true }
     );
 
-    const movieDetails = await Promise.all(
-      user.watchlist.map((tmdbId) => getMovieDetails(tmdbId))
+    let movieDetails = await Promise.all(
+      user.watchlist.map((id) => getMovieDetails(id))
     );
+
+    movieDetails = movieDetails.filter(Boolean); // ✅ Remove nulls
 
     res.json(movieDetails);
   } catch (err) {
@@ -67,6 +70,7 @@ router.post("/:userId/watchlist", async (req, res) => {
   }
 });
 
+// ✅ Remove from watchlist manually
 router.delete("/:userId/watchlist/:tmdbId", async (req, res) => {
   const { userId, tmdbId } = req.params;
 
@@ -84,7 +88,7 @@ router.delete("/:userId/watchlist/:tmdbId", async (req, res) => {
   }
 });
 
-// ✅ Full Watchlist with Sorting: GET /api/users/:userId/watchlist?sort=title&order=asc
+// ✅ Full watchlist with sorting
 router.get("/:userId/watchlist", async (req, res) => {
   const { userId } = req.params;
   const sort = req.query.sort || "title";
@@ -99,7 +103,8 @@ router.get("/:userId/watchlist", async (req, res) => {
       user.watchlist.map((tmdbId) => getMovieDetails(tmdbId))
     );
 
-    // ✨ Sorting logic
+    movieDetails = movieDetails.filter(Boolean); // ✅ Remove any failed/null responses
+
     movieDetails.sort((a, b) => {
       if (sort === "runtime") return (a.runtime - b.runtime) * order;
       if (sort === "rating") return ((a.vote_average || 0) - (b.vote_average || 0)) * order;

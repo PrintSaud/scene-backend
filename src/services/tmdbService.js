@@ -14,10 +14,25 @@ async function searchMovies(query, page = 1) {
 }
 
 async function getMovieDetails(tmdbId) {
-  const { data } = await axios.get(`${TMDB_BASE_URL}/movie/${tmdbId}`, {
-    params: { api_key: apiKey, append_to_response: 'credits,images' },
-  });
-  return data;
+  try {
+    const { data } = await axios.get(`${TMDB_BASE_URL}/movie/${tmdbId}`, {
+      params: {
+        api_key: apiKey,
+        append_to_response: 'credits,images',
+      },
+    });
+
+    // ✅ Ensure required fields exist
+    if (!data?.id || !data?.title || !data?.poster_path) {
+      console.warn(`⚠️ Incomplete data for TMDB ID: ${tmdbId}`);
+      return null;
+    }
+
+    return data;
+  } catch (err) {
+    console.error(`❌ Failed to fetch TMDB movie ${tmdbId}:`, err.message);
+    return null; // Prevent crashing the whole Promise.all
+  }
 }
 
 async function getTrendingMovies() {
@@ -32,4 +47,3 @@ module.exports = {
   getMovieDetails,
   getTrendingMovies,
 };
-
