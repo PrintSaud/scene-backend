@@ -22,18 +22,22 @@ async function getMovieDetails(tmdbId) {
       },
     });
 
-    // ✅ Ensure required fields exist
     if (!data?.id || !data?.title || !data?.poster_path) {
       console.warn(`⚠️ Incomplete data for TMDB ID: ${tmdbId}`);
       return null;
     }
 
-    return data;
+    // 🔥 Explicitly add tmdbId
+    return {
+      ...data,
+      tmdbId: data.id
+    };
   } catch (err) {
     console.error(`❌ Failed to fetch TMDB movie ${tmdbId}:`, err.message);
-    return null; // Prevent crashing the whole Promise.all
+    return null;
   }
 }
+
 
 async function getTrendingMovies() {
   const { data } = await axios.get(`${TMDB_BASE_URL}/trending/movie/week`, {
