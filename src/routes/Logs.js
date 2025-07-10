@@ -99,6 +99,9 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
   }
 });
 
+
+
+
 // Popular Logs
 router.get('/movie/:id/popular', protect, async (req, res) => {
   try {

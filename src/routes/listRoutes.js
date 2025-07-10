@@ -22,6 +22,7 @@ router.get("/popular", async (req, res) => {
 // ✅ Friends’ Lists → BEFORE /:id
 router.get("/friends", protect, async (req, res) => {
   try {
+    const following = currentUser.following || [];
     const currentUser = await User.findById(req.user._id);
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
@@ -85,7 +86,7 @@ router.get("/user/:userId", protectOptional, async (req, res) => {
 });
 
 // ✅ Get all saved lists for the current user (Saved tab)
-router.get("/saved/me", protect, async (req, res) => {
+router.get("/saved", protect, async (req, res) => {
   try {
     const lists = await List.find({ savedBy: req.user._id }).populate("user", "username avatar");
     res.json(lists);
