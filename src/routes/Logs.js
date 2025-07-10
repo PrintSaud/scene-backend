@@ -268,6 +268,7 @@ router.delete('/:logId', protect, async (req, res) => {
     res.status(500).json({ message: "Failed to delete log" });
   }
 });
+// // 
 
 // ✅ GET /api/logs/user/:userId — Get all logs by specific user
 router.get('/user/:userId', async (req, res) => {
