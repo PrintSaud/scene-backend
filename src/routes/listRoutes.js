@@ -5,36 +5,34 @@ const protectOptional = require("../middleware/protectOptional");
 const List = require("../models/list");
 const User = require("../models/user");
 
-// ✅ Get popular public lists (Popular tab) → BEFORE /:id
+// ✅ Get popular public lists (Popular tab)
 router.get("/popular", async (req, res) => {
   try {
     const lists = await List.find({ isPrivate: false })
       .sort({ likes: -1 })
       .limit(50)
       .populate("user", "username avatar");
-
     res.json(lists);
   } catch (err) {
     res.status(500).json({ message: "❌ Failed to fetch popular lists", error: err });
   }
 });
 
-// ✅ Friends’ Lists → BEFORE /:id
+// ✅ Friends’ Lists
 router.get("/friends", protect, async (req, res) => {
   try {
-    const following = currentUser.following || [];
-    const currentUser = await User.findById(req.user._id);
-    if (!currentUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
 
+    const followingIds = user.following || [];
     const lists = await List.find({
-      user: { $in: currentUser.following },
+      user: { $in: followingIds },
       isPrivate: false,
     }).populate("user", "username avatar");
 
     res.json(lists);
   } catch (err) {
+    console.error("🔥 Failed to fetch friends' lists:", err);
     res.status(500).json({ message: "❌ Failed to fetch friends' lists", error: err.message });
   }
 });
@@ -51,33 +49,29 @@ router.post("/", protect, async (req, res) => {
       isRanked: req.body.isRanked || false,
       movies: req.body.movies || [],
     });
-
     res.status(201).json(list);
   } catch (err) {
     res.status(500).json({ message: "❌ Failed to create list", error: err });
   }
 });
 
-// ✅ Fix for GET /api/lists/my
+// ✅ My Lists
 router.get("/my", protect, async (req, res) => {
   try {
     const lists = await List.find({ user: req.user._id }).populate("user", "username avatar");
     res.json(lists);
   } catch (err) {
-    console.error("🔥 Error fetching my lists:", err.message);
     res.status(500).json({ message: "❌ Failed to fetch my lists", error: err.message });
   }
 });
 
-
-// ✅ Get all lists created by a user (My Lists tab)
+// ✅ Get lists by user
 router.get("/user/:userId", protectOptional, async (req, res) => {
   try {
     const isOwner = req.user && req.user._id.toString() === req.params.userId;
     const filter = isOwner
       ? { user: req.params.userId }
       : { user: req.params.userId, isPrivate: false };
-
     const lists = await List.find(filter).populate("user", "username avatar");
     res.json(lists);
   } catch (err) {
@@ -85,7 +79,7 @@ router.get("/user/:userId", protectOptional, async (req, res) => {
   }
 });
 
-// ✅ Get all saved lists for the current user (Saved tab)
+// ✅ Saved Lists
 router.get("/saved", protect, async (req, res) => {
   try {
     const lists = await List.find({ savedBy: req.user._id }).populate("user", "username avatar");
@@ -95,22 +89,20 @@ router.get("/saved", protect, async (req, res) => {
   }
 });
 
-// ✅ View a single list (List View Page)
+// ✅ Single List View
 router.get("/:id", async (req, res) => {
   try {
     const list = await List.findById(req.params.id)
       .populate("user", "username avatar")
       .populate("movies");
-
     if (!list) return res.status(404).json({ message: "List not found" });
-
     res.json(list);
   } catch (err) {
     res.status(500).json({ message: "❌ Failed to fetch list", error: err });
   }
 });
 
-// ✅ Like / Unlike a list
+// ✅ Like / Unlike
 router.post("/:id/like", protect, async (req, res) => {
   try {
     const list = await List.findById(req.params.id);
@@ -118,12 +110,9 @@ router.post("/:id/like", protect, async (req, res) => {
 
     const userId = req.user._id.toString();
     const liked = list.likes.includes(userId);
-
-    if (liked) {
-      list.likes = list.likes.filter((id) => id.toString() !== userId);
-    } else {
-      list.likes.push(userId);
-    }
+    list.likes = liked
+      ? list.likes.filter((id) => id.toString() !== userId)
+      : [...list.likes, userId];
 
     await list.save();
     res.json({ liked: !liked, likesCount: list.likes.length });
@@ -132,7 +121,7 @@ router.post("/:id/like", protect, async (req, res) => {
   }
 });
 
-// ✅ Save / Unsave a list
+// ✅ Save / Unsave
 router.post("/:id/save", protect, async (req, res) => {
   try {
     const list = await List.findById(req.params.id);
@@ -152,7 +141,7 @@ router.post("/:id/save", protect, async (req, res) => {
   }
 });
 
-// ✅ Edit a list
+// ✅ Edit List
 router.patch("/:id", protect, async (req, res) => {
   try {
     const list = await List.findById(req.params.id);
@@ -173,7 +162,7 @@ router.patch("/:id", protect, async (req, res) => {
   }
 });
 
-// ✅ Delete a list
+// ✅ Delete List
 router.delete("/:id", protect, async (req, res) => {
   try {
     const list = await List.findById(req.params.id);
@@ -187,8 +176,7 @@ router.delete("/:id", protect, async (req, res) => {
   }
 });
 
-
-// ✅ Add movie to list
+// ✅ Add Movie to List
 router.post("/:id/add", protect, async (req, res) => {
   try {
     const list = await List.findById(req.params.id);
@@ -203,14 +191,10 @@ router.post("/:id/add", protect, async (req, res) => {
 
     list.movies.push({ id, title, poster });
     await list.save();
-
     res.json({ message: "✅ Movie added", list });
   } catch (err) {
-    console.error("❌ Failed to add movie:", err);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: "❌ Failed to add movie", error: err.message });
   }
 });
-
-
 
 module.exports = router;
