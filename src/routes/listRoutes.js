@@ -57,6 +57,18 @@ router.post("/", protect, async (req, res) => {
   }
 });
 
+// ✅ Fix for GET /api/lists/my
+router.get("/my", protect, async (req, res) => {
+  try {
+    const lists = await List.find({ user: req.user._id }).populate("user", "username avatar");
+    res.json(lists);
+  } catch (err) {
+    console.error("🔥 Error fetching my lists:", err.message);
+    res.status(500).json({ message: "❌ Failed to fetch my lists", error: err.message });
+  }
+});
+
+
 // ✅ Get all lists created by a user (My Lists tab)
 router.get("/user/:userId", protectOptional, async (req, res) => {
   try {
@@ -197,6 +209,7 @@ router.post("/:id/add", protect, async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
 
 
 module.exports = router;
