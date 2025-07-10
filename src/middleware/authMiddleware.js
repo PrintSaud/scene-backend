@@ -4,7 +4,9 @@ const User = require("../models/user");
 const protect = async (req, res, next) => {
   let token;
 
-  // Check for Bearer token in Authorization header
+  // DEBUG: Log what JWT_SECRET we are using
+  console.log("🔒 protect middleware running — JWT_SECRET:", process.env.JWT_SECRET);
+
   if (
     req.headers.authorization &&
     req.headers.authorization.startsWith("Bearer")
@@ -20,17 +22,18 @@ const protect = async (req, res, next) => {
 
       // If user doesn't exist
       if (!req.user) {
+        console.log("❌ User not found for decoded.id:", decoded.id);
         return res.status(401).json({ error: "User not found" });
       }
 
       return next();
     } catch (error) {
-      console.error("JWT Error:", error.message);
+      console.error("❌ JWT Error:", error.message);
       return res.status(401).json({ error: "Token is invalid or expired" });
     }
   }
 
-  // No token at all
+  console.warn("⚠️ No token provided in Authorization header");
   return res.status(401).json({ error: "Not authorized, no token" });
 };
 
