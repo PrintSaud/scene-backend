@@ -9,6 +9,7 @@ const upload = multer({ storage: multer.memoryStorage() }); // temp in-memory up
 const axios = require("axios"); // Add this at top if not already
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 const TMDB_API_KEY = process.env.TMDB_API_KEY; // Add this at top if not already
+const CustomPoster = require('../models/customPoster');
 
 // GET /api/logs/:logId → Get single log with replies
 router.get('/:logId', async (req, res) => {
@@ -272,55 +273,44 @@ router.delete('/:logId', protect, async (req, res) => {
     res.status(500).json({ message: "Failed to delete log" });
   }
 });
-// // 
 
-// ✅ GET /api/logs/user/:userId — Get all logs by specific user
-
-
-// ✅ GET /api/logs/user/:userId — Get all logs by specific user with poster override fallback
+// ✅ GET /api/logs/user/:userId — Get all logs by specific user with poster override support
 router.get('/user/:userId', async (req, res) => {
   try {
     const logs = await Log.find({ user: req.params.userId })
-      .populate('movie')
       .populate('user', 'username avatar')
       .sort({ createdAt: -1 });
 
     const logsWithPosters = await Promise.all(
       logs.map(async (log) => {
         let posterUrl = null;
-        const movie = log.movie || {};
 
-        try {
-          if (movie.customPoster) {
-            posterUrl = movie.customPoster;
-          } else if (movie.posterOverride) {
-            posterUrl = movie.posterOverride;
-          } else if (movie.poster_path) {
-            posterUrl = `${TMDB_IMG}${movie.poster_path}`;
-          } else if (movie.poster) {
-            posterUrl = movie.poster.startsWith("http")
-              ? movie.poster
-              : `${TMDB_IMG}${movie.poster}`;
-          } else if (log.movieId && TMDB_API_KEY) {  // 🔥 fallback if movie is null but movieId exists
-            console.log(`🔎 TMDB fallback for log.movieId=${log.movieId}`);
-            const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movieId}?api_key=${TMDB_API_KEY}`);
-            const fetchedPoster = tmdbRes.data.poster_path;
-            if (fetchedPoster) {
-              posterUrl = `${TMDB_IMG}${fetchedPoster}`;
+        // 🔎 First, check for poster override in CustomPoster collection:
+        const customPoster = await CustomPoster.findOne({ movieId: log.movie });
+        if (customPoster) {
+          posterUrl = customPoster.posterUrl;
+        } else if (log.poster) {
+          posterUrl = log.poster.startsWith("http")
+            ? log.poster
+            : `${TMDB_IMG}${log.poster}`;
+        } else {
+          // Optional fallback to TMDB API (can comment this out if not needed)
+          try {
+            if (log.movie && TMDB_API_KEY) {
+              const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movie}?api_key=${TMDB_API_KEY}`);
+              const fetchedPoster = tmdbRes.data.poster_path;
+              if (fetchedPoster) {
+                posterUrl = `${TMDB_IMG}${fetchedPoster}`;
+              }
             }
+          } catch (err) {
+            console.warn(`⚠️ TMDB fallback failed for logId ${log._id}: ${err.message}`);
           }
-        } catch (err) {
-          console.warn(`⚠️ Poster resolution failed for logId ${log._id}: ${err.message}`);
         }
 
         return {
           ...log.toObject(),
-          movie: movie?._id
-            ? {
-                ...movie.toObject(),
-                posterOverride: posterUrl,
-              }
-            : { posterOverride: posterUrl }  // ensure posterOverride even if movie null
+          posterOverride: posterUrl // Inject `posterOverride` directly for frontend
         };
       })
     );
@@ -331,6 +321,7 @@ router.get('/user/:userId', async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch user logs', error: err.message });
   }
 });
+
 
 
 
