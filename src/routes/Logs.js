@@ -290,45 +290,48 @@ router.get('/user/:userId', async (req, res) => {
         let posterUrl = null;
         const movie = log.movie || {};
 
-        if (movie.customPoster) {
-          posterUrl = movie.customPoster;
-        } else if (movie.posterOverride) {
-          posterUrl = movie.posterOverride;
-        } else if (movie.poster_path) {
-          posterUrl = `${TMDB_IMG}${movie.poster_path}`;
-        } else if (movie.poster) {
-          posterUrl = movie.poster.startsWith("http")
-            ? movie.poster
-            : `${TMDB_IMG}${movie.poster}`;
-        } else if (movie && movie.id && !isNaN(movie.id)) {
-          console.log(`🔎 Attempting TMDB fetch for movie.id=${movie.id}`);
-          try {
+        try {
+          if (movie.customPoster) {
+            posterUrl = movie.customPoster;
+          } else if (movie.posterOverride) {
+            posterUrl = movie.posterOverride;
+          } else if (movie.poster_path) {
+            posterUrl = `${TMDB_IMG}${movie.poster_path}`;
+          } else if (movie.poster) {
+            posterUrl = movie.poster.startsWith("http")
+              ? movie.poster
+              : `${TMDB_IMG}${movie.poster}`;
+          } else if (movie.id && TMDB_API_KEY) {
+            console.log(`🔎 Attempting TMDB fetch for movie.id=${movie.id}`);
             const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${movie.id}?api_key=${TMDB_API_KEY}`);
             const fetchedPoster = tmdbRes.data.poster_path;
             if (fetchedPoster) {
               posterUrl = `${TMDB_IMG}${fetchedPoster}`;
             }
-          } catch (err) {
-            console.warn(`⚠️ Failed TMDB fetch for movie ${movie.id}:`, err.message);
           }
+        } catch (err) {
+          console.warn(`⚠️ Poster resolution failed for movie ${movie.id || 'unknown'}: ${err.message}`);
         }
 
         return {
           ...log.toObject(),
-          movie: {
-            ...log.movie?.toObject(),
-            posterOverride: posterUrl,
-          },
+          movie: movie?._id
+            ? {
+                ...movie.toObject(),
+                posterOverride: posterUrl,
+              }
+            : { posterOverride: posterUrl }  // fallback for null movie
         };
       })
     );
 
     res.json(logsWithPosters);
   } catch (err) {
-    console.error("❌ Failed to fetch user's logs:", err);
+    console.error("🔥 Server crash in /api/logs/user/:userId:", err);
     res.status(500).json({ message: 'Failed to fetch user logs', error: err.message });
   }
 });
+
 
 
 // ✅ TEMP TEST ROUTE — check user field type
