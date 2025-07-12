@@ -69,6 +69,17 @@ router.get("/my", protect, async (req, res) => {
   }
 });
 
+// ✅ Saved Lists
+router.get("/saved", protect, async (req, res) => {
+  try {
+    const lists = await List.find({ savedBy: req.user._id }).populate("user", "username avatar");
+    res.json(lists);
+  } catch (err) {
+    res.status(500).json({ message: "❌ Failed to get saved lists", error: err });
+  }
+});
+
+// ✅ Single List View with CustomPoster lookup
 // ✅ Get lists by user
 
 router.get("/:id", async (req, res) => {
@@ -119,20 +130,6 @@ router.get("/:id", async (req, res) => {
     res.status(500).json({ message: "❌ Failed to fetch list", error: err });
   }
 });
-
-
-// ✅ Saved Lists
-router.get("/saved", protect, async (req, res) => {
-  try {
-    const lists = await List.find({ savedBy: req.user._id }).populate("user", "username avatar");
-    res.json(lists);
-  } catch (err) {
-    res.status(500).json({ message: "❌ Failed to get saved lists", error: err });
-  }
-});
-
-// ✅ Single List View with CustomPoster lookup
-
 
 // ✅ Like / Unlike
 router.post("/:id/like", protect, async (req, res) => {
