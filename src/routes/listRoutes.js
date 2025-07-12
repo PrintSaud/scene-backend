@@ -5,6 +5,9 @@ const protectOptional = require("../middleware/protectOptional");
 const List = require("../models/list");
 const User = require("../models/user");
 const CustomPoster = require("../models/customPoster"); // ✅ Ensure this is imported
+const axios = require("axios"); // ✅ add at the top if not already present
+const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
+const TMDB_API_KEY = process.env.TMDB_API_KEY;
 
 // ✅ Get popular public lists (Popular tab)
 router.get("/popular", async (req, res) => {
@@ -67,30 +70,7 @@ router.get("/my", protect, async (req, res) => {
 });
 
 // ✅ Get lists by user
-router.get("/user/:userId", protectOptional, async (req, res) => {
-  try {
-    const isOwner = req.user && req.user._id.toString() === req.params.userId;
-    const filter = isOwner
-      ? { user: req.params.userId }
-      : { user: req.params.userId, isPrivate: false };
-    const lists = await List.find(filter).populate("user", "username avatar");
-    res.json(lists);
-  } catch (err) {
-    res.status(500).json({ message: "❌ Failed to get user lists", error: err });
-  }
-});
 
-// ✅ Saved Lists
-router.get("/saved", protect, async (req, res) => {
-  try {
-    const lists = await List.find({ savedBy: req.user._id }).populate("user", "username avatar");
-    res.json(lists);
-  } catch (err) {
-    res.status(500).json({ message: "❌ Failed to get saved lists", error: err });
-  }
-});
-
-// ✅ Single List View with CustomPoster lookup
 router.get("/:id", async (req, res) => {
   try {
     const list = await List.findById(req.params.id)
@@ -106,8 +86,19 @@ router.get("/:id", async (req, res) => {
           posterUrl = custom.posterUrl;
         } else if (movie.poster) {
           posterUrl = movie.poster.startsWith("/")
-            ? `https://image.tmdb.org/t/p/w500${movie.poster}`
+            ? `${TMDB_IMG}${movie.poster}`
             : movie.poster;
+        } else {
+          // ⭐ New fallback: dynamically fetch from TMDB API
+          try {
+            const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${movie.id}?api_key=${TMDB_API_KEY}`);
+            const posterPath = tmdbRes.data.poster_path;
+            if (posterPath) {
+              posterUrl = `${TMDB_IMG}${posterPath}`;
+            }
+          } catch (err) {
+            console.warn(`⚠️ Failed to fetch TMDB poster for movie ${movie.id}:`, err.message);
+          }
         }
 
         return {
@@ -128,6 +119,19 @@ router.get("/:id", async (req, res) => {
     res.status(500).json({ message: "❌ Failed to fetch list", error: err });
   }
 });
+
+
+// ✅ Saved Lists
+router.get("/saved", protect, async (req, res) => {
+  try {
+    const lists = await List.find({ savedBy: req.user._id }).populate("user", "username avatar");
+    res.json(lists);
+  } catch (err) {
+    res.status(500).json({ message: "❌ Failed to get saved lists", error: err });
+  }
+});
+
+// ✅ Single List View with CustomPoster lookup
 
 
 // ✅ Like / Unlike
