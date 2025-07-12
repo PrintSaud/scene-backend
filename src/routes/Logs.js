@@ -301,16 +301,16 @@ router.get('/user/:userId', async (req, res) => {
             posterUrl = movie.poster.startsWith("http")
               ? movie.poster
               : `${TMDB_IMG}${movie.poster}`;
-          } else if (movie.id && TMDB_API_KEY) {
-            console.log(`🔎 Attempting TMDB fetch for movie.id=${movie.id}`);
-            const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${movie.id}?api_key=${TMDB_API_KEY}`);
+          } else if (log.movieId && TMDB_API_KEY) {  // 🔥 fallback if movie is null but movieId exists
+            console.log(`🔎 TMDB fallback for log.movieId=${log.movieId}`);
+            const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movieId}?api_key=${TMDB_API_KEY}`);
             const fetchedPoster = tmdbRes.data.poster_path;
             if (fetchedPoster) {
               posterUrl = `${TMDB_IMG}${fetchedPoster}`;
             }
           }
         } catch (err) {
-          console.warn(`⚠️ Poster resolution failed for movie ${movie.id || 'unknown'}: ${err.message}`);
+          console.warn(`⚠️ Poster resolution failed for logId ${log._id}: ${err.message}`);
         }
 
         return {
@@ -320,7 +320,7 @@ router.get('/user/:userId', async (req, res) => {
                 ...movie.toObject(),
                 posterOverride: posterUrl,
               }
-            : { posterOverride: posterUrl }  // fallback for null movie
+            : { posterOverride: posterUrl }  // ensure posterOverride even if movie null
         };
       })
     );
@@ -331,6 +331,7 @@ router.get('/user/:userId', async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch user logs', error: err.message });
   }
 });
+
 
 
 
