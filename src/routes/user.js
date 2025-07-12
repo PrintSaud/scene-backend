@@ -27,34 +27,43 @@ router.get('/all', async (req, res) => {
 });
 
 // follow 
-
 router.post('/:userId/follow/:targetId', async (req, res) => {
   try {
+    console.log("🔔 Follow API hit", {
+      userId: req.params.userId,
+      targetId: req.params.targetId
+    });
+
     const user = await User.findById(req.params.userId);
     const targetUser = await User.findById(req.params.targetId);
 
     if (!user || !targetUser) {
+      console.log("❌ User or target user not found");
       return res.status(404).json({ error: 'User not found' });
     }
 
     const isFollowing = user.following.includes(req.params.targetId);
+    console.log("👉 isFollowing:", isFollowing);
 
     if (isFollowing) {
-      // Unfollow
       user.following.pull(req.params.targetId);
       targetUser.followers.pull(req.params.userId);
     } else {
-      // Follow
       user.following.push(req.params.targetId);
       targetUser.followers.push(req.params.userId);
 
-      // 🛎️ Add notification to targetUser
+      // 🛡️ Safe guard to ensure notifications array exists
+      if (!Array.isArray(targetUser.notifications)) {
+        targetUser.notifications = [];
+      }
+
+      // 🛎️ Notification block
       targetUser.notifications.unshift({
         type: "follow",
         message: `@${user.username} just followed you`,
         fromUser: user._id,
         createdAt: new Date(),
-        read: false,
+        read: false
       });
     }
 
@@ -66,13 +75,11 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
       message: isFollowing ? 'Unfollowed user' : 'Now following user'
     });
   } catch (err) {
-    console.error('❌ Failed to toggle follow:', err);
-    res.status(500).json({ error: 'Failed to toggle follow' });
+    console.error("❌ Failed to toggle follow:", err);
+    res.status(500).json({ error: 'Failed to toggle follow', details: err.message });
   }
 });
 
-
-  
 
 router.post('/:userId/favorites/:movieId', async (req, res) => {
     const { userId, movieId } = req.params;
