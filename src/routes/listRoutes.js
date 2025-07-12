@@ -79,6 +79,21 @@ router.get("/saved", protect, async (req, res) => {
   }
 });
 
+// ✅ Get lists by user (add this back!)
+router.get("/user/:userId", protectOptional, async (req, res) => {
+  try {
+    const isOwner = req.user && req.user._id.toString() === req.params.userId;
+    const filter = isOwner
+      ? { user: req.params.userId }
+      : { user: req.params.userId, isPrivate: false };
+    const lists = await List.find(filter).populate("user", "username avatar");
+    res.json(lists);
+  } catch (err) {
+    res.status(500).json({ message: "❌ Failed to get user lists", error: err });
+  }
+});
+
+
 // ✅ Single List View with CustomPoster lookup
 // ✅ Get lists by user
 
