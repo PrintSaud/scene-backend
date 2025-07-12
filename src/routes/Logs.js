@@ -300,8 +300,8 @@ router.get('/user/:userId', async (req, res) => {
           posterUrl = movie.poster.startsWith("http")
             ? movie.poster
             : `${TMDB_IMG}${movie.poster}`;
-        } else if (movie.id) {
-          // Dynamically fetch from TMDB as fallback
+        } else if (movie && movie.id && !isNaN(movie.id)) {
+          console.log(`🔎 Attempting TMDB fetch for movie.id=${movie.id}`);
           try {
             const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${movie.id}?api_key=${TMDB_API_KEY}`);
             const fetchedPoster = tmdbRes.data.poster_path;
