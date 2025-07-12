@@ -4,6 +4,7 @@ const protect = require("../middleware/authMiddleware");
 const protectOptional = require("../middleware/protectOptional");
 const List = require("../models/list");
 const User = require("../models/user");
+const CustomPoster = require("../models/customPoster"); // ✅ Ensure this is imported
 
 // ✅ Get popular public lists (Popular tab)
 router.get("/popular", async (req, res) => {
@@ -89,21 +90,22 @@ router.get("/saved", protect, async (req, res) => {
   }
 });
 
-// ✅ Single List View
+// ✅ Single List View with CustomPoster lookup
 router.get("/:id", async (req, res) => {
   try {
     const list = await List.findById(req.params.id)
-      .populate("user", "username avatar")
-      .populate("movies");
+      .populate("user", "username avatar");
     if (!list) return res.status(404).json({ message: "List not found" });
 
-    // 🛠️ Build movies array with posterOverride attached properly
-    const moviesWithOverride = list.movies.map((movie) => {
-      return {
-        ...movie.toObject(),
-        posterOverride: movie.poster || null,  // if poster is your override
-      };
-    });
+    const moviesWithOverride = await Promise.all(
+      list.movies.map(async (movie) => {
+        const custom = await CustomPoster.findOne({ movieId: parseInt(movie.id) });
+        return {
+          ...movie.toObject(),
+          posterOverride: custom ? custom.posterUrl : movie.poster || null,
+        };
+      })
+    );
 
     const result = {
       ...list.toObject(),
@@ -112,10 +114,10 @@ router.get("/:id", async (req, res) => {
 
     res.json(result);
   } catch (err) {
+    console.error("❌ Failed to fetch list:", err);
     res.status(500).json({ message: "❌ Failed to fetch list", error: err });
   }
 });
-
 
 // ✅ Like / Unlike
 router.post("/:id/like", protect, async (req, res) => {
