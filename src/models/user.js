@@ -86,14 +86,6 @@ const UserSchema = new mongoose.Schema({
 
   avatar: { type: String, default: "" } // optional avatar URL
 
-
-
-  
-  
-
-  
-  
-
 }, { timestamps: true });
 
 UserSchema.pre('save', async function (next) {

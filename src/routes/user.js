@@ -26,23 +26,52 @@ router.get('/all', async (req, res) => {
   }
 });
 
-// Follow another user
+// follow 
+
 router.post('/:userId/follow/:targetId', async (req, res) => {
-    try {
-      const user = await require('../models/user').findById(req.params.userId);
-      const targetId = req.params.targetId;
-  
-      if (!user.following.includes(targetId)) {
-        user.following.push(targetId);
-        await user.save();
-      }
-  
-      res.status(200).json({ message: 'Now following user' });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Failed to follow user' });
+  try {
+    const user = await User.findById(req.params.userId);
+    const targetUser = await User.findById(req.params.targetId);
+
+    if (!user || !targetUser) {
+      return res.status(404).json({ error: 'User not found' });
     }
-  });
+
+    const isFollowing = user.following.includes(req.params.targetId);
+
+    if (isFollowing) {
+      // Unfollow
+      user.following.pull(req.params.targetId);
+      targetUser.followers.pull(req.params.userId);
+    } else {
+      // Follow
+      user.following.push(req.params.targetId);
+      targetUser.followers.push(req.params.userId);
+
+      // 🛎️ Add notification to targetUser
+      targetUser.notifications.unshift({
+        type: "follow",
+        message: `@${user.username} just followed you`,
+        fromUser: user._id,
+        createdAt: new Date(),
+        read: false,
+      });
+    }
+
+    await user.save();
+    await targetUser.save();
+
+    res.status(200).json({
+      following: !isFollowing,
+      message: isFollowing ? 'Unfollowed user' : 'Now following user'
+    });
+  } catch (err) {
+    console.error('❌ Failed to toggle follow:', err);
+    res.status(500).json({ error: 'Failed to toggle follow' });
+  }
+});
+
+
   
 
 router.post('/:userId/favorites/:movieId', async (req, res) => {
