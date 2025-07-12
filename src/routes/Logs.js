@@ -6,8 +6,9 @@ const protect = require('../middleware/authMiddleware');
 const multer = require("multer");
 const uploadToCloudinary = require("../utils/cloudinary");
 const upload = multer({ storage: multer.memoryStorage() }); // temp in-memory upload
-
-
+const axios = require("axios"); // Add this at top if not already
+const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
+const TMDB_API_KEY = process.env.TMDB_API_KEY; // Add this at top if not already
 
 // GET /api/logs/:logId → Get single log with replies
 router.get('/:logId', async (req, res) => {
@@ -274,6 +275,9 @@ router.delete('/:logId', protect, async (req, res) => {
 // // 
 
 // ✅ GET /api/logs/user/:userId — Get all logs by specific user
+
+
+// ✅ GET /api/logs/user/:userId — Get all logs by specific user with poster override fallback
 router.get('/user/:userId', async (req, res) => {
   try {
     const logs = await Log.find({ user: req.params.userId })
@@ -281,12 +285,51 @@ router.get('/user/:userId', async (req, res) => {
       .populate('user', 'username avatar')
       .sort({ createdAt: -1 });
 
-    res.json(logs);
+    const logsWithPosters = await Promise.all(
+      logs.map(async (log) => {
+        let posterUrl = null;
+        const movie = log.movie || {};
+
+        if (movie.customPoster) {
+          posterUrl = movie.customPoster;
+        } else if (movie.posterOverride) {
+          posterUrl = movie.posterOverride;
+        } else if (movie.poster_path) {
+          posterUrl = `${TMDB_IMG}${movie.poster_path}`;
+        } else if (movie.poster) {
+          posterUrl = movie.poster.startsWith("http")
+            ? movie.poster
+            : `${TMDB_IMG}${movie.poster}`;
+        } else if (movie.id) {
+          // Dynamically fetch from TMDB as fallback
+          try {
+            const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${movie.id}?api_key=${TMDB_API_KEY}`);
+            const fetchedPoster = tmdbRes.data.poster_path;
+            if (fetchedPoster) {
+              posterUrl = `${TMDB_IMG}${fetchedPoster}`;
+            }
+          } catch (err) {
+            console.warn(`⚠️ Failed TMDB fetch for movie ${movie.id}:`, err.message);
+          }
+        }
+
+        return {
+          ...log.toObject(),
+          movie: {
+            ...log.movie?.toObject(),
+            posterOverride: posterUrl,
+          },
+        };
+      })
+    );
+
+    res.json(logsWithPosters);
   } catch (err) {
     console.error("❌ Failed to fetch user's logs:", err);
     res.status(500).json({ message: 'Failed to fetch user logs', error: err.message });
   }
 });
+
 
 // ✅ TEMP TEST ROUTE — check user field type
 router.get("/debug/logs/:id", async (req, res) => {
