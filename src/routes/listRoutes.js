@@ -100,9 +100,19 @@ router.get("/:id", async (req, res) => {
     const moviesWithOverride = await Promise.all(
       list.movies.map(async (movie) => {
         const custom = await CustomPoster.findOne({ movieId: parseInt(movie.id) });
+        let posterUrl = null;
+
+        if (custom) {
+          posterUrl = custom.posterUrl;
+        } else if (movie.poster) {
+          posterUrl = movie.poster.startsWith("/")
+            ? `https://image.tmdb.org/t/p/w500${movie.poster}`
+            : movie.poster;
+        }
+
         return {
           ...movie.toObject(),
-          posterOverride: custom ? custom.posterUrl : movie.poster || null,
+          posterOverride: posterUrl
         };
       })
     );
@@ -118,6 +128,7 @@ router.get("/:id", async (req, res) => {
     res.status(500).json({ message: "❌ Failed to fetch list", error: err });
   }
 });
+
 
 // ✅ Like / Unlike
 router.post("/:id/like", protect, async (req, res) => {
