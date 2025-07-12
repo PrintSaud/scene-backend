@@ -96,11 +96,26 @@ router.get("/:id", async (req, res) => {
       .populate("user", "username avatar")
       .populate("movies");
     if (!list) return res.status(404).json({ message: "List not found" });
-    res.json(list);
+
+    // 🛠️ Build movies array with posterOverride attached properly
+    const moviesWithOverride = list.movies.map((movie) => {
+      return {
+        ...movie.toObject(),
+        posterOverride: movie.poster || null,  // if poster is your override
+      };
+    });
+
+    const result = {
+      ...list.toObject(),
+      movies: moviesWithOverride,
+    };
+
+    res.json(result);
   } catch (err) {
     res.status(500).json({ message: "❌ Failed to fetch list", error: err });
   }
 });
+
 
 // ✅ Like / Unlike
 router.post("/:id/like", protect, async (req, res) => {
