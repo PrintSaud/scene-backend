@@ -3,11 +3,18 @@ const router = express.Router();
 const protect = require("../middleware/authMiddleware");
 const CustomPoster = require("../models/customPoster");
 
-// ✅ GET current poster for a movie
+// ✅ GET current poster for a movie — patched version
 router.get("/:movieId", async (req, res) => {
-  const poster = await CustomPoster.findOne({ movieId: req.params.movieId });
-  if (!poster) return res.status(404).json({ message: "No override" });
-  res.json(poster);
+  try {
+    const poster = await CustomPoster.findOne({ movieId: req.params.movieId });
+    if (!poster) {
+      return res.json({ posterUrl: null }); // ✅ Always respond 200, no 404
+    }
+    res.json({ posterUrl: poster.posterUrl });
+  } catch (err) {
+    console.error("Failed to fetch poster:", err);
+    res.status(500).json({ message: "Server error fetching poster" });
+  }
 });
 
 // ✅ POST a new poster for a movie
