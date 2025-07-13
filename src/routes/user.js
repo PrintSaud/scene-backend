@@ -6,6 +6,8 @@ const mongoose = require('mongoose');
 const User = require('../models/user');
 const Log = require("../models/log"); // ✅ Add this import
 const { getMovieDetails } = require("../services/tmdbService"); // ✅ Ad
+const protect = require("../middleware/authMiddleware");  // 🔔 REQUIRED 🔔
+
 // GET all users
 router.get('/', async (req, res) => {
   try {
