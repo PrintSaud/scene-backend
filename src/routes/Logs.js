@@ -11,7 +11,7 @@ const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 const TMDB_API_KEY = process.env.TMDB_API_KEY; // Add this at top if not already
 const CustomPoster = require('../models/customPoster');
 
-// GET /api/logs/:logId → Get single log with replies
+// GET /api/logs/:logId → Get single log with populated user + movie + safe poster/backdrop
 router.get('/:logId', async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId)
@@ -20,33 +20,43 @@ router.get('/:logId', async (req, res) => {
 
     if (!log) return res.status(404).json({ message: 'Log not found' });
 
-    const replies = log.replies || [];
+    const poster = log.movie?.poster_path
+      ? `${TMDB_IMG}${log.movie.poster_path}`
+      : DEFAULT_POSTER;
+
+    const backdrop = log.movie?.backdrop_path
+      ? `${TMDB_BACKDROP}${log.movie.backdrop_path}`
+      : DEFAULT_BACKDROP;
+
+    const replies = (log.replies || []).map((r) => ({
+      _id: r._id,
+      text: r.text,
+      username: r.user?.username || "unknown",
+      avatar: r.user?.avatar || "/default-avatar.jpg",
+      userId: r.user?._id,
+      likes: r.likes || [],
+    }));
 
     res.json({
       _id: log._id,
-      title: log.movie?.title || 'Untitled',
-      poster: log.movie?.poster || 'https://image.tmdb.org/t/p/w500/default.jpg',
+      user: log.user,
+      movie: {
+        _id: log.movie?._id,
+        title: log.movie?.title || "Untitled",
+        backdrop_path: log.movie?.backdrop_path,
+      },
+      poster,
+      backdrop,
       review: log.review,
       rating: log.rating,
-      likes: log.reactions?.get('❤️')?.length || 0,
-      replies: await Promise.all(
-        replies.map(async (r) => {
-          const user = await User.findById(r.user).select('username avatar');
-          return {
-            _id: r._id,
-            text: r.text,
-            image: r.image,
-            createdAt: r.createdAt,
-            userId: user._id,
-            username: user.username,
-            avatar: user.avatar,
-          };
-        })
-      ),
+      likes: log.reactions?.get('❤️') || [],
+      image: log.image || null,
+      gif: log.gif || null,
+      replies,
     });
   } catch (err) {
-    console.error('Failed to fetch log:', err);
-    res.status(500).json({ message: 'Failed to fetch log', error: err.message });
+    console.error("❌ Error fetching log:", err);
+    res.status(500).json({ message: "Server error." });
   }
 });
 
