@@ -473,24 +473,27 @@ router.post('/:id/remove-follower/:followerId', protect, async (req, res) => {
 
 router.get('/mutuals', protect, async (req, res) => {
   try {
-    console.log("👉 req.user from protect:", req.user);
+    console.log("🔎 /mutuals hit by user:", req.user);
     const currentUser = await User.findById(req.user._id);
     if (!currentUser) {
       console.log("❌ currentUser not found for id:", req.user._id);
       return res.status(404).json({ message: "User not found" });
     }
 
+    console.log("👉 currentUser.following:", currentUser.following);
     const mutuals = await User.find({
       _id: { $in: currentUser.following },
       followers: currentUser._id,
     }).select('username avatar');
 
+    console.log("✅ Found mutuals:", mutuals.length);
     res.json(mutuals);
   } catch (err) {
-    console.error("❌ Failed to fetch mutual followers:", err);
+    console.error("❌ Failed to fetch mutuals:", err.message, err.stack);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
+
 
 
 
