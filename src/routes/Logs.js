@@ -10,8 +10,13 @@ const axios = require("axios"); // Add this at top if not already
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 const TMDB_API_KEY = process.env.TMDB_API_KEY; // Add this at top if not already
 const CustomPoster = require('../models/customPoster');
+const TMDB_BACKDROP = "https://image.tmdb.org/t/p/original";
+const DEFAULT_POSTER = "/default-poster.jpg";
+const DEFAULT_BACKDROP = "/default-backdrop.jpg";
+const DEFAULT_AVATAR = "/default-avatar.jpg";
 
-// GET /api/logs/:logId → Get single log with populated user + movie + safe poster/backdrop
+
+// GET /api/logs/:logId
 router.get('/:logId', async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId)
@@ -22,43 +27,61 @@ router.get('/:logId', async (req, res) => {
 
     const poster = log.movie?.poster_path
       ? `${TMDB_IMG}${log.movie.poster_path}`
-      : DEFAULT_POSTER;
+      : log.poster?.startsWith('http')
+        ? log.poster
+        : DEFAULT_POSTER;
 
     const backdrop = log.movie?.backdrop_path
       ? `${TMDB_BACKDROP}${log.movie.backdrop_path}`
       : DEFAULT_BACKDROP;
 
-    const replies = (log.replies || []).map((r) => ({
-      _id: r._id,
-      text: r.text,
-      username: r.user?.username || "unknown",
-      avatar: r.user?.avatar || "/default-avatar.jpg",
-      userId: r.user?._id,
-      likes: r.likes || [],
-    }));
+    const likes = log.reactions?.get('❤️') || [];
+
+    // 🔥 Proper manual user fetch for replies:
+    const replies = await Promise.all(
+      (log.replies || []).map(async (r) => {
+        let replyUser = null;
+        if (r.user) {
+          replyUser = await User.findById(r.user).select('username avatar');
+        }
+        return {
+          _id: r._id,
+          text: r.text || "",
+          gif: r.gif || "",
+          image: r.image || "",
+          createdAt: r.createdAt,
+          username: replyUser?.username || "unknown",
+          avatar: replyUser?.avatar || DEFAULT_AVATAR,
+          userId: replyUser?._id || null,
+          likes: Array.isArray(r.likes) ? r.likes : []
+        };
+      })
+    );
 
     res.json({
       _id: log._id,
-      user: log.user,
+      user: log.user || null,
       movie: {
-        _id: log.movie?._id,
+        _id: log.movie?._id || null,
         title: log.movie?.title || "Untitled",
-        backdrop_path: log.movie?.backdrop_path,
+        backdrop_path: log.movie?.backdrop_path || null,
       },
       poster,
       backdrop,
-      review: log.review,
-      rating: log.rating,
-      likes: log.reactions?.get('❤️') || [],
+      review: log.review || "",
+      rating: log.rating || 0,
+      likes,
       image: log.image || null,
       gif: log.gif || null,
-      replies,
+      replies
     });
   } catch (err) {
-    console.error("❌ Error fetching log:", err);
-    res.status(500).json({ message: "Server error." });
+    console.error("🔥 Error in GET /api/logs/:logId:", err);
+    res.status(500).json({ message: "Server error in /api/logs/:logId" });
   }
 });
+
+
 
 // POST /api/logs/:id/reply → Add a reply (text/image)
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
