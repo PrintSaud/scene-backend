@@ -438,11 +438,13 @@ router.get('/:userId/watchlist', async (req, res) => {
 router.get('/mutuals', protect, async (req, res) => {
   try {
     const currentUser = await User.findById(req.user._id).lean();
-    if (!currentUser) return res.status(404).json({ message: "User not found" });
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     const mutuals = await User.find({
-      _id: { $in: currentUser.following },
-      followers: currentUser._id,
+      _id: { $in: currentUser.following },  // I am following them
+      followers: req.user._id              // AND they follow me back
     }).select('username avatar');
 
     res.json(mutuals);
@@ -451,6 +453,7 @@ router.get('/mutuals', protect, async (req, res) => {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
+
 
 
 
