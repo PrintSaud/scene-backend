@@ -241,4 +241,44 @@ router.post("/:id/add", protect, async (req, res) => {
   }
 });
 
+// routes/listRoutes.js
+router.post('/:id/share', protect, async (req, res) => {
+  const { recipients } = req.body;
+  const listId = req.params.id;
+  const userId = req.user._id;
+
+  try {
+    const sender = await User.findById(userId);
+    if (!sender) return res.status(404).json({ message: "Sender not found" });
+
+    const list = await List.findById(listId);
+    if (!list) return res.status(404).json({ message: "List not found" });
+
+    const message = `@${sender.username} suggested you check out their list: "${list.title}"`;
+
+    await Promise.all(
+      recipients.map(async (rid) => {
+        await User.findByIdAndUpdate(rid, {
+          $push: {
+            notifications: {
+              type: "share-list",
+              message,
+              listId: list._id,
+              fromUser: sender._id,
+              createdAt: new Date(),
+              read: false,
+            },
+          },
+        });
+      })
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Failed to share list", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+
 module.exports = router;

@@ -453,6 +453,21 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// routes/userRoutes.js
+router.post('/:id/remove-follower/:followerId', protect, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.params.id, {
+      $pull: { followers: req.params.followerId },
+    });
+    await User.findByIdAndUpdate(req.params.followerId, {
+      $pull: { following: req.params.id },
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Failed to remove follower", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 
 module.exports = router;
