@@ -322,8 +322,43 @@ router.get('/user/:userId', async (req, res) => {
   }
 });
 
+router.post('/:logId/like', protect, async (req, res) => {
+  const log = await Log.findById(req.params.logId);
+  if (!log) return res.status(404).json({ message: 'Not found' });
+
+  const userId = req.user._id;
+  const liked = log.likes?.includes(userId);
+
+  if (liked) {
+    log.likes.pull(userId);
+  } else {
+    log.likes.push(userId);
+  }
+
+  await log.save();
+  res.json({ liked: !liked });
+});
 
 
+router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
+  const log = await Log.findById(req.params.logId);
+  if (!log) return res.status(404).json({ message: 'Not found' });
+
+  const reply = log.replies.id(req.params.replyId);
+  if (!reply) return res.status(404).json({ message: 'Reply not found' });
+
+  const userId = req.user._id;
+  const liked = reply.likes?.includes(userId);
+
+  if (liked) {
+    reply.likes.pull(userId);
+  } else {
+    reply.likes.push(userId);
+  }
+
+  await log.save();
+  res.json({ liked: !liked });
+});
 
 
 // ✅ TEMP TEST ROUTE — check user field type

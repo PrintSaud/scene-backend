@@ -7,7 +7,9 @@ const replySchema = new mongoose.Schema({
   gif: { type: String, default: "" },
   image: { type: String, default: "" },
   createdAt: { type: Date, default: Date.now },
+  likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // ✅ Add this line for reply likes
 });
+
 
 // Schema for logs
 const logSchema = new mongoose.Schema(
@@ -22,6 +24,7 @@ const logSchema = new mongoose.Schema(
     rating: { type: Number, min: 0, max: 5 },
     rewatch: { type: Boolean, default: false },
     watchedAt: { type: Date, default: Date.now },
+
 
     // 🔥 NEW FIELDS
     gif: { type: String, default: "" },     // Main log Giphy URL
