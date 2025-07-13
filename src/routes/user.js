@@ -473,28 +473,27 @@ router.post('/:id/remove-follower/:followerId', protect, async (req, res) => {
 
 router.get('/mutuals', protect, async (req, res) => {
   try {
-    console.log("🔍 Authenticated user from protect middleware:", req.user);
-
+    console.log("🔔 /api/users/mutuals hit by:", req.user._id);
     const currentUser = await User.findById(req.user._id);
-    if (!currentUser) {
-      console.warn("⚠️ User not found for id:", req.user._id);
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!currentUser) return res.status(404).json({ message: "User not found" });
 
+    // Defensive fallback for older user docs:
     const followingIds = Array.isArray(currentUser.following) ? currentUser.following : [];
+    console.log(`👉 Current user is following: ${followingIds.length} users`);
 
     const mutuals = await User.find({
       _id: { $in: followingIds },
       followers: currentUser._id,
     }).select('username avatar');
 
-    console.log(`✅ Found ${mutuals.length} mutual friends`);
+    console.log(`✅ Found ${mutuals.length} mutuals`);
     res.json(mutuals);
   } catch (err) {
-    console.error("❌ Failed to fetch mutual followers:", err.message);
+    console.error("❌ Failed to fetch mutual followers:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
+
 
 
 
