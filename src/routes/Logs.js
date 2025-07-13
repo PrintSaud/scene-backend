@@ -20,24 +20,33 @@ const DEFAULT_AVATAR = "/default-avatar.jpg";
 router.get('/:logId', async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId)
-      .populate('user', 'username avatar')
-      .populate('movie');
+      .populate('user', 'username avatar');
 
     if (!log) return res.status(404).json({ message: 'Log not found' });
 
-    const poster = log.movie?.poster_path
-      ? `${TMDB_IMG}${log.movie.poster_path}`
-      : log.poster?.startsWith('http')
-        ? log.poster
-        : DEFAULT_POSTER;
+    // 🔥 Dynamically fetch movie details from TMDB:
+    let backdrop_path = null;
+    let movieTitle = "Untitled";
+    if (log.movie && TMDB_API_KEY) {
+      try {
+        const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movie}?api_key=${TMDB_API_KEY}`);
+        backdrop_path = tmdbRes.data.backdrop_path;
+        movieTitle = tmdbRes.data.title;
+      } catch (err) {
+        console.warn(`⚠️ Failed to fetch TMDB details for movieId=${log.movie}: ${err.message}`);
+      }
+    }
 
-    const backdrop = log.movie?.backdrop_path
-      ? `${TMDB_BACKDROP}${log.movie.backdrop_path}`
+    const poster = log.poster?.startsWith('http')
+      ? log.poster
+      : DEFAULT_POSTER;
+
+    const backdrop = backdrop_path
+      ? `${TMDB_BACKDROP}${backdrop_path}`
       : DEFAULT_BACKDROP;
 
     const likes = log.reactions?.get('❤️') || [];
 
-    // 🔥 Proper manual user fetch for replies:
     const replies = await Promise.all(
       (log.replies || []).map(async (r) => {
         let replyUser = null;
@@ -62,9 +71,9 @@ router.get('/:logId', async (req, res) => {
       _id: log._id,
       user: log.user || null,
       movie: {
-        _id: log.movie?._id || null,
-        title: log.movie?.title || "Untitled",
-        backdrop_path: log.movie?.backdrop_path || null,
+        id: log.movie || null,
+        title: movieTitle,
+        backdrop_path: backdrop_path || null,
       },
       poster,
       backdrop,
@@ -80,6 +89,7 @@ router.get('/:logId', async (req, res) => {
     res.status(500).json({ message: "Server error in /api/logs/:logId" });
   }
 });
+
 
 
 
