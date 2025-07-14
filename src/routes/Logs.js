@@ -82,7 +82,8 @@ router.get('/:logId', async (req, res) => {
       likes,
       image: log.image || null,
       gif: log.gif || null,
-      replies
+      replies,
+      createdAt: log.createdAt
     });
   } catch (err) {
     console.error("🔥 Error in GET /api/logs/:logId:", err);
