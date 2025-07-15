@@ -59,7 +59,8 @@ router.get('/:logId', async (req, res) => {
       ? `${TMDB_BACKDROP}${backdrop_path}`
       : DEFAULT_BACKDROP;
 
-    const likes = log.reactions?.get('❤️') || [];
+      const likes = log.likes || [];
+
 
     const replies = await Promise.all(
       (log.replies || []).map(async (r) => {
