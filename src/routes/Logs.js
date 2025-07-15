@@ -15,6 +15,23 @@ const DEFAULT_POSTER = "/default-poster.jpg";
 const DEFAULT_BACKDROP = "/default-backdrop.jpg";
 const DEFAULT_AVATAR = "/default-avatar.jpg";
 
+router.post('/:logId/like', protect, async (req, res) => {
+  const log = await Log.findById(req.params.logId);
+  if (!log) return res.status(404).json({ message: 'Not found' });
+
+  const userId = req.user._id;
+  const liked = log.likes?.includes(userId);
+
+  if (liked) {
+    log.likes.pull(userId);
+  } else {
+    log.likes.push(userId);
+  }
+
+  await log.save();
+  res.json({ liked: !liked });
+});
+
 router.get('/:logId', async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId)
@@ -375,23 +392,6 @@ router.get('/user/:userId', async (req, res) => {
     console.error("🔥 Server crash in /api/logs/user/:userId:", err);
     res.status(500).json({ message: 'Failed to fetch user logs', error: err.message });
   }
-});
-
-router.post('/:logId/like', protect, async (req, res) => {
-  const log = await Log.findById(req.params.logId);
-  if (!log) return res.status(404).json({ message: 'Not found' });
-
-  const userId = req.user._id;
-  const liked = log.likes?.includes(userId);
-
-  if (liked) {
-    log.likes.pull(userId);
-  } else {
-    log.likes.push(userId);
-  }
-
-  await log.save();
-  res.json({ liked: !liked });
 });
 
 
