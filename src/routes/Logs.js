@@ -396,7 +396,7 @@ router.get("/debug/recent", async (req, res) => {
 });
 
 // GET /api/logs/:filterType → Logs by time filter
-router.get('/:filterType', protect, async (req, res) => {
+router.get('/filter/:filterType', protect, async (req, res) => { 
   const { filterType } = req.params;
   const friends = req.user.friends || [];
   let startDate;
@@ -430,5 +430,6 @@ router.get('/:filterType', protect, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
 
 module.exports = router;
