@@ -32,6 +32,49 @@ router.post('/:logId/like', protect, async (req, res) => {
   res.json({ liked: !liked });
 });
 
+// 🔥 Add this to logs.js:
+router.get('/:logId/replies', async (req, res) => {
+  try {
+    const log = await Log.findById(req.params.logId);
+    if (!log) return res.status(404).json({ message: 'Log not found' });
+
+    const replies = await Promise.all(
+      (log.replies || []).map(async (r) => {
+        let replyUser = await User.findById(r.user).select('username avatar');
+        let ratingForThisMovie = null;
+
+        if (replyUser) {
+          const userLog = await Log.findOne({
+            user: replyUser._id,
+            movie: log.movie
+          });
+          if (userLog) {
+            ratingForThisMovie = userLog.rating || null;
+          }
+        }
+
+        return {
+          _id: r._id,
+          text: r.text || "",
+          gif: r.gif || "",
+          image: r.image || "",
+          createdAt: r.createdAt,
+          username: replyUser?.username || "unknown",
+          avatar: replyUser?.avatar || DEFAULT_AVATAR,
+          userId: replyUser?._id || null,
+          likes: Array.isArray(r.likes) ? r.likes : [],
+          ratingForThisMovie
+        };
+      })
+    );
+
+    res.json(replies);
+  } catch (err) {
+    console.error('🔥 Error fetching lightweight replies:', err);
+    res.status(500).json({ message: "Failed to fetch replies" });
+  }
+});
+
 router.get('/:logId', async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId)
@@ -119,51 +162,6 @@ router.get('/:logId', async (req, res) => {
     res.status(500).json({ message: "Server error in /api/logs/:logId" });
   }
 });
-
-// 🔥 Add this to logs.js:
-router.get('/:logId/replies', async (req, res) => {
-  try {
-    const log = await Log.findById(req.params.logId);
-    if (!log) return res.status(404).json({ message: 'Log not found' });
-
-    const replies = await Promise.all(
-      (log.replies || []).map(async (r) => {
-        let replyUser = await User.findById(r.user).select('username avatar');
-        let ratingForThisMovie = null;
-
-        if (replyUser) {
-          const userLog = await Log.findOne({
-            user: replyUser._id,
-            movie: log.movie
-          });
-          if (userLog) {
-            ratingForThisMovie = userLog.rating || null;
-          }
-        }
-
-        return {
-          _id: r._id,
-          text: r.text || "",
-          gif: r.gif || "",
-          image: r.image || "",
-          createdAt: r.createdAt,
-          username: replyUser?.username || "unknown",
-          avatar: replyUser?.avatar || DEFAULT_AVATAR,
-          userId: replyUser?._id || null,
-          likes: Array.isArray(r.likes) ? r.likes : [],
-          ratingForThisMovie
-        };
-      })
-    );
-
-    res.json(replies);
-  } catch (err) {
-    console.error('🔥 Error fetching lightweight replies:', err);
-    res.status(500).json({ message: "Failed to fetch replies" });
-  }
-});
-
-
 
 // POST /api/logs/:id/reply → Add a reply (text/image)
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
