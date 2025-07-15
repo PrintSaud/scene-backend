@@ -206,43 +206,6 @@ router.get('/movie/:id/friends', protect, async (req, res) => {
   }
 });
 
-
-// GET /api/logs/:filterType → Logs by time filter
-router.get('/:filterType', protect, async (req, res) => {
-  const { filterType } = req.params;
-  const friends = req.user.friends || [];
-  let startDate;
-  const now = new Date();
-
-  switch (filterType) {
-    case 'day':
-      startDate = new Date(now.setDate(now.getDate() - 1));
-      break;
-    case 'week':
-      startDate = new Date(now.setDate(now.getDate() - 7));
-      break;
-    case 'month':
-      startDate = new Date(now.setMonth(now.getMonth() - 1));
-      break;
-    default:
-      return res.status(400).json({ message: 'Invalid filter type' });
-  }
-
-  try {
-    const logs = await Log.find({
-      user: { $in: friends },
-      createdAt: { $gte: startDate },
-    })
-      .populate('movie')
-      .populate('user', 'username avatar')
-      .sort({ createdAt: -1 });
-
-    res.json(logs);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
 // POST /api/logs → Create new log
 router.post('/', async (req, res) => {
   const { userId, movieId, comment, rewatch } = req.body;
@@ -432,5 +395,40 @@ router.get("/debug/recent", async (req, res) => {
   })));
 });
 
+// GET /api/logs/:filterType → Logs by time filter
+router.get('/:filterType', protect, async (req, res) => {
+  const { filterType } = req.params;
+  const friends = req.user.friends || [];
+  let startDate;
+  const now = new Date();
+
+  switch (filterType) {
+    case 'day':
+      startDate = new Date(now.setDate(now.getDate() - 1));
+      break;
+    case 'week':
+      startDate = new Date(now.setDate(now.getDate() - 7));
+      break;
+    case 'month':
+      startDate = new Date(now.setMonth(now.getMonth() - 1));
+      break;
+    default:
+      return res.status(400).json({ message: 'Invalid filter type' });
+  }
+
+  try {
+    const logs = await Log.find({
+      user: { $in: friends },
+      createdAt: { $gte: startDate },
+    })
+      .populate('movie')
+      .populate('user', 'username avatar')
+      .sort({ createdAt: -1 });
+
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 module.exports = router;
