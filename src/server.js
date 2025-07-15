@@ -25,6 +25,15 @@ app.use(
   })
 );
 
+app.options("*", cors({
+  origin: [
+    "http://localhost:5173",
+    "https://scene-frontend-production.up.railway.app",
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PATCH", "DELETE"],
+}));
+
 app.use(express.json());
 app.use(express.static("public"));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
