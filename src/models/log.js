@@ -15,31 +15,26 @@ const replySchema = new mongoose.Schema({
 const logSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    movie: { type: String }, // or Number
-
+    movie: { type: String },
     title: String,
     poster: String,
-
     review: { type: String, default: '' },
     rating: { type: Number, min: 0, max: 5 },
     rewatch: { type: Boolean, default: false },
     watchedAt: { type: Date, default: Date.now },
-
-
-    // 🔥 NEW FIELDS
-    gif: { type: String, default: "" },     // Main log Giphy URL
-    image: { type: String, default: "" },   // Main log uploaded image
-
+    gif: { type: String, default: "" },
+    image: { type: String, default: "" },
     reactions: {
       type: Map,
       of: [mongoose.Schema.Types.ObjectId],
       default: {},
     },
-
     replies: [replySchema],
+    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],  // ✅ ADD THIS LINE
   },
   { timestamps: true }
 );
+
 
 
 
