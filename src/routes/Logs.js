@@ -15,8 +15,6 @@ const DEFAULT_POSTER = "/default-poster.jpg";
 const DEFAULT_BACKDROP = "/default-backdrop.jpg";
 const DEFAULT_AVATAR = "/default-avatar.jpg";
 
-
-// GET /api/logs/:logId
 router.get('/:logId', async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId)
@@ -24,7 +22,6 @@ router.get('/:logId', async (req, res) => {
 
     if (!log) return res.status(404).json({ message: 'Log not found' });
 
-    // 🔥 Dynamically fetch movie details from TMDB:
     let backdrop_path = null;
     let movieTitle = "Untitled";
     if (log.movie && TMDB_API_KEY) {
@@ -50,9 +47,22 @@ router.get('/:logId', async (req, res) => {
     const replies = await Promise.all(
       (log.replies || []).map(async (r) => {
         let replyUser = null;
+        let ratingForThisMovie = null;
+
         if (r.user) {
           replyUser = await User.findById(r.user).select('username avatar');
+
+          // 🔥 Check if replyUser logged this same movie
+          const userLog = await Log.findOne({
+            user: replyUser?._id,
+            movie: log.movie
+          });
+
+          if (userLog) {
+            ratingForThisMovie = userLog.rating || null;
+          }
         }
+
         return {
           _id: r._id,
           text: r.text || "",
@@ -62,7 +72,8 @@ router.get('/:logId', async (req, res) => {
           username: replyUser?.username || "unknown",
           avatar: replyUser?.avatar || DEFAULT_AVATAR,
           userId: replyUser?._id || null,
-          likes: Array.isArray(r.likes) ? r.likes : []
+          likes: Array.isArray(r.likes) ? r.likes : [],
+          ratingForThisMovie // ✅ add this field
         };
       })
     );
