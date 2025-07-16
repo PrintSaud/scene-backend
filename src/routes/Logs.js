@@ -347,27 +347,27 @@ router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
     console.log('🔍 Fetched log:', log ? 'FOUND' : 'NOT FOUND');
 
     if (!log) {
-      console.log('❌ Log not found');
       return res.status(404).json({ message: 'Log not found' });
     }
 
     console.log('📝 log.replies IDs:', log.replies.map(r => r._id.toString()));
-    const reply = log.replies.id(req.params.replyId);
-    console.log('🔍 Reply found:', reply ? 'YES' : 'NO');
+    const replyIndex = log.replies.findIndex(r => r._id.toString() === req.params.replyId);
 
-    if (!reply) {
+    if (replyIndex === -1) {
       console.log('❌ Reply not found');
       return res.status(404).json({ message: 'Reply not found' });
     }
 
+    const reply = log.replies[replyIndex];
     console.log(`✅ Found reply.user=${reply.user}`);
+
     if (reply.user && reply.user.toString() !== req.user._id.toString()) {
       console.log('❌ Unauthorized attempt to delete reply');
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    console.log('🗑️ Removing reply...');
-    reply.remove();
+    console.log('🗑️ Removing reply by splice...');
+    log.replies.splice(replyIndex, 1);
 
     console.log('💾 Saving log...');
     await log.save({ validateBeforeSave: false });
@@ -376,9 +376,11 @@ router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
     res.json({ message: 'Reply deleted' });
   } catch (err) {
     console.error('🔥 Error deleting reply:', err);
+    console.error('🔥 Error stack:', err.stack);
     res.status(500).json({ message: err.message });
   }
 });
+
 
 // DELETE log
 router.delete('/:logId', protect, async (req, res) => {
