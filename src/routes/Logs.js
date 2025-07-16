@@ -421,6 +421,30 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
   res.json({ liked: !liked });
 });
 
+// DELETE /api/logs/:logId/replies/:replyId → Delete a reply
+router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
+  try {
+    const log = await Log.findById(req.params.logId);
+    if (!log) return res.status(404).json({ message: 'Log not found' });
+
+    const reply = log.replies.id(req.params.replyId);
+    if (!reply) return res.status(404).json({ message: 'Reply not found' });
+
+    if (reply.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    reply.remove(); // ✅ Proper way to remove subdocument
+    await log.save();
+
+    res.json({ message: 'Reply deleted' });
+  } catch (err) {
+    console.error('🔥 Error deleting reply:', err);
+    res.status(500).json({ message: 'Failed to delete reply' });
+  }
+});
+
+
 
 // ✅ TEMP TEST ROUTE — check user field type
 router.get("/debug/logs/:id", async (req, res) => {
