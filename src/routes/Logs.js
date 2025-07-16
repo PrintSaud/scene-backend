@@ -370,7 +370,7 @@ router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
     reply.remove();
 
     console.log('💾 Saving log...');
-    await log.save();
+    await log.save({ validateBeforeSave: false });
 
     console.log('✅ Reply deleted successfully');
     res.json({ message: 'Reply deleted' });
@@ -461,8 +461,6 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
   await log.save();
   res.json({ liked: !liked });
 });
-
-// DELETE /api/logs/:logId/replies/:replyId → Delete a reply
 
 
 // ✅ TEMP TEST ROUTE — check user field type
