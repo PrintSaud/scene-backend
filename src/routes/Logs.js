@@ -165,7 +165,7 @@ router.get('/:logId', async (req, res) => {
 
 // POST /api/logs/:id/reply → Add a reply (text/image)
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
-  const { text, externalImage } = req.body;
+  const { text, gif, externalImage } = req.body;
 
   try {
     const log = await Log.findById(req.params.id);
@@ -173,17 +173,16 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
 
     const image = req.file ? `/uploads/${req.file.filename}` : externalImage || null;
 
-    if (!text && !image) {
-      return res.status(400).json({ message: 'Reply must include text or image.' });
+    if (!text && !image && !gif) {
+      return res.status(400).json({ message: 'Reply must include text, image, or gif.' });
     }
 
     log.replies.push({
       user: req.user.id,
-      text: req.body.text,
-      gif: req.body.gif || "",
-      image: req.body.image || "",
+      text: text || "",
+      gif: gif || "",
+      image: image || "",
     });
-    
 
     await log.save();
 
@@ -204,6 +203,7 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     res.status(201).json({
       _id: latestReply._id,
       text: latestReply.text,
+      gif: latestReply.gif,
       image: latestReply.image,
       createdAt: latestReply.createdAt,
       userId: replyUser._id,
@@ -215,6 +215,7 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
 
 
 
@@ -267,7 +268,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// POST /api/logs/full → Full-featured log (text, rating, gif, image, etc.)
 // POST /api/logs/full → Full-featured log (text, rating, gif, image, etc.)
 router.post('/full', protect, upload.single('image'), async (req, res) => {
   try {
