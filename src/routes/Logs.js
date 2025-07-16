@@ -178,10 +178,12 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     }
 
     log.replies.push({
-      user: req.user._id,
-      text,
-      image,
+      user: req.user.id,
+      text: req.body.text,
+      gif: req.body.gif || "",
+      image: req.body.image || "",
     });
+    
 
     await log.save();
 
