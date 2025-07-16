@@ -424,25 +424,37 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
 // DELETE /api/logs/:logId/replies/:replyId → Delete a reply
 router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
   try {
+    console.log(`👉 Attempting to delete replyId=${req.params.replyId} on logId=${req.params.logId} for user=${req.user._id}`);
+
     const log = await Log.findById(req.params.logId);
-    if (!log) return res.status(404).json({ message: 'Log not found' });
+    if (!log) {
+      console.log('❌ Log not found');
+      return res.status(404).json({ message: 'Log not found' });
+    }
 
     const reply = log.replies.id(req.params.replyId);
-    if (!reply) return res.status(404).json({ message: 'Reply not found' });
+    if (!reply) {
+      console.log('❌ Reply not found');
+      return res.status(404).json({ message: 'Reply not found' });
+    }
 
+    console.log(`✅ Found reply.user=${reply.user}`);
     if (!reply.user || reply.user.toString() !== req.user._id.toString()) {
+      console.log('❌ Unauthorized attempt to delete reply');
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
     reply.remove();
     await log.save();
 
+    console.log('✅ Reply deleted successfully');
     res.json({ message: 'Reply deleted' });
   } catch (err) {
     console.error('🔥 Error deleting reply:', err);
-    res.status(500).json({ message: err.message }); // 🔥 Return actual error message for debugging
+    res.status(500).json({ message: err.message });
   }
 });
+
 
 
 
