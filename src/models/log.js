@@ -24,13 +24,9 @@ const logSchema = new mongoose.Schema(
     watchedAt: { type: Date, default: Date.now },
     gif: { type: String, default: "" },
     image: { type: String, default: "" },
-    reactions: {
-      type: Map,
-      of: [mongoose.Schema.Types.ObjectId],
-      default: {},
-    },
     replies: [replySchema],
     likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],  // ✅ ADD THIS LINE
+    customBackdrop: { type: String, default: "" },
   },
   { timestamps: true }
 );

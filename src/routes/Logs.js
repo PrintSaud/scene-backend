@@ -94,16 +94,9 @@ router.get('/:logId', async (req, res) => {
       }
     }
 
-    const poster = log.poster?.startsWith('http')
-      ? log.poster
-      : DEFAULT_POSTER;
-
-    const backdrop = backdrop_path
-      ? `${TMDB_BACKDROP}${backdrop_path}`
-      : DEFAULT_BACKDROP;
-
-      const likes = log.likes || [];
-
+    const poster = log.poster?.startsWith('http') ? log.poster : DEFAULT_POSTER;
+    const backdrop = backdrop_path ? `${TMDB_BACKDROP}${backdrop_path}` : DEFAULT_BACKDROP;
+    const likes = log.likes || [];
 
     const replies = await Promise.all(
       (log.replies || []).map(async (r) => {
@@ -112,16 +105,8 @@ router.get('/:logId', async (req, res) => {
 
         if (r.user) {
           replyUser = await User.findById(r.user).select('username avatar');
-
-          // 🔥 Check if replyUser logged this same movie
-          const userLog = await Log.findOne({
-            user: replyUser?._id,
-            movie: log.movie
-          });
-
-          if (userLog) {
-            ratingForThisMovie = userLog.rating || null;
-          }
+          const userLog = await Log.findOne({ user: replyUser?._id, movie: log.movie });
+          if (userLog) ratingForThisMovie = userLog.rating || null;
         }
 
         return {
@@ -134,7 +119,7 @@ router.get('/:logId', async (req, res) => {
           avatar: replyUser?.avatar || DEFAULT_AVATAR,
           userId: replyUser?._id || null,
           likes: Array.isArray(r.likes) ? r.likes : [],
-          ratingForThisMovie // ✅ add this field
+          ratingForThisMovie
         };
       })
     );
@@ -145,10 +130,11 @@ router.get('/:logId', async (req, res) => {
       movie: {
         id: log.movie || null,
         title: movieTitle,
-        backdrop_path: backdrop_path || null,
+        backdrop_path: backdrop_path || null
       },
       poster,
       backdrop,
+      customBackdrop: log.customBackdrop || "",  // ✅ proper position
       review: log.review || "",
       rating: log.rating || 0,
       likes,
@@ -162,6 +148,7 @@ router.get('/:logId', async (req, res) => {
     res.status(500).json({ message: "Server error in /api/logs/:logId" });
   }
 });
+
 
 // POST /api/logs/:id/reply → Add a reply (text/image)
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
@@ -338,6 +325,25 @@ router.patch('/:logId', protect, async (req, res) => {
     res.status(500).json({ message: "Failed to update log" });
   }
 });
+
+// PATCH /api/logs/:logId/backdrop → Update custom backdrop
+router.patch('/:logId/backdrop', protect, async (req, res) => {
+  const { backdrop } = req.body;
+  try {
+    const log = await Log.findById(req.params.logId);
+    if (!log) return res.status(404).json({ message: 'Log not found' });
+    if (log.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+    log.customBackdrop = backdrop || "";
+    await log.save();
+    res.json({ message: "Backdrop updated", customBackdrop: log.customBackdrop });
+  } catch (err) {
+    console.error("🔥 Error updating backdrop:", err);
+    res.status(500).json({ message: "Failed to update backdrop" });
+  }
+});
+
 
 router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
   try {
