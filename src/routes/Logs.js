@@ -430,19 +430,20 @@ router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
     const reply = log.replies.id(req.params.replyId);
     if (!reply) return res.status(404).json({ message: 'Reply not found' });
 
-    if (reply.user.toString() !== req.user._id.toString()) {
+    if (!reply.user || reply.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    reply.remove(); // ✅ Proper way to remove subdocument
+    reply.remove();
     await log.save();
 
     res.json({ message: 'Reply deleted' });
   } catch (err) {
     console.error('🔥 Error deleting reply:', err);
-    res.status(500).json({ message: 'Failed to delete reply' });
+    res.status(500).json({ message: err.message }); // 🔥 Return actual error message for debugging
   }
 });
+
 
 
 
