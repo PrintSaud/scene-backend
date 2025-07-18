@@ -25,6 +25,7 @@ const logSchema = new mongoose.Schema(
     gif: { type: String, default: "" },
     image: { type: String, default: "" },
     replies: [replySchema],
+    parentComment: { type: mongoose.Schema.Types.ObjectId, ref: 'Reply', default: null },
     likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],  // ✅ ADD THIS LINE
     customBackdrop: { type: String, default: "" },
   },

@@ -83,7 +83,8 @@ router.get('/:logId/replies', async (req, res) => {
           avatar: replyUser?.avatar || DEFAULT_AVATAR,
           userId: replyUser?._id || null,
           likes: Array.isArray(r.likes) ? r.likes : [],
-          ratingForThisMovie
+          ratingForThisMovie,
+          parentComment: r.parentComment || null // ✅ ADD THIS LINE!
         };
       })
     );
@@ -94,6 +95,7 @@ router.get('/:logId/replies', async (req, res) => {
     res.status(500).json({ message: "Failed to fetch replies" });
   }
 });
+
 
 router.get('/:logId', async (req, res) => {
   try {
