@@ -56,15 +56,13 @@ router.get('/proxy/tmdb', async (req, res) => {
   try {
     const response = await axios.get(imageUrl, { responseType: 'stream' });
     res.setHeader('Content-Type', response.headers['content-type']);
+    res.setHeader('Access-Control-Allow-Origin', '*');  // ⭐ Critical fix for html2canvas!
     response.data.pipe(res);
   } catch (err) {
     console.error(`❌ Failed to proxy image: ${err.message}`);
     res.status(500).send("Proxy failed.");
   }
 });
-
-
-
 
 
 // 🔥 Add this to logs.js:
