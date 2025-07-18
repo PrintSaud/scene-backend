@@ -193,7 +193,10 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     const log = await Log.findById(req.params.id);
     if (!log) return res.status(404).json({ message: 'Log not found' });
 
-    const image = req.file ? `/uploads/${req.file.filename}` : externalImage || null;
+    const uploadedImage = req.file
+    ? await uploadToCloudinary(req.file.buffer, "scene/replies")
+    : externalImage || null;
+  
 
     if (!text && !image && !gif) {
       return res.status(400).json({ message: 'Reply must include text, image, or gif.' });
@@ -349,15 +352,43 @@ router.get('/feed/:userId', async (req, res) => {
 });
 
 // PATCH (edit) log
-router.patch('/:logId', protect, async (req, res) => {
+router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId);
-    if (log.user.toString() !== req.user._id.toString()) return res.status(403).json({ message: 'Unauthorized' });
+    if (!log) return res.status(404).json({ message: "Log not found" });
 
-    Object.assign(log, req.body);
+    if (log.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    const {
+      review,
+      rating,
+      rewatch,
+      gif,
+      watchedAt,
+      title,
+      poster
+    } = req.body;
+
+    const uploadedImage = req.file
+      ? await uploadToCloudinary(req.file.buffer, "scene/logs")
+      : log.image;  // retain old image if not replaced
+
+    log.review = review || log.review;
+    log.rating = parseFloat(rating) || log.rating;
+    log.rewatch = rewatch === "true" || log.rewatch;
+    log.gif = gif || log.gif;
+    log.image = uploadedImage;
+    log.watchedAt = watchedAt ? new Date(watchedAt) : log.watchedAt;
+    log.title = title || log.title;
+    log.poster = poster || log.poster;
+
     await log.save();
-    res.json(log);
+
+    res.json({ message: "✅ Log updated", log });
   } catch (err) {
+    console.error("❌ PATCH failed:", err);
     res.status(500).json({ message: "Failed to update log" });
   }
 });
@@ -431,14 +462,15 @@ router.delete("/:logId", protect, async (req, res) => {
     if (!log) return res.status(404).json({ message: "Log not found" });
 
     // Optional: check if user is owner before allowing delete
-    if (log.user.toString() !== req.user.id) {
+    if (log.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not authorized to delete this log" });
     }
+    
 
     await log.remove();
 
     // Decrement totalLogs on User:
-    await User.findByIdAndUpdate(req.user.id, { $inc: { totalLogs: -1 } });
+    await User.findByIdAndUpdate(req.user._id, { $inc: { totalLogs: -1 } });
 
     res.json({ message: "Log deleted ✅" });
   } catch (err) {
