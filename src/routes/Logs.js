@@ -172,9 +172,9 @@ router.get('/:logId', async (req, res) => {
 });
 
 
-// POST /api/logs/:id/reply → Add a reply (text/image)
+// POST /api/logs/:id/reply → Add a reply (text/image/parentComment)
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
-  const { text, gif, externalImage } = req.body;
+  const { text, gif, externalImage, parentComment } = req.body;  // 🔥 include parentComment from request body!
 
   try {
     const log = await Log.findById(req.params.id);
@@ -186,13 +186,15 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
       return res.status(400).json({ message: 'Reply must include text, image, or gif.' });
     }
 
-    log.replies.push({
+    const newReply = {
       user: req.user.id,
       text: text || "",
       gif: gif || "",
       image: image || "",
-    });
+      parentComment: parentComment || null,  // ✅ actually save it here
+    };
 
+    log.replies.push(newReply);
     await log.save();
 
     if (log.user.toString() !== req.user._id.toString()) {
@@ -218,14 +220,13 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
       userId: replyUser._id,
       username: replyUser.username,
       avatar: replyUser.avatar,
+      parentComment: latestReply.parentComment || null,  // ✅ include it in response too (optional but nice)
     });
   } catch (err) {
     console.error('🔥 Failed to post reply:', err);
     res.status(500).json({ message: err.message });
   }
 });
-
-
 
 
 
