@@ -32,7 +32,6 @@ router.post('/:logId/like', protect, async (req, res) => {
   res.json({ liked: !liked });
 });
 
-// ✅ PROXY TMDB IMAGES — Fix CORS issue
 router.get('/proxy/tmdb/images/:movieId', async (req, res) => {
   const movieId = req.params.movieId;
 
@@ -49,6 +48,22 @@ router.get('/proxy/tmdb/images/:movieId', async (req, res) => {
     res.status(500).json({ error: 'TMDB proxy failed.' });
   }
 });
+
+router.get('/proxy/tmdb', async (req, res) => {
+  const imageUrl = req.query.url;
+  if (!imageUrl) return res.status(400).send("No URL provided.");
+
+  try {
+    const response = await axios.get(imageUrl, { responseType: 'stream' });
+    res.setHeader('Content-Type', response.headers['content-type']);
+    response.data.pipe(res);
+  } catch (err) {
+    console.error(`❌ Failed to proxy image: ${err.message}`);
+    res.status(500).send("Proxy failed.");
+  }
+});
+
+
 
 
 
