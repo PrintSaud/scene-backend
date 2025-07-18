@@ -425,17 +425,28 @@ router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
 
 
 // DELETE log
-router.delete('/:logId', protect, async (req, res) => {
+router.delete("/:logId", protect, async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId);
-    if (log.user.toString() !== req.user._id.toString()) return res.status(403).json({ message: 'Unauthorized' });
+    if (!log) return res.status(404).json({ message: "Log not found" });
+
+    // Optional: check if user is owner before allowing delete
+    if (log.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Not authorized to delete this log" });
+    }
 
     await log.remove();
-    res.json({ message: 'Log deleted' });
+
+    // Decrement totalLogs on User:
+    await User.findByIdAndUpdate(req.user.id, { $inc: { totalLogs: -1 } });
+
+    res.json({ message: "Log deleted ✅" });
   } catch (err) {
-    res.status(500).json({ message: "Failed to delete log" });
+    console.error("❌ Delete log error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
+
 
 // ✅ GET /api/logs/user/:userId — Get all logs by specific user with poster override support
 router.get('/user/:userId', async (req, res) => {
