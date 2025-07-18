@@ -8,6 +8,7 @@ const replySchema = new mongoose.Schema({
   image: { type: String, default: "" },
   createdAt: { type: Date, default: Date.now },
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // ✅ Add this line for reply likes
+  parentComment: { type: mongoose.Schema.Types.ObjectId, ref: 'Reply', default: null } // ✅ THIS LINE!
 });
 
 
