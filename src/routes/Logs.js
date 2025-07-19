@@ -278,23 +278,6 @@ router.get('/movie/:id/friends', protect, async (req, res) => {
   }
 });
 
-// POST /api/logs → Create new log
-router.post('/', async (req, res) => {
-  const { userId, movieId, comment, rewatch } = req.body;
-
-  try {
-    const newLog = await Log.create({
-      user: userId,
-      movie: movieId,
-      review: comment || '',
-      rewatch: rewatch || false,
-    });
-
-    res.status(201).json(newLog);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to log movie' });
-  }
-});
 
 // POST /api/logs/full → Full-featured log (text, rating, gif, image, etc.)
 router.post('/full', protect, upload.single('image'), async (req, res) => {

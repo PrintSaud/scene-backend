@@ -35,6 +35,9 @@ const UserSchema = new mongoose.Schema({
     default: {}
   },
 
+  totalLogs: { type: Number, default: 0 },
+
+
   profileBackdrop: { type: String, default: '' },
   favoriteCharacter: { type: String, default: '' },
   favoriteActor: { type: String, default: '' },
