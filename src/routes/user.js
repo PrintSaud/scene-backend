@@ -8,15 +8,17 @@ const Log = require("../models/log"); // ✅ Add this import
 const { getMovieDetails } = require("../services/tmdbService"); // ✅ Ad
 const protect = require("../middleware/authMiddleware");  // 🔔 REQUIRED 🔔
 
-// GET all users
+// get all users
 router.get('/', async (req, res) => {
   try {
-    const users = await User.find({}, 'username avatar following followers');  // ✅ Add following & followers
+    const users = await User.find({}, 'username avatar following followers');
+    console.log("🔥 USERS RETURNED FROM /api/users:", users);
     res.status(200).json(users);
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch users', error: err.message });
   }
 });
+
 
 
 // ✅ PLACE THIS ABOVE any `/:id` route
