@@ -184,21 +184,22 @@ router.get('/:logId', async (req, res) => {
   }
 });
 
-
-// POST /api/logs/:id/reply → Add a reply (text/image/parentComment)
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
-  const { text, gif, externalImage, parentComment } = req.body;  // 🔥 include parentComment from request body!
+  const { text, gif, externalImage, parentComment } = req.body;
 
   try {
     const log = await Log.findById(req.params.id);
     if (!log) return res.status(404).json({ message: 'Log not found' });
 
-    const uploadedImage = req.file
-    ? await uploadToCloudinary(req.file.buffer, "scene/replies")
-    : externalImage || null;
-  
+    let uploadedImage = null;
+    if (req.file) {
+      uploadedImage = await uploadToCloudinary(req.file.buffer, "scene/replies");
+    } else if (externalImage) {
+      uploadedImage = externalImage;
+    }
 
-    if (!text && !image && !gif) {
+    // 🔥 Fix condition check properly:
+    if (!text && !uploadedImage && !gif) {
       return res.status(400).json({ message: 'Reply must include text, image, or gif.' });
     }
 
@@ -206,8 +207,8 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
       user: req.user.id,
       text: text || "",
       gif: gif || "",
-      image: image || "",
-      parentComment: parentComment || null,  // ✅ actually save it here
+      image: uploadedImage || "",
+      parentComment: parentComment || null,
     };
 
     log.replies.push(newReply);
@@ -236,13 +237,14 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
       userId: replyUser._id,
       username: replyUser.username,
       avatar: replyUser.avatar,
-      parentComment: latestReply.parentComment || null,  // ✅ include it in response too (optional but nice)
+      parentComment: latestReply.parentComment || null,
     });
   } catch (err) {
     console.error('🔥 Failed to post reply:', err);
     res.status(500).json({ message: err.message });
   }
 });
+
 
 
 

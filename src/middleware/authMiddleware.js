@@ -3,7 +3,10 @@ const User = require("../models/user");
 
 const protect = async (req, res, next) => {
   let token;
-
+  console.log("👉 Token received:", token);
+  console.log("👉 Decoded payload:", decoded);
+  console.log("👉 User fetched:", req.user);
+  
   // DEBUG: Log what JWT_SECRET we are using
   console.log("🔒 protect middleware running — JWT_SECRET:", process.env.JWT_SECRET);
 
