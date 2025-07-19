@@ -11,12 +11,13 @@ const protect = require("../middleware/authMiddleware");  // 🔔 REQUIRED 🔔
 // GET all users
 router.get('/', async (req, res) => {
   try {
-    const users = await User.find({}, 'username avatar'); // only return public info
+    const users = await User.find({}, 'username avatar following followers');  // ✅ Add following & followers
     res.status(200).json(users);
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch users', error: err.message });
   }
 });
+
 
 // ✅ PLACE THIS ABOVE any `/:id` route
 router.get('/all', async (req, res) => {
@@ -492,10 +493,6 @@ router.post('/:id/remove-follower/:followerId', protect, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
-
-
-
 
 
 module.exports = router;
