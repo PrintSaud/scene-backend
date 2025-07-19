@@ -458,8 +458,6 @@ router.get('/mutuals', protect, async (req, res) => {
 });
 
 
-
-
 router.get('/:id', async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
@@ -471,6 +469,8 @@ router.get('/:id', async (req, res) => {
 
     res.json({
       ...user,
+      favoriteMovies: user.favoriteMovies || [],
+      customPosters: user.customPosters || {},
       totalLogs,
       followerCount,
       followingCount: user.following?.length || 0,
@@ -479,6 +479,7 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch user', error: err.message });
   }
 });
+
 
 // routes/userRoutes.js
 router.post('/:id/remove-follower/:followerId', protect, async (req, res) => {
