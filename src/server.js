@@ -70,7 +70,7 @@ app.use("/api/auth", require("./routes/auth"));
 app.use("/api/users", require("./routes/user")); 
 app.use("/api/upload", require("./routes/upload"));
 app.use('/api/watchlist', require('./routes/watchlistRoutes'));
-app.use("/api/logs", require("./routes/Logs"));
+app.use("/api/logs", require("./src/routes/Logs"));
 app.use("/api/lists", require("./routes/listRoutes"));
 app.use("/api/polls", require("./routes/poll"));
 app.use("/api/notifications", require("./routes/notification"));
@@ -80,7 +80,6 @@ app.use("/api/home", require("./routes/home"));
 app.use("/api/movies", require("./routes/movieRoutes"));
 app.use("/api/scenebot", require("./routes/sceneBot"));
 app.use("/api/posters", require("./routes/posterRoutes")); // ✅ now it works
-
 app.use("/api/movies/daily", require("./routes/dailyMovie"));
 // 4. Health check
 app.get("/", (req, res) => {
