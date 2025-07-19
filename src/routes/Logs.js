@@ -175,7 +175,8 @@ router.get('/:logId', async (req, res) => {
       movie: {
         id: log.movie || null,
         title: movieTitle,
-        backdrop_path: backdrop_path || null
+        backdrop_path: backdrop_path || null,
+        poster // ✅ send poster explicitly!
       },
       poster,
       backdrop,
@@ -188,6 +189,7 @@ router.get('/:logId', async (req, res) => {
       replies,
       createdAt: log.createdAt
     });
+    
   } catch (err) {
     console.error("🔥 Error in GET /api/logs/:logId:", err);
     res.status(500).json({ message: "Server error in /api/logs/:logId" });
