@@ -353,11 +353,19 @@ router.get('/feed/:userId', async (req, res) => {
   }
 });
 
-// PATCH (edit) log
 router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId);
     if (!log) return res.status(404).json({ message: "Log not found" });
+
+    console.log("🔍 PATCH user comparison:");
+    console.log("log.user:", log.user);
+    console.log("req.user._id:", req.user._id);
+
+    if (!log.user) {
+      console.warn("⚠️ Log has no user field:", log._id);
+      return res.status(403).json({ message: "Unauthorized - log has no owner" });
+    }
 
     if (log.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Unauthorized" });
@@ -375,16 +383,16 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
 
     const uploadedImage = req.file
       ? await uploadToCloudinary(req.file.buffer, "scene/logs")
-      : log.image;  // retain old image if not replaced
+      : log.image;
 
-    log.review = review || log.review;
-    log.rating = parseFloat(rating) || log.rating;
-    log.rewatch = rewatch === "true" || log.rewatch;
-    log.gif = gif || log.gif;
+    log.review = review ?? log.review;
+    log.rating = rating !== undefined ? parseFloat(rating) : log.rating;
+    log.rewatch = rewatch === "true" ? true : log.rewatch;
+    log.gif = gif ?? log.gif;
     log.image = uploadedImage;
     log.watchedAt = watchedAt ? new Date(watchedAt) : log.watchedAt;
-    log.title = title || log.title;
-    log.poster = poster || log.poster;
+    log.title = title ?? log.title;
+    log.poster = poster ?? log.poster;
 
     await log.save();
 
@@ -394,6 +402,7 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
     res.status(500).json({ message: "Failed to update log" });
   }
 });
+
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
 router.patch('/:logId/backdrop', protect, async (req, res) => {
@@ -457,21 +466,25 @@ router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
 });
 
 
-// DELETE log
 router.delete("/:logId", protect, async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId);
     if (!log) return res.status(404).json({ message: "Log not found" });
 
-    // Optional: check if user is owner before allowing delete
+    console.log("🔍 DELETE check - log.user:", log.user);
+    console.log("🔍 DELETE check - req.user._id:", req.user._id);
+
+    if (!log.user) {
+      console.warn("⚠️ Log has no user field (legacy log?):", log._id);
+      return res.status(403).json({ message: "Not authorized (no owner info)" });
+    }
+
     if (log.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not authorized to delete this log" });
     }
-    
 
     await log.remove();
 
-    // Decrement totalLogs on User:
     await User.findByIdAndUpdate(req.user._id, { $inc: { totalLogs: -1 } });
 
     res.json({ message: "Log deleted ✅" });
