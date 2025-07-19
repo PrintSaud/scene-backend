@@ -297,8 +297,12 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       ? await uploadToCloudinary(req.file.buffer, "scene/logs")
       : "";
 
+    const posterValue = poster && poster !== "undefined"
+      ? poster
+      : `https://image.tmdb.org/t/p/w500${movieId}`;
+
     const newLog = await Log.create({
-      user: req.user._id, // ✅ use token user ID
+      user: req.user._id,
       movie: movieId,
       review: review || "",
       rating: parseFloat(rating) || 0,
@@ -307,7 +311,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       image: uploadedImage,
       watchedAt: watchedAt ? new Date(watchedAt) : Date.now(),
       title: title || "",
-      poster: poster || "",
+      poster: posterValue,
     });
 
     res.status(201).json({ message: "✅ Log saved successfully!", log: newLog });
@@ -317,25 +321,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
   }
 });
 
-
-
-// GET /api/logs/feed — Get logs from user + following
-router.get('/feed/:userId', async (req, res) => {
-  try {
-    const user = await User.findById(req.params.userId);
-    const ids = [user._id, ...user.following];
-
-    const logs = await Log.find({ user: { $in: ids } })
-      .populate('user', 'username avatar')
-      .populate('movie')
-      .sort({ createdAt: -1 });
-
-    res.json(logs);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to fetch feed" });
-  }
-});
-
+// PATCH /api/logs/:logId → Edit an existing log safely
 router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId);
@@ -375,7 +361,10 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
     log.image = uploadedImage;
     log.watchedAt = watchedAt ? new Date(watchedAt) : log.watchedAt;
     log.title = title ?? log.title;
-    log.poster = poster ?? log.poster;
+
+    if (poster && poster !== "undefined") {
+      log.poster = poster;
+    }
 
     await log.save();
 
@@ -385,6 +374,25 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
     res.status(500).json({ message: "Failed to update log" });
   }
 });
+
+
+// GET /api/logs/feed — Get logs from user + following
+router.get('/feed/:userId', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    const ids = [user._id, ...user.following];
+
+    const logs = await Log.find({ user: { $in: ids } })
+      .populate('user', 'username avatar')
+      .populate('movie')
+      .sort({ createdAt: -1 });
+
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch feed" });
+  }
+});
+
 
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
