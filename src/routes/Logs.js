@@ -507,11 +507,12 @@ router.get('/user/:userId', async (req, res) => {
       .populate('user', 'username avatar')
       .sort({ createdAt: -1 });
 
-    const logsWithPosters = await Promise.all(
+    const logsWithDetails = await Promise.all(
       logs.map(async (log) => {
         let posterUrl = null;
+        let movieRuntime = null;
+        let movieReleaseDate = null;
 
-        // 🔎 First, check for poster override in CustomPoster collection:
         const customPoster = await CustomPoster.findOne({ movieId: log.movie });
         if (customPoster) {
           posterUrl = customPoster.posterUrl;
@@ -519,29 +520,35 @@ router.get('/user/:userId', async (req, res) => {
           posterUrl = log.poster.startsWith("http")
             ? log.poster
             : `${TMDB_IMG}${log.poster}`;
-        } else {
-          // Optional fallback to TMDB API (can comment this out if not needed)
+        }
+
+        if (log.movie && TMDB_API_KEY) {
           try {
-            if (log.movie && TMDB_API_KEY) {
-              const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movie}?api_key=${TMDB_API_KEY}`);
-              const fetchedPoster = tmdbRes.data.poster_path;
-              if (fetchedPoster) {
-                posterUrl = `${TMDB_IMG}${fetchedPoster}`;
-              }
+            const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movie}?api_key=${TMDB_API_KEY}`);
+            const tmdbData = tmdbRes.data;
+            if (!posterUrl && tmdbData.poster_path) {
+              posterUrl = `${TMDB_IMG}${tmdbData.poster_path}`;
             }
+            movieRuntime = tmdbData.runtime || null;
+            movieReleaseDate = tmdbData.release_date || null;
           } catch (err) {
-            console.warn(`⚠️ TMDB fallback failed for logId ${log._id}: ${err.message}`);
+            console.warn(`⚠️ TMDB fetch failed for logId ${log._id}: ${err.message}`);
           }
         }
 
         return {
           ...log.toObject(),
-          posterOverride: posterUrl // Inject `posterOverride` directly for frontend
+          posterOverride: posterUrl,
+          movie: {
+            id: log.movie,  // Ensure movie.id is present for favorites filter!
+            runtime: movieRuntime,
+            release_date: movieReleaseDate
+          }
         };
       })
     );
 
-    res.json(logsWithPosters);
+    res.json(logsWithDetails);
   } catch (err) {
     console.error("🔥 Server crash in /api/logs/user/:userId:", err);
     res.status(500).json({ message: 'Failed to fetch user logs', error: err.message });
