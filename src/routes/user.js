@@ -105,18 +105,16 @@ router.post('/:userId/favorites/:movieId', async (req, res) => {
     }
   });
 
-  // src/routes/user.js (or make a new controller if you prefer)
-router.post('/:id/custom-poster', async (req, res) => {
+  router.post('/:id/custom-poster', async (req, res) => {
     const { movieId, newPoster } = req.body;
   
     try {
       const user = await User.findById(req.params.id);
       if (!user) return res.status(404).json({ message: 'User not found' });
   
-      // Optional: Check if movieId is actually in their logged/favs/lists
-      // (We'll add that logic later if you want)
+      // 🔔 Add this to ensure movieId stored as string key:
+      user.customPosters.set(String(movieId), newPoster);
   
-      user.customPosters.set(movieId, newPoster);
       await user.save();
   
       res.status(200).json({ message: 'Poster updated successfully' });
@@ -124,19 +122,7 @@ router.post('/:id/custom-poster', async (req, res) => {
       res.status(500).json({ message: 'Something went wrong', error: err.message });
     }
   });
-
-  router.get('/:id/custom-poster/:movieId', async (req, res) => {
-    try {
-      const user = await User.findById(req.params.id);
-      if (!user) return res.status(404).json({ message: 'User not found' });
   
-      const poster = user.customPosters.get(req.params.movieId) || null;
-  
-      res.status(200).json({ customPoster: poster });
-    } catch (err) {
-      res.status(500).json({ message: 'Something went wrong', error: err.message });
-    }
-  });
 
   router.put('/:id/backdrop', async (req, res) => {
     const { backdropPath } = req.body;
