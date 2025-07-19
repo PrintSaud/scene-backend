@@ -119,17 +119,27 @@ router.get('/:logId', async (req, res) => {
 
     let backdrop_path = null;
     let movieTitle = "Untitled";
+    let tmdbPosterPath = null;
+
     if (log.movie && TMDB_API_KEY) {
       try {
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movie}?api_key=${TMDB_API_KEY}`);
         backdrop_path = tmdbRes.data.backdrop_path;
         movieTitle = tmdbRes.data.title;
+        tmdbPosterPath = tmdbRes.data.poster_path;
       } catch (err) {
         console.warn(`⚠️ Failed to fetch TMDB details for movieId=${log.movie}: ${err.message}`);
       }
     }
 
-    const poster = log.poster?.startsWith('http') ? log.poster : DEFAULT_POSTER;
+    // ✅ Safe poster fallback logic:
+    let poster = DEFAULT_POSTER;
+    if (log.poster && log.poster.startsWith('http')) {
+      poster = log.poster;
+    } else if (tmdbPosterPath) {
+      poster = `https://image.tmdb.org/t/p/w500${tmdbPosterPath}`;
+    }
+
     const backdrop = backdrop_path ? `${TMDB_BACKDROP}${backdrop_path}` : DEFAULT_BACKDROP;
     const likes = log.likes || [];
 
@@ -169,7 +179,7 @@ router.get('/:logId', async (req, res) => {
       },
       poster,
       backdrop,
-      customBackdrop: log.customBackdrop || "",  // ✅ proper position
+      customBackdrop: log.customBackdrop || "",
       review: log.review || "",
       rating: log.rating || 0,
       likes,
@@ -183,6 +193,9 @@ router.get('/:logId', async (req, res) => {
     res.status(500).json({ message: "Server error in /api/logs/:logId" });
   }
 });
+
+
+
 
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
   const { text, gif, externalImage, parentComment } = req.body;
@@ -455,8 +468,6 @@ router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-
-
 router.delete("/:logId", protect, async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId);
@@ -474,14 +485,15 @@ router.delete("/:logId", protect, async (req, res) => {
       return res.status(403).json({ message: "Not authorized to delete this log" });
     }
 
-    await log.remove();
+    // ✅ Robust deletion method (solves `remove is not a function` error):
+    await Log.findByIdAndDelete(req.params.logId);
 
     await User.findByIdAndUpdate(req.user._id, { $inc: { totalLogs: -1 } });
 
-    res.json({ message: "Log deleted ✅" });
+    res.json({ message: "✅ Log deleted successfully!" });
   } catch (err) {
-    console.error("❌ Delete log error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("🔥 Error in DELETE /api/logs/:logId:", err);
+    res.status(500).json({ message: "Server error deleting log" });
   }
 });
 
