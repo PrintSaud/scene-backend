@@ -7,6 +7,7 @@ const User = require('../models/user');
 const Log = require("../models/log"); // ✅ Add this import
 const { getMovieDetails } = require("../services/tmdbService"); // ✅ Ad
 const protect = require("../middleware/authMiddleware");  // 🔔 REQUIRED 🔔
+const CustomPoster = require("../models/customPoster");  // Ensure this is imported!
 
 // get all users
 router.get('/', async (req, res) => {
@@ -388,6 +389,8 @@ router.get("/:id/recent-gifs", async (req, res) => {
 });
 
 // GET a user's watchlist
+const CustomPoster = require("../models/customPoster");  // Ensure this is imported!
+
 router.get('/:userId/watchlist', async (req, res) => {
   const { userId } = req.params;
   const sort = req.query.sort || "title";
@@ -401,9 +404,24 @@ router.get('/:userId/watchlist', async (req, res) => {
     let movieDetails = await Promise.all(
       user.watchlist.map(async (tmdbId) => {
         const movie = await getMovieDetails(tmdbId);
-        return movie && movie.id && movie.poster_path
-          ? { ...movie, tmdbId: movie.id }
-          : null;
+        if (!movie || !movie.id) return null;
+
+        // 🔥 Add custom poster logic here too:
+        const customPoster = await CustomPoster.findOne({
+          movieId: { $in: [tmdbId, String(tmdbId)] }
+        });
+
+        const posterOverride = customPoster
+          ? customPoster.posterUrl
+          : movie.poster_path
+          ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
+          : "/default-poster.jpg";
+
+        return {
+          ...movie,
+          posterOverride,
+          tmdbId: movie.id
+        };
       })
     );
 
@@ -423,6 +441,7 @@ router.get('/:userId/watchlist', async (req, res) => {
     res.status(500).json({ error: "Could not fetch watchlist" });
   }
 });
+
 
 router.get('/mutuals', protect, async (req, res) => {
   try {
