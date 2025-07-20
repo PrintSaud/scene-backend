@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require("../models/user");
 const protect = require("../middleware/authMiddleware");
 const { getMovieDetails } = require("../services/tmdbService");
+const CustomPoster = require("../models/customPoster"); // Add this at the top if not already
 
 // ✅ Check watchlist status (auth only)
 router.get("/status/:movieId", protect, async (req, res) => {
@@ -104,7 +105,21 @@ router.get("/:userId/watchlist", async (req, res) => {
     let movieDetails = await Promise.all(
       user.watchlist.map(async (tmdbId) => {
         const movie = await getMovieDetails(tmdbId);
-        return movie && movie.id && movie.poster_path ? { ...movie, tmdbId: movie.id } : null;
+        if (!movie || !movie.id) return null;
+
+        // 🔥 Add custom poster check:
+        const customPoster = await CustomPoster.findOne({ movieId: tmdbId });
+        const posterOverride = customPoster
+          ? customPoster.posterUrl
+          : movie.poster_path
+          ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
+          : "/default-poster.jpg";
+
+        return {
+          ...movie,
+          posterOverride,
+          tmdbId: movie.id
+        };
       })
     );
 
@@ -124,6 +139,7 @@ router.get("/:userId/watchlist", async (req, res) => {
     res.status(500).json({ error: "Could not fetch watchlist" });
   }
 });
+
 
 
 module.exports = router;

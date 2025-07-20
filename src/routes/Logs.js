@@ -470,6 +470,8 @@ router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+
 router.delete("/:logId", protect, async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId);
