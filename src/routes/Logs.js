@@ -132,9 +132,17 @@ router.get('/:logId', async (req, res) => {
       }
     }
 
-    // ✅ Safe poster fallback logic:
+    // ✅ NEW: Check if the log owner has a custom poster for this movie
     let poster = DEFAULT_POSTER;
-    if (log.poster && log.poster.startsWith('http')) {
+
+    const customPoster = await CustomPoster.findOne({
+      userId: log.user._id,  // Scope correctly to log owner!
+      movieId: log.movie
+    });
+
+    if (customPoster) {
+      poster = customPoster.posterUrl;
+    } else if (log.poster && log.poster.startsWith('http')) {
       poster = log.poster;
     } else if (tmdbPosterPath) {
       poster = `https://image.tmdb.org/t/p/w500${tmdbPosterPath}`;
@@ -176,7 +184,7 @@ router.get('/:logId', async (req, res) => {
         id: log.movie || null,
         title: movieTitle,
         backdrop_path: backdrop_path || null,
-        poster // ✅ send poster explicitly!
+        poster
       },
       poster,
       backdrop,
@@ -189,12 +197,13 @@ router.get('/:logId', async (req, res) => {
       replies,
       createdAt: log.createdAt
     });
-    
+
   } catch (err) {
     console.error("🔥 Error in GET /api/logs/:logId:", err);
     res.status(500).json({ message: "Server error in /api/logs/:logId" });
   }
 });
+
 
 
 
@@ -402,11 +411,39 @@ router.get('/feed/:userId', async (req, res) => {
       .populate('movie')
       .sort({ createdAt: -1 });
 
-    res.json(logs);
+    const logsWithDetails = await Promise.all(
+      logs.map(async (log) => {
+        let posterUrl = null;
+
+        const movieId = log.movie?.id || log.movie;
+
+        const customPoster = await CustomPoster.findOne({
+          userId: log.user._id,   // ✅ Scope poster lookup by log owner!
+          movieId: movieId
+        });
+
+        if (customPoster) {
+          posterUrl = customPoster.posterUrl;
+        } else if (log.movie.poster_path) {
+          posterUrl = `${TMDB_IMG}${log.movie.poster_path}`;
+        } else {
+          posterUrl = "/default-poster.jpg";
+        }
+
+        return {
+          ...log.toObject(),
+          posterOverride: posterUrl
+        };
+      })
+    );
+
+    res.json(logsWithDetails);
   } catch (err) {
+    console.error("🔥 Error fetching feed:", err);
     res.status(500).json({ message: "Failed to fetch feed" });
   }
 });
+
 
 
 
@@ -501,11 +538,11 @@ router.delete("/:logId", protect, async (req, res) => {
   }
 });
 
-
-// ✅ GET /api/logs/user/:userId — Get all logs by specific user with poster override support
 router.get('/user/:userId', async (req, res) => {
   try {
-    const logs = await Log.find({ user: req.params.userId })
+    const profileUserId = req.params.userId;
+
+    const logs = await Log.find({ user: profileUserId })
       .populate('user', 'username avatar')
       .sort({ createdAt: -1 });
 
@@ -515,7 +552,11 @@ router.get('/user/:userId', async (req, res) => {
         let movieRuntime = null;
         let movieReleaseDate = null;
 
-        const customPoster = await CustomPoster.findOne({ movieId: log.movie });
+        const customPoster = await CustomPoster.findOne({
+          userId: profileUserId,  // ✅ Only check posters for profile owner's userId!
+          movieId: log.movie
+        });
+
         if (customPoster) {
           posterUrl = customPoster.posterUrl;
         } else if (log.poster) {
@@ -542,7 +583,7 @@ router.get('/user/:userId', async (req, res) => {
           ...log.toObject(),
           posterOverride: posterUrl,
           movie: {
-            id: log.movie,  // Ensure movie.id is present for favorites filter!
+            id: log.movie,
             runtime: movieRuntime,
             release_date: movieReleaseDate
           }
