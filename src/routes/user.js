@@ -404,10 +404,12 @@ router.get('/:userId/watchlist', async (req, res) => {
         const movie = await getMovieDetails(tmdbId);
         if (!movie || !movie.id) return null;
 
-        // 🔥 Add custom poster logic here too:
+        
         const customPoster = await CustomPoster.findOne({
+          userId: viewingUserId,  // ✅ must be defined based on context (profile user, feed owner, etc)
           movieId: { $in: [tmdbId, String(tmdbId)] }
         });
+        
 
         const posterOverride = customPoster
           ? customPoster.posterUrl

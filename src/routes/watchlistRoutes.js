@@ -109,6 +109,7 @@ router.get("/:userId/watchlist", async (req, res) => {
 
         // 🔥 Add custom poster check:
         const customPoster = await CustomPoster.findOne({
+          userId: viewingUserId,  // ✅ must be defined based on context (profile user, feed owner, etc)
           movieId: { $in: [tmdbId, String(tmdbId)] }
         });
         
