@@ -389,8 +389,6 @@ router.get("/:id/recent-gifs", async (req, res) => {
 });
 
 // GET a user's watchlist
-const CustomPoster = require("../models/customPoster");  // Ensure this is imported!
-
 router.get('/:userId/watchlist', async (req, res) => {
   const { userId } = req.params;
   const sort = req.query.sort || "title";
