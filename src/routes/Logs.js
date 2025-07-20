@@ -323,7 +323,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
 
     const posterValue = poster && poster !== "undefined"
       ? poster
-      : `https://image.tmdb.org/t/p/w500${movieId}`;
+      : "";  // fallback safe: empty string (frontend handles fallback display)
 
     const newLog = await Log.create({
       user: req.user._id,
@@ -344,6 +344,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
     res.status(500).json({ message: "Failed to save full log", error: err.message });
   }
 });
+
 
 // PATCH /api/logs/:logId → Edit an existing log safely
 router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
