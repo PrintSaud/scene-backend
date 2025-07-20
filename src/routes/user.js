@@ -390,7 +390,7 @@ router.get("/:id/recent-gifs", async (req, res) => {
 
 // GET a user's watchlist
 router.get('/:userId/watchlist', async (req, res) => {
-  const { userId } = req.params;
+  const { userId } = req.params;  // viewingUserId = userId
   const sort = req.query.sort || "title";
   const order = req.query.order === "desc" ? -1 : 1;
 
@@ -404,12 +404,10 @@ router.get('/:userId/watchlist', async (req, res) => {
         const movie = await getMovieDetails(tmdbId);
         if (!movie || !movie.id) return null;
 
-        
         const customPoster = await CustomPoster.findOne({
-          userId: viewingUserId,  // ✅ must be defined based on context (profile user, feed owner, etc)
+          userId: userId,  // ✅ This ensures posters are scoped to this user's watchlist
           movieId: { $in: [tmdbId, String(tmdbId)] }
         });
-        
 
         const posterOverride = customPoster
           ? customPoster.posterUrl
@@ -441,6 +439,7 @@ router.get('/:userId/watchlist', async (req, res) => {
     res.status(500).json({ error: "Could not fetch watchlist" });
   }
 });
+
 
 
 router.get('/mutuals', protect, async (req, res) => {
