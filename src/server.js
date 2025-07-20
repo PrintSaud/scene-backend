@@ -20,7 +20,7 @@ app.use(
     ],
     credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"], // ⭐ FIX HERE
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
@@ -31,10 +31,12 @@ app.options("*", cors({
   ],
   credentials: true,
   methods: ["GET", "POST", "PATCH", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"], // ⭐ FIX HERE TOO
+  allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
-app.use(express.json());
+// 🔔 DO NOT register express.json() globally here!
+// app.use(express.json());
+
 app.use(express.static("public"));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -55,22 +57,24 @@ mongoose
     process.exit(1);
   });
 
-// 3️⃣ Routes
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/users", require("./routes/user")); 
-app.use("/api/upload", require("./routes/upload"));
-app.use("/api/watchlist", require("./routes/watchlistRoutes"));
+// 3️⃣ Routes — express.json() only for JSON-based routes
+app.use("/api/auth", express.json(), require("./routes/auth"));
+app.use("/api/users", express.json(), require("./routes/user")); 
+app.use("/api/upload", express.json(), require("./routes/upload"));
+app.use("/api/watchlist", express.json(), require("./routes/watchlistRoutes"));
+app.use("/api/lists", express.json(), require("./routes/listRoutes"));
+app.use("/api/polls", express.json(), require("./routes/poll"));
+app.use("/api/notifications", express.json(), require("./routes/notification"));
+app.use("/api/search", express.json(), require("./routes/search"));
+app.use("/api/ai", express.json(), require("./routes/ai"));
+app.use("/api/home", express.json(), require("./routes/home"));
+app.use("/api/movies", express.json(), require("./routes/movieRoutes"));
+app.use("/api/scenebot", express.json(), require("./routes/sceneBot"));
+app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
+app.use("/api/movies/daily", express.json(), require("./routes/dailyMovie"));
+
+// ⚡️ Important: Logs route without express.json(), so multer can parse multipart/form-data
 app.use("/api/logs", require("./routes/Logs"));
-app.use("/api/lists", require("./routes/listRoutes"));
-app.use("/api/polls", require("./routes/poll"));
-app.use("/api/notifications", require("./routes/notification"));
-app.use("/api/search", require("./routes/search"));
-app.use("/api/ai", require("./routes/ai"));
-app.use("/api/home", require("./routes/home"));
-app.use("/api/movies", require("./routes/movieRoutes"));
-app.use("/api/scenebot", require("./routes/sceneBot"));
-app.use("/api/posters", require("./routes/posterRoutes"));
-app.use("/api/movies/daily", require("./routes/dailyMovie"));
 
 // 4️⃣ Health check
 app.get("/", (req, res) => {
@@ -87,7 +91,7 @@ const io = new Server(server, {
     ],
     credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"], // Already good here
+    allowedHeaders: ["Content-Type", "Authorization"],
   },
 });
 
