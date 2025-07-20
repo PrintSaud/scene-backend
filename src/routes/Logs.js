@@ -14,6 +14,7 @@ const TMDB_BACKDROP = "https://image.tmdb.org/t/p/original";
 const DEFAULT_POSTER = "/default-poster.jpg";
 const DEFAULT_BACKDROP = "/default-backdrop.jpg";
 const DEFAULT_AVATAR = "/default-avatar.jpg";
+const expressJson = express.json();  // ⭐️ add this line
 
 router.post('/:logId/like', protect, async (req, res) => {
   const log = await Log.findById(req.params.logId);
@@ -400,11 +401,12 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
   }
 });
 
-
 // GET /api/logs/feed — Get logs from user + following
 router.get('/feed/:userId', async (req, res) => {
   try {
     const user = await User.findById(req.params.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
     const ids = [user._id, ...user.following];
 
     const logs = await Log.find({ user: { $in: ids } })
@@ -415,18 +417,20 @@ router.get('/feed/:userId', async (req, res) => {
     const logsWithDetails = await Promise.all(
       logs.map(async (log) => {
         let posterUrl = null;
-
         const movieId = log.movie?.id || log.movie;
 
+        // 🔥 Scope poster lookup correctly by userId + movieId:
         const customPoster = await CustomPoster.findOne({
-          userId: log.user._id,   // ✅ Scope poster lookup by log owner!
-          movieId: movieId
+          userId: log.user._id,
+          movieId: Number(movieId)
         });
 
         if (customPoster) {
           posterUrl = customPoster.posterUrl;
-        } else if (log.movie.poster_path) {
+        } else if (log.movie && log.movie.poster_path) {
           posterUrl = `${TMDB_IMG}${log.movie.poster_path}`;
+        } else if (log.poster) {
+          posterUrl = log.poster.startsWith("http") ? log.poster : `${TMDB_IMG}${log.poster}`;
         } else {
           posterUrl = "/default-poster.jpg";
         }
@@ -445,26 +449,29 @@ router.get('/feed/:userId', async (req, res) => {
   }
 });
 
-
-
-
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
-router.patch('/:logId/backdrop', protect, async (req, res) => {
-  const { backdrop } = req.body;
+router.patch('/:logId/backdrop', expressJson, protect, async (req, res) => {
+  const { backdrop } = req.body || {};  // Fallback safety too
+
   try {
     const log = await Log.findById(req.params.logId);
     if (!log) return res.status(404).json({ message: 'Log not found' });
     if (log.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Unauthorized' });
     }
+
     log.customBackdrop = backdrop || "";
     await log.save();
+
     res.json({ message: "Backdrop updated", customBackdrop: log.customBackdrop });
   } catch (err) {
     console.error("🔥 Error updating backdrop:", err);
     res.status(500).json({ message: "Failed to update backdrop" });
   }
 });
+
+module.exports = router;
+
 
 
 router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
