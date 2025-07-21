@@ -392,15 +392,12 @@ router.get('/:userId/watchlist', async (req, res) => {
   const { userId } = req.params;
   const sort = req.query.sort || "title";
   const order = req.query.order === "desc" ? -1 : 1;
+  const genre = req.query.genre ? Number(req.query.genre) : null;
 
   try {
     const user = await User.findById(userId);
-    if (!user || !user.watchlist) {
-      console.warn("❌ User or watchlist not found for userId:", userId);
+    if (!user || !user.watchlist)
       return res.status(404).json({ error: "User or watchlist not found" });
-    }
-
-    console.log("📦 Raw watchlist:", user.watchlist);
 
     let movieDetails = await Promise.all(
       user.watchlist.map(async (item) => {
@@ -411,33 +408,16 @@ router.get('/:userId/watchlist', async (req, res) => {
           addedAt = item.addedAt || new Date(0);
         } else {
           tmdbId = item;
-          addedAt = new Date(0);  // fallback for legacy entries
+          addedAt = new Date(0);
         }
 
-        console.log(`🔧 Processing tmdbId: ${tmdbId}, addedAt: ${addedAt}`);
+        const movie = await getMovieDetails(tmdbId);
+        if (!movie || !movie.id) return null;
 
-        let movie;
-        try {
-          movie = await getMovieDetails(tmdbId);
-        } catch (err) {
-          console.warn(`❌ Failed to fetch TMDB movie for tmdbId ${tmdbId}:`, err.message);
-          return null;
-        }
-
-        if (!movie || !movie.id) {
-          console.warn(`❌ Skipping invalid movie for tmdbId ${tmdbId}`);
-          return null;
-        }
-
-        let customPoster;
-        try {
-          customPoster = await CustomPoster.findOne({
-            userId: userId,
-            movieId: { $in: [tmdbId, String(tmdbId)] }
-          });
-        } catch (err) {
-          console.warn(`⚠️ Failed to check custom poster for tmdbId ${tmdbId}:`, err.message);
-        }
+        const customPoster = await CustomPoster.findOne({
+          userId: userId,
+          movieId: { $in: [tmdbId, String(tmdbId)] }
+        });
 
         const posterOverride = customPoster
           ? customPoster.posterUrl
@@ -456,11 +436,13 @@ router.get('/:userId/watchlist', async (req, res) => {
 
     movieDetails = movieDetails.filter(Boolean);
 
-    console.log(`✅ Final movieDetails (${movieDetails.length} items):`, movieDetails.map(m => ({
-      tmdbId: m.tmdbId,
-      title: m.title,
-      addedAt: m.addedAt
-    })));
+    // 🔥 Genre filtering here:
+    if (genre && !isNaN(genre)) {
+      movieDetails = movieDetails.filter(movie =>
+        Array.isArray(movie.genres) &&
+        movie.genres.some(g => g.id === genre)
+      );
+    }
 
     movieDetails.sort((a, b) => {
       if (sort === "added") return (new Date(a.addedAt) - new Date(b.addedAt)) * order;
@@ -472,7 +454,7 @@ router.get('/:userId/watchlist', async (req, res) => {
 
     res.json(movieDetails);
   } catch (err) {
-    console.error("❌ Failed to fetch watchlist (outer catch):", err);
+    console.error("❌ Failed to fetch watchlist", err);
     res.status(500).json({ error: "Could not fetch watchlist" });
   }
 });

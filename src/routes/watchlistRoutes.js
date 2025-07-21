@@ -99,10 +99,11 @@ router.delete("/:userId/watchlist/:tmdbId", async (req, res) => {
 });
 
 // ✅ Full watchlist GET with filtering/sorting
-router.get("/:userId/watchlist", async (req, res) => {
+router.get('/:userId/watchlist', async (req, res) => {
   const { userId } = req.params;
   const sort = req.query.sort || "title";
   const order = req.query.order === "desc" ? -1 : 1;
+  const genre = req.query.genre ? Number(req.query.genre) : null;
 
   try {
     const user = await User.findById(userId);
@@ -110,13 +111,23 @@ router.get("/:userId/watchlist", async (req, res) => {
       return res.status(404).json({ error: "User or watchlist not found" });
 
     let movieDetails = await Promise.all(
-      user.watchlist.map(async (entry) => {
-        const movie = await getMovieDetails(entry.tmdbId);
+      user.watchlist.map(async (item) => {
+        let tmdbId, addedAt;
+
+        if (typeof item === "object" && item.tmdbId) {
+          tmdbId = item.tmdbId;
+          addedAt = item.addedAt || new Date(0);
+        } else {
+          tmdbId = item;
+          addedAt = new Date(0);
+        }
+
+        const movie = await getMovieDetails(tmdbId);
         if (!movie || !movie.id) return null;
 
         const customPoster = await CustomPoster.findOne({
           userId: userId,
-          movieId: { $in: [entry.tmdbId, String(entry.tmdbId)] }
+          movieId: { $in: [tmdbId, String(tmdbId)] }
         });
 
         const posterOverride = customPoster
@@ -129,20 +140,26 @@ router.get("/:userId/watchlist", async (req, res) => {
           ...movie,
           posterOverride,
           tmdbId: movie.id,
-          addedAt: entry.addedAt
+          addedAt
         };
       })
     );
 
     movieDetails = movieDetails.filter(Boolean);
 
+    // 🔥 Genre filtering here:
+    if (genre && !isNaN(genre)) {
+      movieDetails = movieDetails.filter(movie =>
+        Array.isArray(movie.genres) &&
+        movie.genres.some(g => g.id === genre)
+      );
+    }
+
     movieDetails.sort((a, b) => {
+      if (sort === "added") return (new Date(a.addedAt) - new Date(b.addedAt)) * order;
       if (sort === "runtime") return (a.runtime - b.runtime) * order;
       if (sort === "rating") return ((a.vote_average || 0) - (b.vote_average || 0)) * order;
-      if (sort === "release")
-        return (new Date(a.release_date) - new Date(b.release_date)) * order;
-      if (sort === "added")
-        return (new Date(a.addedAt) - new Date(b.addedAt)) * order;
+      if (sort === "release") return (new Date(a.release_date) - new Date(b.release_date)) * order;
       return (a.title || "").localeCompare(b.title || "") * order;
     });
 
@@ -152,5 +169,6 @@ router.get("/:userId/watchlist", async (req, res) => {
     res.status(500).json({ error: "Could not fetch watchlist" });
   }
 });
+
 
 module.exports = router;
