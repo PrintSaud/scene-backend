@@ -468,7 +468,9 @@ router.get('/:id', async (req, res) => {
       .select('-password')
       .lean();
 
-    const totalLogs = await Log.countDocuments({ user: req.params.id });
+    const uniqueFilms = await Log.distinct('movie', { user: req.params.id });
+    const totalLogs = uniqueFilms.length;
+
     const followerCount = await User.countDocuments({ following: req.params.id });
 
     res.json({
@@ -483,6 +485,7 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch user', error: err.message });
   }
 });
+
 
 
 // routes/userRoutes.js

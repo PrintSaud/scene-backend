@@ -552,16 +552,27 @@ router.get('/user/:userId', async (req, res) => {
 
     const logs = await Log.find({ user: profileUserId })
       .populate('user', 'username avatar')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }); // newest logs first
+
+    // 🔥 Deduplicate by movie: keep only latest log for each movie
+    const uniqueLogsMap = new Map();
+    logs.forEach((log) => {
+      const movieId = log.movie?.toString();
+      if (movieId && !uniqueLogsMap.has(movieId)) {
+        uniqueLogsMap.set(movieId, log);
+      }
+    });
+
+    const uniqueLogs = Array.from(uniqueLogsMap.values());
 
     const logsWithDetails = await Promise.all(
-      logs.map(async (log) => {
+      uniqueLogs.map(async (log) => {
         let posterUrl = null;
         let movieRuntime = null;
         let movieReleaseDate = null;
 
         const customPoster = await CustomPoster.findOne({
-          userId: profileUserId,  // ✅ Only check posters for profile owner's userId!
+          userId: profileUserId,
           movieId: log.movie
         });
 
@@ -625,6 +636,20 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
 
   await log.save();
   res.json({ liked: !liked });
+});
+
+router.get('/user/:userId/movie/:movieId', async (req, res) => {
+  try {
+    const logs = await Log.find({
+      user: req.params.userId,
+      movie: req.params.movieId,
+    }).sort({ createdAt: -1 });
+
+    res.json(logs);
+  } catch (err) {
+    console.error("🔥 Failed to fetch logs for user/movie:", err);
+    res.status(500).json({ message: "Failed to fetch logs for user/movie" });
+  }
 });
 
 
