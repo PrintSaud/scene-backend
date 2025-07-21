@@ -9,20 +9,30 @@ const axios = require("axios"); // ✅ add at the top if not already present
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 
-// ✅ Get popular public lists (Popular tab)
 router.get("/popular", async (req, res) => {
   try {
-    const lists = await List.find({ isPrivate: false })
-      .sort({ likes: -1 })
-      .limit(50)
-      .populate("user", "username avatar");
-    res.json(lists);
+    const lists = await List.aggregate([
+      { $match: { isPrivate: false } },
+      {
+        $addFields: {
+          likesCount: { $size: "$likes" }
+        }
+      },
+      { $sort: { likesCount: -1 } },
+      { $limit: 50 }
+    ]);
+
+    // 📝 If you need `.populate` after aggregation:
+    const populatedLists = await List.populate(lists, { path: "user", select: "username avatar" });
+
+    res.json(populatedLists);
   } catch (err) {
+    console.error("❌ Error fetching popular lists", err);
     res.status(500).json({ message: "❌ Failed to fetch popular lists", error: err });
   }
 });
 
-// ✅ Friends’ Lists
+// ✅ Friends’ Lists — Most recently added or updated
 router.get("/friends", protect, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
@@ -32,7 +42,9 @@ router.get("/friends", protect, async (req, res) => {
     const lists = await List.find({
       user: { $in: followingIds },
       isPrivate: false,
-    }).populate("user", "username avatar");
+    })
+      .sort({ updatedAt: -1 })  // 🔥 Sort by most recently updated/created
+      .populate("user", "username avatar");
 
     res.json(lists);
   } catch (err) {
