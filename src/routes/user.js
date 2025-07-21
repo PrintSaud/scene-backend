@@ -388,7 +388,6 @@ router.get("/:id/recent-gifs", async (req, res) => {
   }
 });
 
-// GET a user's watchlist
 router.get('/:userId/watchlist', async (req, res) => {
   const { userId } = req.params;
   const sort = req.query.sort || "title";
@@ -401,8 +400,15 @@ router.get('/:userId/watchlist', async (req, res) => {
 
     let movieDetails = await Promise.all(
       user.watchlist.map(async (item) => {
-        const tmdbId = item.tmdbId || item;  // fallback for legacy records
-        const addedAt = item.addedAt || new Date(0);  // fallback default
+        let tmdbId, addedAt;
+
+        if (typeof item === "object" && item.tmdbId) {
+          tmdbId = item.tmdbId;
+          addedAt = item.addedAt || new Date(0);
+        } else {
+          tmdbId = item;
+          addedAt = new Date(0);  // fallback for legacy entries
+        }
 
         const movie = await getMovieDetails(tmdbId);
         if (!movie || !movie.id) return null;
@@ -422,7 +428,7 @@ router.get('/:userId/watchlist', async (req, res) => {
           ...movie,
           posterOverride,
           tmdbId: movie.id,
-          addedAt  // ⭐️ include addedAt so we can sort it
+          addedAt
         };
       })
     );
