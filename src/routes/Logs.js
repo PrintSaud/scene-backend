@@ -178,6 +178,11 @@ router.get('/:logId', async (req, res) => {
       })
     );
 
+    const rewatchCount = await Log.countDocuments({
+      user: log.user,
+      movie: log.movie
+    });
+    
     res.json({
       _id: log._id,
       user: log.user || null,
@@ -192,12 +197,14 @@ router.get('/:logId', async (req, res) => {
       customBackdrop: log.customBackdrop || "",
       review: log.review || "",
       rating: log.rating || 0,
+      rewatchCount,  // ✅ send actual count
       likes,
       image: log.image || null,
       gif: log.gif || null,
       replies,
       createdAt: log.createdAt
     });
+    
 
   } catch (err) {
     console.error("🔥 Error in GET /api/logs/:logId:", err);
