@@ -22,6 +22,7 @@ const logSchema = new mongoose.Schema(
     review: { type: String, default: '' },
     rating: { type: Number, min: 0, max: 5 },
     rewatch: { type: Boolean, default: false },
+    rewatchCount: { type: Number, default: 0 },
     watchedAt: { type: Date, default: Date.now },
     gif: { type: String, default: "" },
     image: { type: String, default: "" },

@@ -310,7 +310,6 @@ router.get('/movie/:id/friends', protect, async (req, res) => {
   }
 });
 
-
 // POST /api/logs/full → Full-featured log (text, rating, gif, image, etc.)
 router.post('/full', protect, upload.single('image'), async (req, res) => {
   try {
@@ -319,6 +318,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       review,
       rating,
       rewatch,
+      rewatchCount,  // ✅ new: read rewatchCount from req.body
       gif,
       watchedAt,
       title,
@@ -339,6 +339,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       review: review || "",
       rating: parseFloat(rating) || 0,
       rewatch: rewatch === "true" || false,
+      rewatchCount: parseInt(rewatchCount) || 0,  // ✅ new: store it properly!
       gif: gif || "",
       image: uploadedImage,
       watchedAt: watchedAt ? new Date(watchedAt) : Date.now(),
