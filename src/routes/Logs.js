@@ -190,20 +190,22 @@ router.get('/:logId', async (req, res) => {
         id: log.movie || null,
         title: movieTitle,
         backdrop_path: backdrop_path || null,
-        poster
+        poster: poster  // ✅ Ensure movie.poster is correct
       },
-      poster,
+      poster: poster,  // ✅ Ensure top-level poster is also correct
+      posterOverride: poster,  // ✅ You can add this if frontend expects posterOverride prop
       backdrop,
       customBackdrop: log.customBackdrop || "",
       review: log.review || "",
       rating: log.rating || 0,
-      rewatchCount,  // ✅ send actual count
+      rewatchCount,
       likes,
       image: log.image || null,
       gif: log.gif || null,
       replies,
       createdAt: log.createdAt
     });
+    
     
 
   } catch (err) {
