@@ -293,21 +293,30 @@ router.get("/:id/following", async (req, res) => {
     res.status(500).json({ message: "❌ Failed to fetch following", error: err });
   }
 });
-
-router.post('/:id/suggest/:movieId', async (req, res) => {
-  const { friends, movieTitle } = req.body;
+router.post('/:id/suggest', async (req, res) => {
+  const { friends, resourceType, resourceTitle } = req.body;
 
   if (!Array.isArray(friends) || friends.length === 0) {
     return res.status(400).json({ message: "❌ No friends selected." });
   }
 
-  if (!movieTitle || typeof movieTitle !== "string") {
-    return res.status(400).json({ message: "❌ movieTitle is missing." });
+  if (!resourceTitle || typeof resourceTitle !== "string") {
+    return res.status(400).json({ message: "❌ resourceTitle is missing." });
   }
 
   try {
     const sender = await User.findById(req.params.id);
     if (!sender) return res.status(404).json({ message: "Sender not found" });
+
+    const labelMap = {
+      movie: "🎬 movie",
+      list: "📋 list",
+      log: "📝 review",
+      poll: "🗳️ poll"
+    };
+
+    const label = labelMap[resourceType] || "resource";
+    const message = `@${sender.username} suggested you check out their ${label}: "${resourceTitle}"`;
 
     for (let friendId of friends) {
       const friend = await User.findById(friendId);
@@ -315,11 +324,11 @@ router.post('/:id/suggest/:movieId', async (req, res) => {
 
       await Notification.create({
         type: "suggestion",
-        message: `🎬 @${sender.username} suggested you check out "${movieTitle}"!`,
+        message,
         from: sender._id,
         to: friend._id,
         read: false,
-        createdAt: new Date(),
+        createdAt: new Date()
       });
     }
 
