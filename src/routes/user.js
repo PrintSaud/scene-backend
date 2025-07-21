@@ -8,6 +8,7 @@ const Log = require("../models/log"); // ✅ Add this import
 const { getMovieDetails } = require("../services/tmdbService"); // ✅ Ad
 const protect = require("../middleware/authMiddleware");  // 🔔 REQUIRED 🔔
 const CustomPoster = require("../models/customPoster");  // Ensure this is imported!
+const Notification = require('../models/notification');  // 🔔 Add this line!
 
 // get all users
 router.get('/', async (req, res) => {
