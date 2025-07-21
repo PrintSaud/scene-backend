@@ -33,15 +33,16 @@ router.get('/all', async (req, res) => {
   }
 });
 
-// follow 
-router.post('/:userId/follow/:targetId', async (req, res) => {
+
+// followww
+router.post('/follow/:targetId', protect, async (req, res) => {
   try {
     console.log("🔔 Follow API hit", {
-      userId: req.params.userId,
+      userId: req.user._id,
       targetId: req.params.targetId
     });
 
-    const user = await User.findById(req.params.userId);
+    const user = await User.findById(req.user._id);
     const targetUser = await User.findById(req.params.targetId);
 
     if (!user || !targetUser) {
@@ -54,17 +55,11 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
 
     if (isFollowing) {
       user.following.pull(req.params.targetId);
-      targetUser.followers.pull(req.params.userId);
+      targetUser.followers.pull(user._id);
     } else {
       user.following.push(req.params.targetId);
-      targetUser.followers.push(req.params.userId);
+      targetUser.followers.push(user._id);
 
-      // 🛡️ Safe guard to ensure notifications array exists
-      if (!Array.isArray(targetUser.notifications)) {
-        targetUser.notifications = [];
-      }
-
-      // 🛎️ Notification block
       await Notification.create({
         type: "follow",
         message: `@${user.username} just followed you`,
@@ -73,7 +68,6 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
         read: false,
         createdAt: new Date(),
       });
-      
     }
 
     await user.save();
