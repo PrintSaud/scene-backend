@@ -64,13 +64,15 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
       }
 
       // 🛎️ Notification block
-      targetUser.notifications.unshift({
+      await Notification.create({
         type: "follow",
         message: `@${user.username} just followed you`,
-        fromUser: user._id,
+        from: user._id,
+        to: targetUser._id,
+        read: false,
         createdAt: new Date(),
-        read: false
       });
+      
     }
 
     await user.save();
@@ -309,15 +311,15 @@ router.post('/:id/suggest/:movieId', async (req, res) => {
       if (!friend) continue;
 
       // Add a notification
-      friend.notifications.unshift({
+      await Notification.create({
         type: "suggestion",
         message: `🎬 @${sender.username} suggested you check out "${movieTitle}"!`,
-        fromUser: sender._id,
-        createdAt: new Date(),
+        from: sender._id,
+        to: friend._id,
         read: false,
+        createdAt: new Date(),
       });
-
-      await friend.save();
+      
     }
 
     res.status(200).json({ message: `✅ Suggested to ${friends.length} friend(s)!` });
@@ -340,13 +342,15 @@ router.post('/:id/notify/share', async (req, res) => {
 
     const message = `@${fromUser.username} suggested you check out "${movieTitle}"`;
 
-    recipient.notifications.unshift({
+    await Notification.create({
       type: "share",
       message,
-      fromUser: fromUserId,
+      from: fromUserId,
+      to: recipient._id,
+      read: false,
+      createdAt: new Date(),
     });
-
-    await recipient.save();
+    
     res.json({ message: "✅ Notification sent" });
   } catch (err) {
     res.status(500).json({ message: "❌ Failed to send notification", error: err.message });
