@@ -390,7 +390,7 @@ router.get("/:id/recent-gifs", async (req, res) => {
 
 // GET a user's watchlist
 router.get('/:userId/watchlist', async (req, res) => {
-  const { userId } = req.params;  // viewingUserId = userId
+  const { userId } = req.params;
   const sort = req.query.sort || "title";
   const order = req.query.order === "desc" ? -1 : 1;
 
@@ -400,12 +400,15 @@ router.get('/:userId/watchlist', async (req, res) => {
       return res.status(404).json({ error: "User or watchlist not found" });
 
     let movieDetails = await Promise.all(
-      user.watchlist.map(async (tmdbId) => {
+      user.watchlist.map(async (item) => {
+        const tmdbId = item.tmdbId || item;  // fallback for legacy records
+        const addedAt = item.addedAt || new Date(0);  // fallback default
+
         const movie = await getMovieDetails(tmdbId);
         if (!movie || !movie.id) return null;
 
         const customPoster = await CustomPoster.findOne({
-          userId: userId,  // ✅ This ensures posters are scoped to this user's watchlist
+          userId: userId,
           movieId: { $in: [tmdbId, String(tmdbId)] }
         });
 
@@ -418,7 +421,8 @@ router.get('/:userId/watchlist', async (req, res) => {
         return {
           ...movie,
           posterOverride,
-          tmdbId: movie.id
+          tmdbId: movie.id,
+          addedAt  // ⭐️ include addedAt so we can sort it
         };
       })
     );
@@ -426,10 +430,10 @@ router.get('/:userId/watchlist', async (req, res) => {
     movieDetails = movieDetails.filter(Boolean);
 
     movieDetails.sort((a, b) => {
+      if (sort === "added") return (new Date(a.addedAt) - new Date(b.addedAt)) * order;
       if (sort === "runtime") return (a.runtime - b.runtime) * order;
       if (sort === "rating") return ((a.vote_average || 0) - (b.vote_average || 0)) * order;
-      if (sort === "release")
-        return (new Date(a.release_date) - new Date(b.release_date)) * order;
+      if (sort === "release") return (new Date(a.release_date) - new Date(b.release_date)) * order;
       return (a.title || "").localeCompare(b.title || "") * order;
     });
 
@@ -439,6 +443,7 @@ router.get('/:userId/watchlist', async (req, res) => {
     res.status(500).json({ error: "Could not fetch watchlist" });
   }
 });
+
 
 
 

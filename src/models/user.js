@@ -15,7 +15,11 @@ const UserSchema = new mongoose.Schema({
   },
   bio: { type: String },
 
-  watchlist: { type: [Number], default: [] },
+  watchlist: [{
+    tmdbId: { type: Number, required: true },
+    addedAt: { type: Date, default: Date.now }
+  }],
+  
   favorites: { type: [Number], default: [] },
 
   following: {
