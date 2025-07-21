@@ -1,41 +1,37 @@
 // scripts/migrateWatchlistFormat.js
 
-const mongoose = require("mongoose");
-const User = require("../models/user");  // Adjust path if needed
+const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+dotenv.config();
 
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/your-db-name";
+const User = require('../models/user');
 
 (async () => {
   try {
-    await mongoose.connect(MONGO_URI);
-    console.log("✅ Connected to MongoDB");
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log("✅ Connected to MongoDB for migration");
 
-    const users = await User.find({ "watchlist.0": { $exists: true } });
+    const users = await User.find({
+      watchlist: { $exists: true, $ne: [] },
+      "watchlist.0": { $type: "int" }  // 🔔 Only legacy watchlists (plain numbers)
+    });
 
-    let updatedCount = 0;
+    console.log(`🔎 Found ${users.length} user(s) with legacy watchlists`);
 
     for (const user of users) {
-      let modified = false;
+      const oldWatchlist = user.watchlist;
+      const newWatchlist = oldWatchlist.map(tmdbId => ({
+        tmdbId: tmdbId,
+        addedAt: new Date(0)  // Or Date.now() if you prefer recent timestamp
+      }));
 
-      const newWatchlist = user.watchlist.map((item) => {
-        if (typeof item === "number") {
-          modified = true;
-          return { tmdbId: item, addedAt: new Date() };
-        } else if (typeof item === "object" && !item.tmdbId && item._id) {
-          modified = true;
-          return { tmdbId: parseInt(item._id, 10), addedAt: item.addedAt || new Date() };
-        }
-        return item;
-      });
+      user.watchlist = newWatchlist;
+      await user.save();
 
-      if (modified) {
-        user.watchlist = newWatchlist;
-        await user.save();
-        updatedCount++;
-      }
+      console.log(`➡️ Migrated ${oldWatchlist.length} items for user ${user.username} (${user._id})`);
     }
 
-    console.log(`🎉 Migration complete. Users updated: ${updatedCount}`);
+    console.log("🎉 Migration complete — all legacy watchlists updated!");
     process.exit(0);
   } catch (err) {
     console.error("❌ Migration failed:", err);
