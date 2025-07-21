@@ -294,12 +294,15 @@ router.get("/:id/following", async (req, res) => {
   }
 });
 
-// ✅ Suggest a movie to mutual friends
 router.post('/:id/suggest/:movieId', async (req, res) => {
   const { friends, movieTitle } = req.body;
 
   if (!Array.isArray(friends) || friends.length === 0) {
     return res.status(400).json({ message: "❌ No friends selected." });
+  }
+
+  if (!movieTitle || typeof movieTitle !== "string") {
+    return res.status(400).json({ message: "❌ movieTitle is missing." });
   }
 
   try {
@@ -310,7 +313,6 @@ router.post('/:id/suggest/:movieId', async (req, res) => {
       const friend = await User.findById(friendId);
       if (!friend) continue;
 
-      // Add a notification
       await Notification.create({
         type: "suggestion",
         message: `🎬 @${sender.username} suggested you check out "${movieTitle}"!`,
@@ -319,7 +321,6 @@ router.post('/:id/suggest/:movieId', async (req, res) => {
         read: false,
         createdAt: new Date(),
       });
-      
     }
 
     res.status(200).json({ message: `✅ Suggested to ${friends.length} friend(s)!` });
