@@ -4,7 +4,7 @@ const protect = require("../middleware/authMiddleware");
 const Notification = require("../models/notification");
 const { io } = require("../server"); // ✅ LIVE socket instance
 
-// Utility: format time ago
+// Utility: format time ago (not used here but you can keep if needed)
 const formatTimeAgo = (date) => {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000);
   const intervals = {
@@ -18,23 +18,55 @@ const formatTimeAgo = (date) => {
   return "just now";
 };
 
-// 🔵 PATCH → mark ALL as read
+// 🔵 GET → fetch all for current user
+router.get("/", protect, async (req, res) => {
+  try {
+    const notifications = await Notification.find({ to: req.user._id })
+      .sort({ createdAt: -1 })
+      .populate("from", "username avatar");
+    res.json(notifications);
+  } catch (err) {
+    console.error("❌ Error fetching notifications:", err);
+    res.status(500).json({ message: "Failed to get notifications" });
+  }
+});
+
+// 🔵 PATCH → mark ALL as read (fix: update Notification collection properly)
 router.patch("/read", protect, async (req, res) => {
   try {
-    const user = await req.user;
-    user.notifications.forEach((n) => (n.read = true));
-    await user.save();
+    await Notification.updateMany(
+      { to: req.user._id, read: false },
+      { $set: { read: true } }
+    );
     res.json({ message: "All notifications marked as read" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
+// 🔵 PATCH → mark SINGLE notification as read
+router.patch("/read-single/:id", protect, async (req, res) => {
+  try {
+    const notif = await Notification.findById(req.params.id);
+    if (!notif) return res.status(404).json({ message: "Notification not found" });
+    if (notif.to.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    notif.read = true;
+    await notif.save();
+    res.json({ message: "Notification marked as read" });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to mark notification as read" });
+  }
+});
+
 // 🔵 GET → unread count
 router.get("/unread-count", protect, async (req, res) => {
   try {
-    const user = await req.user;
-    const unreadCount = user.notifications.filter((n) => !n.read).length;
+    const unreadCount = await Notification.countDocuments({
+      to: req.user._id,
+      read: false,
+    });
     res.json({ unreadCount });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -44,7 +76,7 @@ router.get("/unread-count", protect, async (req, res) => {
 // 🔥 POST → testing route with live emit
 router.post("/test", async (req, res) => {
   try {
-    const { type, from, to, message, relatedId } = req.body;
+    const { type, from, to, message, relatedId, listId, movieId } = req.body;
 
     const notif = await Notification.create({
       type,
@@ -52,11 +84,12 @@ router.post("/test", async (req, res) => {
       to,
       message,
       relatedId,
+      listId,
+      movieId,
       read: false,
       createdAt: new Date(),
     });
 
-    // 📡 EMIT to target user
     io.to(to).emit("notification", notif);
 
     res.json(notif);
@@ -66,29 +99,19 @@ router.post("/test", async (req, res) => {
   }
 });
 
-// 🔵 GET → fetch all for current user
-router.get("/", protect, async (req, res) => {
-  try {
-    const notifications = await Notification.find({ to: req.user._id })
-      .sort({ createdAt: -1 })
-      .populate("from", "username avatar");
-
-    res.json(notifications);
-  } catch (err) {
-    console.error("❌ Error fetching notifications:", err);
-    res.status(500).json({ message: "Failed to get notifications" });
-  }
-});
-
-// DELETE /api/notifications/:id
+// 🔴 DELETE → delete by id
 router.delete("/:id", protect, async (req, res) => {
   try {
-    await Notification.findByIdAndDelete(req.params.id);
+    const notif = await Notification.findById(req.params.id);
+    if (!notif) return res.status(404).json({ message: "Notification not found" });
+    if (notif.to.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    await notif.remove();
     res.json({ message: "Notification deleted" });
   } catch (err) {
     res.status(500).json({ message: "Failed to delete notification" });
   }
 });
-
 
 module.exports = router;
