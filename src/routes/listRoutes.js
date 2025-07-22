@@ -172,8 +172,8 @@ router.post("/:id/like", protect, async (req, res) => {
     } else {
       list.likes.push(userId);
 
-      // 🔔 Notify list owner if not liking own list
-      if (String(list.user._id) !== userId) {
+      // 🔒 Defensive check for missing list.user
+      if (list.user && String(list.user._id) !== userId) {
         await Notification.create({
           type: "like",
           message: `@${req.user.username} liked your list "${list.title}"`,
@@ -192,6 +192,7 @@ router.post("/:id/like", protect, async (req, res) => {
     res.status(500).json({ message: "Failed to like/unlike list", error: err.message });
   }
 });
+
 
 
 // ✅ Save / Unsave
