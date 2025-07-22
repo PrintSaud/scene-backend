@@ -311,7 +311,7 @@ router.post('/:id/suggest', async (req, res) => {
     };
 
     const label = labelMap[resourceType] || "resource";
-    const message = `@${sender.username} suggested you check out their ${label}: "${resourceTitle}"`;
+    const message = `@${sender.username} suggested you check out ${label}: "${resourceTitle}"`;
 
     for (let friendId of friends) {
       const friend = await User.findById(friendId);

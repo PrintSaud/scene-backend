@@ -1,3 +1,5 @@
+// src/routes/watchlist.js
+
 const express = require("express");
 const router = express.Router();
 const User = require("../models/user");
@@ -18,13 +20,18 @@ router.get("/status/:movieId", protect, async (req, res) => {
   }
 });
 
-// ✅ Toggle watchlist (auth only)
+// ✅ Toggle watchlist (auth only) — now auto-cleaning malformed entries
 router.post("/toggle", protect, async (req, res) => {
   const { movieId } = req.body;
   const userId = req.user._id;
 
   try {
     const user = await User.findById(userId);
+
+    // 🧹 Clean old malformed entries
+    user.watchlist = user.watchlist.filter((w) => typeof w === "object" && w.tmdbId);
+    await user.save();
+
     const alreadyIn = user.watchlist?.some((w) => w.tmdbId === movieId);
 
     if (alreadyIn) {
@@ -65,13 +72,13 @@ router.post("/:userId/watchlist", async (req, res) => {
     );
 
     const user = await User.findById(userId);
+    let cleanedWatchlist = user.watchlist.filter((item) => typeof item === "object" && item.tmdbId);
+
     let movieDetails = await Promise.all(
-      user.watchlist.map((w) => getMovieDetails(w.tmdbId))
+      cleanedWatchlist.map((w) => getMovieDetails(w.tmdbId))
     );
 
-    movieDetails = movieDetails.filter(
-      (movie) => movie && movie.id && movie.poster_path
-    );
+    movieDetails = movieDetails.filter((movie) => movie && movie.id && movie.poster_path);
 
     res.json(movieDetails);
   } catch (err) {
@@ -98,7 +105,7 @@ router.delete("/:userId/watchlist/:tmdbId", async (req, res) => {
   }
 });
 
-// ✅ Full watchlist GET with filtering/sorting
+// ✅ Full watchlist GET with cleaning + filtering/sorting
 router.get('/:userId/watchlist', async (req, res) => {
   const { userId } = req.params;
   const sort = req.query.sort || "title";
@@ -110,17 +117,12 @@ router.get('/:userId/watchlist', async (req, res) => {
     if (!user || !user.watchlist)
       return res.status(404).json({ error: "User or watchlist not found" });
 
-    let movieDetails = await Promise.all(
-      user.watchlist.map(async (item) => {
-        let tmdbId, addedAt;
+    let cleanedWatchlist = user.watchlist.filter((item) => typeof item === "object" && item.tmdbId);
 
-        if (typeof item === "object" && item.tmdbId) {
-          tmdbId = item.tmdbId;
-          addedAt = item.addedAt || new Date(0);
-        } else {
-          tmdbId = item;
-          addedAt = new Date(0);
-        }
+    let movieDetails = await Promise.all(
+      cleanedWatchlist.map(async (item) => {
+        const tmdbId = item.tmdbId;
+        const addedAt = item.addedAt || new Date(0);
 
         const movie = await getMovieDetails(tmdbId);
         if (!movie || !movie.id) return null;
@@ -147,7 +149,6 @@ router.get('/:userId/watchlist', async (req, res) => {
 
     movieDetails = movieDetails.filter(Boolean);
 
-    // 🔥 Genre filtering here:
     if (genre && !isNaN(genre)) {
       movieDetails = movieDetails.filter(movie =>
         Array.isArray(movie.genres) &&
@@ -169,6 +170,5 @@ router.get('/:userId/watchlist', async (req, res) => {
     res.status(500).json({ error: "Could not fetch watchlist" });
   }
 });
-
 
 module.exports = router;
