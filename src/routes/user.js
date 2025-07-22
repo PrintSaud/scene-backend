@@ -53,7 +53,6 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
       user.following.push(req.params.targetId);
       targetUser.followers.push(req.params.userId);
 
-      // ✅ CREATE NOTIFICATION ON FOLLOW ONLY
       await Notification.create({
         type: "follow",
         message: `@${user.username} just followed you`,
@@ -63,6 +62,10 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
         createdAt: new Date(),
       });
     }
+
+    // ✅ Clean corrupted watchlist entries before save
+    user.watchlist = (user.watchlist || []).filter(item => item && typeof item === 'object' && typeof item.tmdbId === 'number');
+    targetUser.watchlist = (targetUser.watchlist || []).filter(item => item && typeof item === 'object' && typeof item.tmdbId === 'number');
 
     await user.save();
     await targetUser.save();
@@ -76,6 +79,7 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
     res.status(500).json({ error: 'Failed to toggle follow', details: err.message });
   }
 });
+
 
 
 
