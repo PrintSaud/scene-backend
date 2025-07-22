@@ -166,16 +166,32 @@ router.post("/:id/like", protect, async (req, res) => {
 
     const userId = req.user._id.toString();
     const liked = list.likes.includes(userId);
-    list.likes = liked
-      ? list.likes.filter((id) => id.toString() !== userId)
-      : [...list.likes, userId];
+
+    if (liked) {
+      list.likes = list.likes.filter((id) => id.toString() !== userId);
+    } else {
+      list.likes.push(userId);
+
+      if (list.user.toString() !== userId) {
+        await Notification.create({
+          type: "list_like",
+          message: `❤️ ${req.user.username} liked your list`,
+          from: userId,
+          to: list.user,
+          read: false,
+          createdAt: new Date()
+        });
+      }
+    }
 
     await list.save();
     res.json({ liked: !liked, likesCount: list.likes.length });
   } catch (err) {
+    console.error("❌ Failed to like list:", err);
     res.status(500).json({ message: "❌ Failed to like list", error: err.message });
   }
 });
+
 
 // ✅ Save / Unsave
 router.post("/:id/save", protect, async (req, res) => {

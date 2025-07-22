@@ -14,24 +14,43 @@ const TMDB_BACKDROP = "https://image.tmdb.org/t/p/original";
 const DEFAULT_POSTER = "/default-poster.jpg";
 const DEFAULT_BACKDROP = "/default-backdrop.jpg";
 const DEFAULT_AVATAR = "/default-avatar.jpg";
+const Notification = require('../models/notification');
 const expressJson = express.json();  // ⭐️ add this line
 
 router.post('/:logId/like', protect, async (req, res) => {
-  const log = await Log.findById(req.params.logId);
-  if (!log) return res.status(404).json({ message: 'Not found' });
+  try {
+    const log = await Log.findById(req.params.logId).populate('user', 'username');
+    if (!log) return res.status(404).json({ message: 'Not found' });
 
-  const userId = req.user._id;
-  const liked = log.likes?.includes(userId);
+    const userId = req.user._id;
+    const liked = log.likes?.includes(userId);
 
-  if (liked) {
-    log.likes.pull(userId);
-  } else {
-    log.likes.push(userId);
+    if (liked) {
+      log.likes.pull(userId);
+    } else {
+      log.likes.push(userId);
+
+      // 🔔 Send notification if not liking own review
+      if (String(log.user._id) !== String(userId)) {
+        await Notification.create({
+          type: "like",
+          message: `@${req.user.username} liked your review on "${log.title || 'a movie'}"`,
+          from: userId,
+          to: log.user._id,
+          read: false,
+          createdAt: new Date(),
+        });
+      }
+    }
+
+    await log.save();
+    res.json({ liked: !liked });
+  } catch (err) {
+    console.error("❌ Like log failed:", err);
+    res.status(500).json({ message: "Failed to like/unlike log" });
   }
-
-  await log.save();
-  res.json({ liked: !liked });
 });
+
 
 router.get('/proxy/tmdb/images/:movieId', async (req, res) => {
   const movieId = req.params.movieId;
@@ -217,7 +236,6 @@ router.get('/:logId', async (req, res) => {
 
 
 
-
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
   const { text, gif, externalImage, parentComment } = req.body;
 
@@ -232,7 +250,6 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
       uploadedImage = externalImage;
     }
 
-    // 🔥 Fix condition check properly:
     if (!text && !uploadedImage && !gif) {
       return res.status(400).json({ message: 'Reply must include text, image, or gif.' });
     }
@@ -248,15 +265,36 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     log.replies.push(newReply);
     await log.save();
 
-    if (log.user.toString() !== req.user._id.toString()) {
+    const replyOwner = await User.findById(req.user.id);
+
+    // 1️⃣ Notify log owner if it’s a direct reply to their review:
+    if (!parentComment && log.user.toString() !== req.user._id.toString()) {
       const logOwner = await User.findById(log.user);
-      logOwner.notifications.push({
+      await Notification.create({
         type: 'reply',
-        message: `${req.user.username} replied to your review`,
+        message: `💬 @${replyOwner.username} replied to your review`,
+        from: req.user._id,
+        to: log.user,
         logId: log._id,
-        fromUser: req.user._id,
+        read: false,
+        createdAt: new Date(),
       });
-      await logOwner.save();
+    }
+
+    // 2️⃣ Notify parent comment owner if replying to a comment:
+    if (parentComment) {
+      const parentReply = log.replies.id(parentComment);
+      if (parentReply && parentReply.user.toString() !== req.user._id.toString()) {
+        await Notification.create({
+          type: 'reply',
+          message: `💬 @${replyOwner.username} replied to your comment`,
+          from: req.user._id,
+          to: parentReply.user,
+          logId: log._id,
+          read: false,
+          createdAt: new Date(),
+        });
+      }
     }
 
     const latestReply = log.replies[log.replies.length - 1];
@@ -280,6 +318,78 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
 });
 
 
+// ✅ Review Like → Notify review owner
+router.post('/:logId/like', protect, async (req, res) => {
+  try {
+    const log = await Log.findById(req.params.logId).populate('user', 'username');
+    if (!log) return res.status(404).json({ message: 'Log not found' });
+
+    const userId = req.user._id;
+    const liked = log.likes.includes(userId);
+
+    if (liked) {
+      log.likes.pull(userId);
+    } else {
+      log.likes.push(userId);
+
+      // 🔔 Notify review owner if not liking own review
+      if (String(log.user._id) !== String(userId)) {
+        await Notification.create({
+          type: "like",
+          message: `@${req.user.username} liked your review on "${log.title || 'a movie'}"`,
+          from: userId,
+          to: log.user._id,
+          read: false,
+          createdAt: new Date(),
+        });
+      }
+    }
+
+    await log.save();
+    res.json({ liked: !liked });
+  } catch (err) {
+    console.error("❌ Like review failed:", err);
+    res.status(500).json({ message: "Failed to like/unlike review" });
+  }
+});
+
+// ✅ Reply Like → Notify reply owner
+router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
+  try {
+    const log = await Log.findById(req.params.logId);
+    if (!log) return res.status(404).json({ message: 'Log not found' });
+
+    const reply = log.replies.id(req.params.replyId);
+    if (!reply) return res.status(404).json({ message: 'Reply not found' });
+
+    const userId = req.user._id;
+    const liked = reply.likes.includes(userId);
+
+    if (liked) {
+      reply.likes.pull(userId);
+    } else {
+      reply.likes.push(userId);
+
+      // 🔔 Notify reply owner if not liking own reply
+      if (String(reply.user) !== String(userId)) {
+        await Notification.create({
+          type: "like",
+          message: `@${req.user.username} liked your reply on a review`,
+          from: userId,
+          to: reply.user,
+          read: false,
+          createdAt: new Date(),
+        });
+      }
+    }
+
+    await log.save();
+    res.json({ liked: !liked });
+  } catch (err) {
+    console.error("❌ Like reply failed:", err);
+    res.status(500).json({ message: "Failed to like/unlike reply" });
+  }
+});
 
 
 // Popular Logs
@@ -480,8 +590,6 @@ router.patch('/:logId/backdrop', expressJson, protect, async (req, res) => {
   }
 });
 
-module.exports = router;
-
 
 
 router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
@@ -627,25 +735,41 @@ router.get('/user/:userId', async (req, res) => {
   }
 });
 
-
 router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
-  const log = await Log.findById(req.params.logId);
-  if (!log) return res.status(404).json({ message: 'Not found' });
+  try {
+    const log = await Log.findById(req.params.logId);
+    if (!log) return res.status(404).json({ message: 'Log not found' });
 
-  const reply = log.replies.id(req.params.replyId);
-  if (!reply) return res.status(404).json({ message: 'Reply not found' });
+    const reply = log.replies.id(req.params.replyId);
+    if (!reply) return res.status(404).json({ message: 'Reply not found' });
 
-  const userId = req.user._id;
-  const liked = reply.likes?.includes(userId);
+    const userId = req.user._id;
+    const liked = reply.likes?.includes(userId);
 
-  if (liked) {
-    reply.likes.pull(userId);
-  } else {
-    reply.likes.push(userId);
+    if (liked) {
+      reply.likes.pull(userId);
+    } else {
+      reply.likes.push(userId);
+
+      // 🔔 Notification: if you like someone else's reply
+      if (String(reply.user) !== String(userId)) {
+        await Notification.create({
+          type: "reply-like",
+          message: `@${req.user.username} liked your reply`,
+          from: userId,
+          to: reply.user,
+          read: false,
+          createdAt: new Date(),
+        });
+      }
+    }
+
+    await log.save();
+    res.json({ liked: !liked });
+  } catch (err) {
+    console.error("❌ Failed to like/unlike reply:", err);
+    res.status(500).json({ message: "Failed to like/unlike reply", error: err.message });
   }
-
-  await log.save();
-  res.json({ liked: !liked });
 });
 
 router.get('/user/:userId/movie/:movieId', async (req, res) => {
