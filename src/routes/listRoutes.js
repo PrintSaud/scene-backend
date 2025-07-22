@@ -8,6 +8,7 @@ const CustomPoster = require("../models/customPoster"); // ✅ Ensure this is im
 const axios = require("axios"); // ✅ add at the top if not already present
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
+const Notification = require('../models/notification');
 
 router.get("/popular", async (req, res) => {
   try {
