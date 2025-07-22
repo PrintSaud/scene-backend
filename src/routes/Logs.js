@@ -33,13 +33,14 @@ router.post('/:logId/like', protect, async (req, res) => {
       // 🔔 Send notification if not liking own review
       if (String(log.user._id) !== String(userId)) {
         await Notification.create({
-          type: "like",
-          message: `@${req.user.username} liked your review on "${log.title || 'a movie'}"`,
+          type: "review_like",  // Optional: use clearer type for frontend match
+          message: `liked your review on "${log.title || 'a movie'}"`,
           from: userId,
           to: log.user._id,
+          relatedId: log._id,  // 🔥 This is the key fix!
           read: false,
           createdAt: new Date(),
-        });
+        });        
       }
     }
 
@@ -234,8 +235,6 @@ router.get('/:logId', async (req, res) => {
 });
 
 
-
-
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
   const { text, gif, externalImage, parentComment } = req.body;
 
@@ -267,30 +266,29 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
 
     const replyOwner = await User.findById(req.user.id);
 
-    // 1️⃣ Notify log owner if it’s a direct reply to their review:
+    // 🔔 Notify log owner if it’s a direct reply to their review:
     if (!parentComment && log.user.toString() !== req.user._id.toString()) {
-      const logOwner = await User.findById(log.user);
       await Notification.create({
         type: 'reply',
-        message: `💬 @${replyOwner.username} replied to your review`,
+        message: `replied to your review`,  // ✅ No @username prefix (frontend will render username itself)
         from: req.user._id,
         to: log.user,
-        logId: log._id,
+        relatedId: log._id,  // ✅ Fix key for frontend navigation
         read: false,
         createdAt: new Date(),
       });
     }
 
-    // 2️⃣ Notify parent comment owner if replying to a comment:
+    // 🔔 Notify parent comment owner if replying to a comment:
     if (parentComment) {
       const parentReply = log.replies.id(parentComment);
       if (parentReply && parentReply.user.toString() !== req.user._id.toString()) {
         await Notification.create({
           type: 'reply',
-          message: `💬 @${replyOwner.username} replied to your comment`,
+          message: `replied to your comment`,  // ✅ Clean message
           from: req.user._id,
           to: parentReply.user,
-          logId: log._id,
+          relatedId: log._id,  // ✅ Consistent key for frontend routing
           read: false,
           createdAt: new Date(),
         });
