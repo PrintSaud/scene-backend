@@ -337,7 +337,7 @@ router.post('/:id/suggest', async (req, res) => {
 // POST /api/users/:id/notify/share
 router.post('/:id/notify/share', async (req, res) => {
   try {
-    const { fromUserId, movieTitle } = req.body;
+    const { fromUserId, movieId } = req.body;
 
     const recipient = await User.findById(req.params.id);
     if (!recipient) return res.status(404).json({ message: "Recipient not found" });
@@ -345,17 +345,16 @@ router.post('/:id/notify/share', async (req, res) => {
     const fromUser = await User.findById(fromUserId);
     if (!fromUser) return res.status(404).json({ message: "Sender not found" });
 
-    const message = `@${fromUser.username} suggested you check out "${movieTitle}"`;
-
     await Notification.create({
-      type: "share",
-      message,
+      type: "share-movie",  // ✅ Use explicit type matching your frontend check
+      message: "shared a movie with you",  // ✅ Short clean consistent message
       from: fromUserId,
       to: recipient._id,
+      movieId,  // ✅ So frontend can navigate to `/movie/:movieId`
       read: false,
       createdAt: new Date(),
     });
-    
+
     res.json({ message: "✅ Notification sent" });
   } catch (err) {
     res.status(500).json({ message: "❌ Failed to send notification", error: err.message });

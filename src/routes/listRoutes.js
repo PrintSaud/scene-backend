@@ -173,13 +173,13 @@ router.post("/:id/like", protect, async (req, res) => {
     } else {
       list.likes.push(userId);
 
-      // 🔒 Defensive check for missing list.user
       if (list.user && String(list.user._id) !== userId) {
         await Notification.create({
-          type: "like",
-          message: `@${req.user.username} liked your list "${list.title}"`,
+          type: "list_like",  // ✅ Consistent type for frontend `getActionText` if needed
+          message: "liked your list",  // ✅ Short clean consistent message
           from: userId,
           to: list.user._id,
+          listId: list._id,  // ✅ Include listId for frontend navigation
           read: false,
           createdAt: new Date(),
         });
@@ -272,7 +272,6 @@ router.post("/:id/add", protect, async (req, res) => {
   }
 });
 
-// routes/listRoutes.js
 router.post('/:id/share', protect, async (req, res) => {
   const { recipients } = req.body;
   const listId = req.params.id;
@@ -285,21 +284,18 @@ router.post('/:id/share', protect, async (req, res) => {
     const list = await List.findById(listId);
     if (!list) return res.status(404).json({ message: "List not found" });
 
-    const message = `@${sender.username} suggested you check out their list: "${list.title}"`;
+    const message = `shared a list with you`;  // ✅ Clean short message (no @username)
 
     await Promise.all(
       recipients.map(async (rid) => {
-        await User.findByIdAndUpdate(rid, {
-          $push: {
-            notifications: {
-              type: "share-list",
-              message,
-              listId: list._id,
-              fromUser: sender._id,
-              createdAt: new Date(),
-              read: false,
-            },
-          },
+        await Notification.create({
+          type: "share-list",
+          message,
+          from: sender._id,
+          to: rid,
+          listId: list._id,
+          read: false,
+          createdAt: new Date(),
         });
       })
     );

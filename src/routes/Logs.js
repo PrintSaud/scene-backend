@@ -16,7 +16,6 @@ const DEFAULT_BACKDROP = "/default-backdrop.jpg";
 const DEFAULT_AVATAR = "/default-avatar.jpg";
 const Notification = require('../models/notification');
 const expressJson = express.json();  // ⭐️ add this line
-
 router.post('/:logId/like', protect, async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId).populate('user', 'username');
@@ -30,14 +29,13 @@ router.post('/:logId/like', protect, async (req, res) => {
     } else {
       log.likes.push(userId);
 
-      // 🔔 Send notification if not liking own review
       if (String(log.user._id) !== String(userId)) {
         await Notification.create({
-          type: "review_like",  // Optional: use clearer type for frontend match
-          message: `liked your review on "${log.title || 'a movie'}"`,
+          type: "review_like",
+          message: "liked your review",  // 🔥 Use short clean message without dynamic title
           from: userId,
           to: log.user._id,
-          relatedId: log._id,  // 🔥 This is the key fix!
+          relatedId: log._id,  // Ensure this exists for frontend navigation
           read: false,
           createdAt: new Date(),
         });        
@@ -234,7 +232,6 @@ router.get('/:logId', async (req, res) => {
   }
 });
 
-
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
   const { text, gif, externalImage, parentComment } = req.body;
 
@@ -264,16 +261,14 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     log.replies.push(newReply);
     await log.save();
 
-    const replyOwner = await User.findById(req.user.id);
-
-    // 🔔 Notify log owner if it’s a direct reply to their review:
+    // 🔔 Notify log owner if direct reply:
     if (!parentComment && log.user.toString() !== req.user._id.toString()) {
       await Notification.create({
         type: 'reply',
-        message: `replied to your review`,  // ✅ No @username prefix (frontend will render username itself)
+        message: 'replied to your review',  // ✅ Clean consistent message
         from: req.user._id,
         to: log.user,
-        relatedId: log._id,  // ✅ Fix key for frontend navigation
+        relatedId: log._id,
         read: false,
         createdAt: new Date(),
       });
@@ -285,10 +280,10 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
       if (parentReply && parentReply.user.toString() !== req.user._id.toString()) {
         await Notification.create({
           type: 'reply',
-          message: `replied to your comment`,  // ✅ Clean message
+          message: 'replied to your comment',  // ✅ Clean consistent message
           from: req.user._id,
           to: parentReply.user,
-          relatedId: log._id,  // ✅ Consistent key for frontend routing
+          relatedId: log._id,
           read: false,
           createdAt: new Date(),
         });
@@ -314,8 +309,6 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-
-
 // ✅ Review Like → Notify review owner
 router.post('/:logId/like', protect, async (req, res) => {
   try {
@@ -330,13 +323,13 @@ router.post('/:logId/like', protect, async (req, res) => {
     } else {
       log.likes.push(userId);
 
-      // 🔔 Notify review owner if not liking own review
       if (String(log.user._id) !== String(userId)) {
         await Notification.create({
-          type: "like",
-          message: `@${req.user.username} liked your review on "${log.title || 'a movie'}"`,
+          type: "review_like",  // ✅ Use consistent type
+          message: "liked your review",  // ✅ Clean consistent message
           from: userId,
           to: log.user._id,
+          relatedId: log._id,  // ✅ So frontend can navigate correctly
           read: false,
           createdAt: new Date(),
         });
@@ -368,13 +361,13 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
     } else {
       reply.likes.push(userId);
 
-      // 🔔 Notify reply owner if not liking own reply
       if (String(reply.user) !== String(userId)) {
         await Notification.create({
-          type: "like",
-          message: `@${req.user.username} liked your reply on a review`,
+          type: "reaction",  // ✅ Use consistent type for reply-like notifications
+          message: "liked your reply",  // ✅ Clean consistent message
           from: userId,
           to: reply.user,
+          relatedId: log._id,  // ✅ So frontend can navigate to /review/:relatedId
           read: false,
           createdAt: new Date(),
         });
@@ -742,20 +735,20 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
     if (!reply) return res.status(404).json({ message: 'Reply not found' });
 
     const userId = req.user._id;
-    const liked = reply.likes?.includes(userId);
+    const liked = reply.likes.includes(userId);
 
     if (liked) {
       reply.likes.pull(userId);
     } else {
       reply.likes.push(userId);
 
-      // 🔔 Notification: if you like someone else's reply
       if (String(reply.user) !== String(userId)) {
         await Notification.create({
-          type: "reply-like",
-          message: `@${req.user.username} liked your reply`,
+          type: "reaction",  // ✅ Match frontend expectation exactly
+          message: "liked your reply",  // ✅ Clean consistent message
           from: userId,
           to: reply.user,
+          relatedId: log._id,  // ✅ Ensure frontend can navigate to /review/:relatedId
           read: false,
           createdAt: new Date(),
         });
@@ -769,6 +762,7 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
     res.status(500).json({ message: "Failed to like/unlike reply", error: err.message });
   }
 });
+
 
 router.get('/user/:userId/movie/:movieId', async (req, res) => {
   try {
