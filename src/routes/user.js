@@ -35,31 +35,25 @@ router.get('/all', async (req, res) => {
 
 
 // followww
-router.post('/follow/:targetId', protect, async (req, res) => {
+router.post('/:userId/follow/:targetId', async (req, res) => {
   try {
-    console.log("🔔 Follow API hit", {
-      userId: req.user._id,
-      targetId: req.params.targetId
-    });
-
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.params.userId);
     const targetUser = await User.findById(req.params.targetId);
 
     if (!user || !targetUser) {
-      console.log("❌ User or target user not found");
       return res.status(404).json({ error: 'User not found' });
     }
 
     const isFollowing = user.following.includes(req.params.targetId);
-    console.log("👉 isFollowing:", isFollowing);
 
     if (isFollowing) {
       user.following.pull(req.params.targetId);
-      targetUser.followers.pull(user._id);
+      targetUser.followers.pull(req.params.userId);
     } else {
       user.following.push(req.params.targetId);
-      targetUser.followers.push(user._id);
+      targetUser.followers.push(req.params.userId);
 
+      // ✅ CREATE NOTIFICATION ON FOLLOW ONLY
       await Notification.create({
         type: "follow",
         message: `@${user.username} just followed you`,
@@ -82,6 +76,8 @@ router.post('/follow/:targetId', protect, async (req, res) => {
     res.status(500).json({ error: 'Failed to toggle follow', details: err.message });
   }
 });
+
+
 
 
 router.post('/:userId/favorites/:movieId', async (req, res) => {
