@@ -1,5 +1,3 @@
-// src/models/user.js
-
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -27,7 +25,7 @@ const UserSchema = new mongoose.Schema({
     ref: 'User',
     default: []
   },
-  followers: {  // ✅ Added followers array
+  followers: {
     type: [mongoose.Schema.Types.ObjectId],
     ref: 'User',
     default: []
@@ -40,7 +38,6 @@ const UserSchema = new mongoose.Schema({
   },
 
   totalLogs: { type: Number, default: 0 },
-
 
   profileBackdrop: { type: String, default: '' },
   favoriteCharacter: { type: String, default: '' },
@@ -66,11 +63,23 @@ const UserSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
+// 🔒 Pre-save hook: hash password if changed + clean watchlist
 UserSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
+  try {
+    if (this.isModified('password')) {
+      const salt = await bcrypt.genSalt(10);
+      this.password = await bcrypt.hash(this.password, salt);
+    }
+
+    // 🔥 Defensive cleanup: remove invalid watchlist items before save
+    if (Array.isArray(this.watchlist)) {
+      this.watchlist = this.watchlist.filter(item => typeof item.tmdbId === 'number');
+    }
+
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
 UserSchema.methods.matchPassword = async function (password) {
