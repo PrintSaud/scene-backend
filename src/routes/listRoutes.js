@@ -158,10 +158,10 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ✅ Like / Unlike
+// like
 router.post("/:id/like", protect, async (req, res) => {
   try {
-    const list = await List.findById(req.params.id);
+    const list = await List.findById(req.params.id).populate('user', 'username');
     if (!list) return res.status(404).json({ message: "List not found" });
 
     const userId = req.user._id.toString();
@@ -172,14 +172,15 @@ router.post("/:id/like", protect, async (req, res) => {
     } else {
       list.likes.push(userId);
 
-      if (list.user.toString() !== userId) {
+      // 🔔 Notify list owner if not liking own list
+      if (String(list.user._id) !== userId) {
         await Notification.create({
-          type: "list_like",
-          message: `❤️ ${req.user.username} liked your list`,
+          type: "like",
+          message: `@${req.user.username} liked your list "${list.title}"`,
           from: userId,
-          to: list.user,
+          to: list.user._id,
           read: false,
-          createdAt: new Date()
+          createdAt: new Date(),
         });
       }
     }
@@ -187,8 +188,8 @@ router.post("/:id/like", protect, async (req, res) => {
     await list.save();
     res.json({ liked: !liked, likesCount: list.likes.length });
   } catch (err) {
-    console.error("❌ Failed to like list:", err);
-    res.status(500).json({ message: "❌ Failed to like list", error: err.message });
+    console.error("❌ Failed to like/unlike list:", err);
+    res.status(500).json({ message: "Failed to like/unlike list", error: err.message });
   }
 });
 
