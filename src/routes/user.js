@@ -505,14 +505,15 @@ router.get('/:id', async (req, res) => {
       .lean();
 
       res.json({
-              ...user,
-              favoriteMovies: user.favorites     || [],
-      customPosters: user.customPosters || {},
-      totalLogs,
-      followerCount,
-      followingCount: user.following?.length || 0,
-      recentLogs, // 🆕 Include this for frontend
-    });
+        ...user,
+        favoriteMovies: user.favoriteFilms || [], // ✅ now using the correct field
+        customPosters: user.customPosters || {},
+        totalLogs,
+        followerCount,
+        followingCount: user.following?.length || 0,
+        recentLogs,
+      });
+      
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch user', error: err.message });
   }
