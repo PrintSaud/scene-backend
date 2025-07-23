@@ -72,6 +72,8 @@ app.use("/api/movies", express.json(), require("./routes/movieRoutes"));
 app.use("/api/scenebot", express.json(), require("./routes/sceneBot"));
 app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
 app.use("/api/movies/daily", express.json(), require("./routes/dailyMovie"));
+const tmdbRoutes = require("./routes/tmdbRoutes");
+app.use("/api/tmdb", tmdbRoutes);
 
 // ⚡️ Important: Logs route without express.json(), so multer can parse multipart/form-data
 app.use("/api/logs", require("./routes/Logs"));

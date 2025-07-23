@@ -106,21 +106,22 @@ router.get("/user/:userId", protectOptional, async (req, res) => {
   }
 });
 
-
-// ✅ Single List View with CustomPoster lookup
-// ✅ Get lists by user
-
-router.get("/:id", async (req, res) => {
+// ✅ GET /api/lists/:id → get a list, show custom posters scoped to viewer
+router.get("/:id", protect, async (req, res) => {
   try {
-    const list = await List.findById(req.params.id)
-      .populate("user", "username avatar");
+    const list = await List.findById(req.params.id).populate("user", "username avatar");
     if (!list) return res.status(404).json({ message: "List not found" });
+
+    const viewerId = req.user._id.toString(); // ✅ this is the *viewer* not the list owner
 
     const moviesWithOverride = await Promise.all(
       list.movies.map(async (movie) => {
-        const custom = await CustomPoster.findOne({ movieId: parseInt(movie.id) });
-        let posterUrl = null;
+        const custom = await CustomPoster.findOne({
+          movieId: parseInt(movie.id),
+          user: viewerId, // ✅ show their own poster only
+        });
 
+        let posterUrl = null;
         if (custom) {
           posterUrl = custom.posterUrl;
         } else if (movie.poster) {
@@ -128,21 +129,20 @@ router.get("/:id", async (req, res) => {
             ? `${TMDB_IMG}${movie.poster}`
             : movie.poster;
         } else {
-          // ⭐ New fallback: dynamically fetch from TMDB API
           try {
-            const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${movie.id}?api_key=${TMDB_API_KEY}`);
+            const tmdbRes = await axios.get(
+              `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${TMDB_API_KEY}`
+            );
             const posterPath = tmdbRes.data.poster_path;
-            if (posterPath) {
-              posterUrl = `${TMDB_IMG}${posterPath}`;
-            }
+            if (posterPath) posterUrl = `${TMDB_IMG}${posterPath}`;
           } catch (err) {
-            console.warn(`⚠️ Failed to fetch TMDB poster for movie ${movie.id}:`, err.message);
+            console.warn(`⚠️ Failed TMDB fetch for ${movie.id}:`, err.message);
           }
         }
 
         return {
           ...movie.toObject(),
-          posterOverride: posterUrl
+          posterOverride: posterUrl,
         };
       })
     );
@@ -193,7 +193,6 @@ router.post("/:id/like", protect, async (req, res) => {
     res.status(500).json({ message: "Failed to like/unlike list", error: err.message });
   }
 });
-
 
 
 // ✅ Save / Unsave
