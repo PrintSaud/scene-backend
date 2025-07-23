@@ -19,6 +19,18 @@ const UserSchema = new mongoose.Schema({
   }],
   
   favorites: { type: [Number], default: [] },
+  
+  favoriteFilms: {
+    type: [
+      {
+        id: { type: Number, required: true },
+        title: { type: String, required: true },
+        poster: { type: String }
+      }
+    ],
+    default: []
+  },
+  
 
   following: {
     type: [mongoose.Schema.Types.ObjectId],

@@ -265,6 +265,39 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+router.get('/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+      .select('-password')
+      .lean();
+
+    const uniqueFilms = await Log.distinct('movie', { user: req.params.id });
+    const totalLogs = uniqueFilms.length;
+
+    const followerCount = await User.countDocuments({ following: req.params.id });
+
+    const recentLogs = await Log.find({ user: req.params.id })
+      .sort({ createdAt: -1 })
+      .limit(4)
+      .select('movie title poster rating rewatch createdAt review')
+      .lean();
+
+      res.json({
+        ...user,
+        favoriteMovies: user.favoriteFilms || [], // ✅ now using the correct field
+        customPosters: user.customPosters || {},
+        totalLogs,
+        followerCount,
+        followingCount: user.following?.length || 0,
+        recentLogs,
+      });
+      
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch user', error: err.message });
+  }
+});
+
+
 // routes/userRoutes.js
 
 router.get("/:id/followers", async (req, res) => {
@@ -488,37 +521,6 @@ router.get('/mutuals', protect, async (req, res) => {
   }
 });
 
-router.get('/:id', async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id)
-      .select('-password')
-      .lean();
-
-    const uniqueFilms = await Log.distinct('movie', { user: req.params.id });
-    const totalLogs = uniqueFilms.length;
-
-    const followerCount = await User.countDocuments({ following: req.params.id });
-
-    const recentLogs = await Log.find({ user: req.params.id })
-      .sort({ createdAt: -1 })
-      .limit(4)
-      .select('movie title poster rating rewatch createdAt review')
-      .lean();
-
-      res.json({
-        ...user,
-        favoriteMovies: user.favoriteFilms || [], // ✅ now using the correct field
-        customPosters: user.customPosters || {},
-        totalLogs,
-        followerCount,
-        followingCount: user.following?.length || 0,
-        recentLogs,
-      });
-      
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch user', error: err.message });
-  }
-});
 
 
 
