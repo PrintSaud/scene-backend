@@ -243,7 +243,8 @@ router.patch('/:id', async (req, res) => {
     user.bio = req.body.bio || user.bio;
     user.avatar = req.body.avatar || user.avatar;
     user.profileBackdrop = req.body.backdrop || user.profileBackdrop;
-    user.favorites      = req.body.favorites      || user.favorites;
+    user.favorites = req.body.favorites || user.favorites; // ❤️ from logs (keep this)
+    user.favoriteFilms = req.body.favoriteFilms || user.favoriteFilms; // ✅ NEW line
 
     await user.save();
 
@@ -255,7 +256,7 @@ router.patch('/:id', async (req, res) => {
         bio: user.bio,
         avatar: user.avatar,
         backdrop: user.profileBackdrop,
-        favoriteMovies: user.favoriteMovies,
+        favoriteMovies: user.favoriteFilms, // ✅ Return correct one
       },
     });
   } catch (err) {
