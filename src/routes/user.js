@@ -243,7 +243,7 @@ router.patch('/:id', async (req, res) => {
     user.bio = req.body.bio || user.bio;
     user.avatar = req.body.avatar || user.avatar;
     user.profileBackdrop = req.body.backdrop || user.profileBackdrop;
-    user.favoriteMovies = req.body.favoriteMovies || user.favoriteMovies;
+    user.favorites      = req.body.favorites      || user.favorites;
 
     await user.save();
 
@@ -504,9 +504,9 @@ router.get('/:id', async (req, res) => {
       .select('movie title poster rating rewatch createdAt review')
       .lean();
 
-    res.json({
-      ...user,
-      favoriteMovies: user.favoriteMovies || [],
+      res.json({
+              ...user,
+              favoriteMovies: user.favorites     || [],
       customPosters: user.customPosters || {},
       totalLogs,
       followerCount,
