@@ -255,9 +255,9 @@ router.patch('/:id', async (req, res) => {
         bio: user.bio,
         avatar: user.avatar,
         backdrop: user.profileBackdrop,
-        favoriteMovies: user.favoriteFilms, // ✅ Return correct one
-
+        favoriteFilms: user.favoriteFilms, // ✅ correct key
       },
+      
     });
   } catch (err) {
     console.error("❌ Update failed:", err.message);
