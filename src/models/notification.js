@@ -1,15 +1,18 @@
 const mongoose = require('mongoose');
 
 const NotificationSchema = new mongoose.Schema({
-  movieTitle: { type: String }, // e.g. "Whiplash"
-moviePoster: { type: String }, // if you want thumbnails in notifs
-  type: { type: String, required: true }, // 'follow', 'reply', etc.
+  movieTitle: { type: String }, // Optional: for richer display
+  moviePoster: { type: String }, // Optional: show thumbnail in future
+  type: { type: String, required: true }, // e.g., 'follow', 'reply'
   from: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   to: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   message: { type: String },
-  relatedId: { type: String }, // poll ID, log ID, etc.
+  relatedId: { type: String }, // e.g., for review, reply, etc.
+  movieId: { type: String },
+  listId: { type: String },
+  reviewId: { type: String },
   read: { type: Boolean, default: false },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
 });
 
 module.exports = mongoose.model('Notification', NotificationSchema);
