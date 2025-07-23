@@ -220,13 +220,12 @@ router.delete('/:userId/favorites/:movieId', async (req, res) => {
   }
 });
 
-// Get all favorites
 router.get('/:userId/favorites', async (req, res) => {
-  const { userId } = req.params;
-
   try {
-    const user = await User.findById(userId).populate('favorites');
-    res.status(200).json(user.favorites);
+    const user = await User.findById(req.params.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.status(200).json({ favorites: user.favorites || [] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -257,6 +256,7 @@ router.patch('/:id', async (req, res) => {
         avatar: user.avatar,
         backdrop: user.profileBackdrop,
         favoriteMovies: user.favoriteFilms, // ✅ Return correct one
+
       },
     });
   } catch (err) {
