@@ -271,31 +271,44 @@ router.get('/:id', async (req, res) => {
       .select('-password')
       .lean();
 
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // ✅ Get custom posters from separate collection
+    const customPostersDocs = await CustomPoster.find({ userId: req.params.id });
+    const customPosters = {};
+    customPostersDocs.forEach((doc) => {
+      customPosters[doc.movieId] = doc.posterUrl;
+    });
+
+    // ✅ Get total logs (unique movies)
     const uniqueFilms = await Log.distinct('movie', { user: req.params.id });
     const totalLogs = uniqueFilms.length;
 
+    // ✅ Get follower count
     const followerCount = await User.countDocuments({ following: req.params.id });
 
+    // ✅ Get last 4 logs
     const recentLogs = await Log.find({ user: req.params.id })
       .sort({ createdAt: -1 })
       .limit(4)
       .select('movie title poster rating rewatch createdAt review')
       .lean();
 
-      res.json({
-        ...user,
-        favoriteMovies: user.favoriteFilms || [], // ✅ now using the correct field
-        customPosters: user.customPosters || {},
-        totalLogs,
-        followerCount,
-        followingCount: user.following?.length || 0,
-        recentLogs,
-      });
-      
+    res.json({
+      ...user,
+      favoriteMovies: user.favoriteFilms || [], // ✅ Pulls from the correct field
+      customPosters, // ✅ FROM database, not User model
+      totalLogs,
+      followerCount,
+      followingCount: user.following?.length || 0,
+      recentLogs,
+    });
   } catch (err) {
+    console.error("❌ Failed to get user profile:", err);
     res.status(500).json({ message: 'Failed to fetch user', error: err.message });
   }
 });
+
 
 
 // routes/userRoutes.js
