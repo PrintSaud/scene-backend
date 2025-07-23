@@ -487,7 +487,6 @@ router.get('/mutuals', protect, async (req, res) => {
   }
 });
 
-
 router.get('/:id', async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
@@ -499,6 +498,12 @@ router.get('/:id', async (req, res) => {
 
     const followerCount = await User.countDocuments({ following: req.params.id });
 
+    const recentLogs = await Log.find({ user: req.params.id })
+      .sort({ createdAt: -1 })
+      .limit(4)
+      .select('movie title poster rating rewatch createdAt review')
+      .lean();
+
     res.json({
       ...user,
       favoriteMovies: user.favoriteMovies || [],
@@ -506,11 +511,13 @@ router.get('/:id', async (req, res) => {
       totalLogs,
       followerCount,
       followingCount: user.following?.length || 0,
+      recentLogs, // 🆕 Include this for frontend
     });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch user', error: err.message });
   }
 });
+
 
 
 

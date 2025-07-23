@@ -45,6 +45,17 @@ const UserSchema = new mongoose.Schema({
   topMovies: { type: [String], default: [] },
   recentGifs: [{ type: String }],
 
+  socials: {
+    X: { type: String, default: "" },
+    youtube: { type: String, default: "" },
+    instagram: { type: String, default: "" },
+    tiktok: { type: String, default: "" },
+    imdb: { type: String, default: "" },
+    tmdb: { type: String, default: "" },
+    website: { type: String, default: "" },
+  },
+
+
   resetCode: { type: String, default: null },
   resetCodeExpires: { type: Date, default: null },
 
