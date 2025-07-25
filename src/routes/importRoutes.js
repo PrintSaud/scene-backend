@@ -23,7 +23,6 @@ const titlesMatch = (tmdbTitle, inputTitle) => {
 router.post("/diary", protect, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-  
       const csv = req.file.buffer.toString("utf-8");
       const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
   
@@ -44,11 +43,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
         const year = new Date(date).getFullYear();
   
         const tmdbRes = await axios.get("https://api.themoviedb.org/3/search/movie", {
-          params: {
-            api_key: process.env.TMDB_API_KEY,
-            query: titleRaw,
-            year,
-          },
+          params: { api_key: process.env.TMDB_API_KEY, query: titleRaw, year },
         });
   
         const movieData =
@@ -57,11 +52,16 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
               normalize(m.title) === queryTitle &&
               m.release_date?.startsWith(year.toString())
           ) ||
+          tmdbRes.data.results?.find(
+            (m) =>
+              normalize(m.original_title) === queryTitle &&
+              m.release_date?.startsWith(year.toString())
+          ) ||
           tmdbRes.data.results?.find((m) => normalize(m.title) === queryTitle) ||
           tmdbRes.data.results?.find((m) => normalize(m.original_title) === queryTitle);
   
         if (!movieData) {
-          console.log("❌ No match for:", titleRaw);
+          console.warn("❌ No match for:", titleRaw);
           continue;
         }
   
@@ -75,7 +75,6 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
           });
         }
   
-        // OPTIONAL: Skip if already logged
         const alreadyLogged = await Log.findOne({
           user: req.user._id,
           movie: movie._id,
@@ -104,8 +103,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
       res.status(500).json({ message: "Import failed", error: err.message });
     }
   });
-  
-  
+
   router.post("/watchlist", protect, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
@@ -144,6 +142,11 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
               normalize(m.title) === titleNorm &&
               m.release_date?.startsWith(year.toString())
           ) ||
+          tmdbRes.data.results?.find(
+            (m) =>
+              normalize(m.original_title) === titleNorm &&
+              m.release_date?.startsWith(year.toString())
+          ) ||
           tmdbRes.data.results?.find((m) => normalize(m.title) === titleNorm) ||
           tmdbRes.data.results?.find((m) => normalize(m.original_title) === titleNorm);
   
@@ -175,6 +178,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
       res.status(500).json({ message: "Import failed", error: err.message });
     }
   });
+  
   
   router.post("/ratings", protect, upload.single("file"), async (req, res) => {
     try {
@@ -212,6 +216,11 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
           tmdbRes.data.results?.find(
             (m) =>
               normalize(m.title) === normalizedTitle &&
+              m.release_date?.startsWith(year.toString())
+          ) ||
+          tmdbRes.data.results?.find(
+            (m) =>
+              normalize(m.original_title) === normalizedTitle &&
               m.release_date?.startsWith(year.toString())
           ) ||
           tmdbRes.data.results?.find((m) => normalize(m.title) === normalizedTitle) ||
@@ -263,7 +272,6 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
       res.status(500).json({ message: "Import failed", error: err.message });
     }
   });
-  
 
   router.post("/reviews", protect, upload.single("file"), async (req, res) => {
     try {
@@ -302,6 +310,11 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
           tmdbRes.data.results?.find(
             (m) =>
               normalize(m.title) === normTitle &&
+              m.release_date?.startsWith(year.toString())
+          ) ||
+          tmdbRes.data.results?.find(
+            (m) =>
+              normalize(m.original_title) === normTitle &&
               m.release_date?.startsWith(year.toString())
           ) ||
           tmdbRes.data.results?.find((m) => normalize(m.title) === normTitle) ||
@@ -355,6 +368,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
       res.status(500).json({ message: "Import failed", error: err.message });
     }
   });
+  
   
 
 module.exports = router;
