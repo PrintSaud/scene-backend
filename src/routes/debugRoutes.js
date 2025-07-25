@@ -25,8 +25,8 @@ router.delete("/cleanup-logs", async (req, res) => {
 // ⚠️ TEMP ROUTE — Delete logs only from July 25, 2025
 router.delete("/delete-july-25-logs", async (req, res) => {
     try {
-      const start = new Date("2025-07-25T00:00:00.000Z");
-      const end = new Date("2025-07-26T00:00:00.000Z");
+      const start = new Date("2025-07-26T00:00:00.000Z");
+      const end = new Date("2025-07-27T00:00:00.000Z");
   
       const result = await Log.deleteMany({
         user: new mongoose.Types.ObjectId("6883eae4b18d87a94cd4bcb5"),
@@ -34,7 +34,7 @@ router.delete("/delete-july-25-logs", async (req, res) => {
       });
   
       res.json({
-        message: "🧼 Deleted logs created on July 25, 2025!",
+        message: "🧼 Deleted logs created on July 26, 2025!",
         deleted: result.deletedCount,
       });
     } catch (err) {

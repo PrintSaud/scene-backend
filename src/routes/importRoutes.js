@@ -10,36 +10,36 @@ const protect = require('../middleware/authMiddleware');
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res) => {
+// Strict fuzzy matcher
+const titlesMatch = (tmdbTitle, inputTitle) => {
+    return tmdbTitle.toLowerCase().trim() === inputTitle.toLowerCase().trim();
+  };
+
+// 🔄 Diary Import
+router.post("/diary", upload.single("file"), async (req, res) => {
     try {
-      if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-  
-      const csv = req.file.buffer.toString('utf-8');
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const csv = req.file.buffer.toString("utf-8");
       const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
   
-      let imported = 0;
+      let count = 0;
   
       for (const row of data) {
         const title = row.Name?.trim();
-        const year = parseInt(row.Year);
-        const rating = parseFloat(row.Rating) || 0;
-        const watchedAt = row['Watched Date'] ? new Date(row['Watched Date']) : new Date();
-        const rewatch = row.Rewatch === 'Yes';
+        const date = row.Date?.trim();
+        const rating = parseFloat(row["Rating"]) || 0;
+        const rewatch = row.Rewatch === "Yes";
   
-        if (!title || !year) continue;
+        if (!title || !date) continue;
   
-        const tmdbRes = await axios.get(`https://api.themoviedb.org/3/search/movie`, {
+        const tmdbRes = await axios.get("https://api.themoviedb.org/3/search/movie", {
           params: {
             api_key: process.env.TMDB_API_KEY,
             query: title,
-            year,
           },
         });
   
-        const movieData = tmdbRes.data.results?.find(
-          (m) => m.title.toLowerCase() === title.toLowerCase()
-        );
-  
+        const movieData = tmdbRes.data.results.find((movie) => titlesMatch(movie.title, title));
         if (!movieData) continue;
   
         let movie = await Movie.findOne({ tmdbId: movieData.id });
@@ -52,29 +52,24 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           });
         }
   
-        await Log.findOneAndUpdate(
-            { user: req.user._id, movie: movie._id },
-            {
-              $set: {
-                rating,
-                review: review || "", // if importing review
-                watchedAt: watchedAt || new Date(),
-                title: movie.title,
-                poster: movie.posterPath,
-              },
-            },
-            { upsert: true, new: true }
-          );
-          
+        await Log.create({
+          user: req.user._id,
+          movie: movie._id,
+          title: movie.title,
+          poster: movie.posterPath,
+          watchedAt: new Date(date),
+          rating,
+          rewatch,
+          importedFrom: "letterboxd",
+        });
   
-        imported++;
+        count++;
       }
   
-      res.json({ message: `✅ Successfully imported ${imported} films from diary!` });
-  
+      res.json({ message: `✅ Imported ${count} diary entries` });
     } catch (err) {
-      console.error('❌ Diary import failed:', err);
-      res.status(500).json({ message: 'Import failed', error: err.message });
+      console.error("❌ Diary import failed:", err);
+      res.status(500).json({ message: "Import failed", error: err.message });
     }
   });
   
@@ -143,14 +138,20 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
       const csv = req.file.buffer.toString('utf-8');
       const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
   
+      const normalize = (str) =>
+        str?.toLowerCase().replace(/[^\w\s]/gi, "").replace(/\s+/g, " ").trim();
+  
       let created = 0;
   
       for (const row of data) {
-        const title = row.Name?.trim();
+        const titleRaw = row.Name;
+        const title = titleRaw?.trim();
         const year = parseInt(row.Year);
         const rating = parseFloat(row.Rating) || 0;
   
         if (!title || !year || rating === 0) continue;
+  
+        const normalized = normalize(title);
   
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/search/movie`, {
           params: {
@@ -160,10 +161,16 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           },
         });
   
-        // 🎯 Strict matching on lowercase title
-        const movieData = tmdbRes.data.results?.find(
-          (m) => m.title.toLowerCase() === title.toLowerCase()
+        let movieData = tmdbRes.data.results?.find(
+          (m) => normalize(m.title) === normalized && m.release_date?.startsWith(year.toString())
         );
+  
+        // Fallback: match without year
+        if (!movieData) {
+          movieData = tmdbRes.data.results?.find(
+            (m) => normalize(m.title) === normalized
+          );
+        }
   
         if (!movieData) continue;
   
@@ -177,17 +184,23 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           });
         }
   
+        const existingLog = await Log.findOne({
+          user: req.user._id,
+          movie: movie._id,
+          importedFrom: "letterboxd"
+        });
+  
+        if (existingLog) continue;
+  
         await Log.create({
-            user: req.user._id,
-            movie: movie._id,
-            rating,
-            watchedAt: new Date(),
-            title: movie.title,
-            poster: movie.posterPath,
-            importedFrom: "letterboxd", // 🏷️ Add this line
-          });
-          
-          
+          user: req.user._id,
+          movie: movie._id,
+          rating,
+          watchedAt: new Date(),
+          title: movie.title,
+          poster: movie.posterPath,
+          importedFrom: "letterboxd"
+        });
   
         created++;
       }
@@ -198,7 +211,6 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
       res.status(500).json({ message: 'Import failed', error: err.message });
     }
   });
-  
 
   router.post('/letterboxd/reviews', protect, upload.single('file'), async (req, res) => {
     try {
@@ -207,17 +219,22 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
       const csv = req.file.buffer.toString('utf-8');
       const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
   
+      const normalize = (str) =>
+        str?.toLowerCase().replace(/[^\w\s]/gi, "").replace(/\s+/g, " ").trim();
+  
       let count = 0;
   
       for (const row of data) {
-        const title = row.Name?.trim();
+        const titleRaw = row.Name;
+        const title = titleRaw?.trim();
         const year = parseInt(row.Year);
         const review = row.Review?.trim();
         const rating = parseFloat(row.Rating) || 0;
   
         if (!title || !year || !review) continue;
   
-        // 🧼 TMDB Search
+        const normalized = normalize(title);
+  
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/search/movie`, {
           params: {
             api_key: process.env.TMDB_API_KEY,
@@ -226,10 +243,17 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           },
         });
   
-        // 🎯 Strict title match
-        const movieData = tmdbRes.data.results?.find(
-          (m) => m.title.toLowerCase() === title.toLowerCase()
+        // 🎯 Strict match first
+        let movieData = tmdbRes.data.results?.find(
+          (m) => normalize(m.title) === normalized && m.release_date?.startsWith(year.toString())
         );
+  
+        // Fallback without year match
+        if (!movieData) {
+          movieData = tmdbRes.data.results?.find(
+            (m) => normalize(m.title) === normalized
+          );
+        }
   
         if (!movieData) continue;
   
@@ -243,18 +267,26 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           });
         }
   
+        // ❌ Prevent duplicate reviews from Letterboxd
+        const existing = await Log.findOne({
+          user: req.user._id,
+          movie: movie._id,
+          review,
+          importedFrom: "letterboxd",
+        });
+  
+        if (existing) continue;
+  
         await Log.create({
-            user: req.user._id,
-            movie: movie._id,
-            rating,
-            review,
-            watchedAt: new Date(),
-            title: movie.title,
-            poster: movie.posterPath,
-            importedFrom: "letterboxd", // 🏷️ Add this line
-          });
-          
-          
+          user: req.user._id,
+          movie: movie._id,
+          rating,
+          review,
+          watchedAt: new Date(),
+          title: movie.title,
+          poster: movie.posterPath,
+          importedFrom: "letterboxd",
+        });
   
         count++;
       }
@@ -265,8 +297,5 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
       res.status(500).json({ message: 'Import failed', error: err.message });
     }
   });
-  
-  
-  
 
 module.exports = router;
