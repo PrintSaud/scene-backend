@@ -4,7 +4,7 @@ const multer = require('multer');
 const Papa = require('papaparse');
 const axios = require('axios');
 const Log = require('../models/log');
-const Movie = require('../models/movie');
+const Movie = require('../models/movieModel');
 const protect = require('../middleware/authMiddleware');
 
 const storage = multer.memoryStorage();
