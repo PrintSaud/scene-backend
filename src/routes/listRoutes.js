@@ -116,12 +116,17 @@ router.get("/:id", protect, async (req, res) => {
 
     const moviesWithOverride = await Promise.all(
       list.movies.map(async (movie) => {
+        const movieId = parseInt(movie.id || movie._id); // ✅ fallback to _id if needed
+    
+        // 🧠 Try to find viewer's custom poster
         const custom = await CustomPoster.findOne({
-          movieId: parseInt(movie.id),
+          movieId,
           user: viewerId,
         });
-
+    
         let posterUrl = null;
+        let movieTitle = movie.title || ""; // fallback title in case it’s missing
+    
         if (custom) {
           posterUrl = custom.posterUrl;
         } else if (movie.poster) {
@@ -131,26 +136,25 @@ router.get("/:id", protect, async (req, res) => {
         } else {
           try {
             const tmdbRes = await axios.get(
-              `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${TMDB_API_KEY}`
+              `https://api.themoviedb.org/3/movie/${movieId}?api_key=${TMDB_API_KEY}`
             );
             const posterPath = tmdbRes.data.poster_path;
             if (posterPath) posterUrl = `${TMDB_IMG}${posterPath}`;
+            if (!movieTitle) movieTitle = tmdbRes.data.title; // 🧠 fix missing title too
           } catch (err) {
-            console.warn(`⚠️ Failed TMDB fetch for ${movie.id}:`, err.message);
+            console.warn(`⚠️ Failed TMDB fetch for ${movieId}:`, err.message);
           }
         }
-
+    
         return {
-          ...movie, // ✅ DO NOT use .toObject()
+          ...movie,
+          id: movieId, // ✅ ensure ID stays consistent
+          title: movieTitle, // ✅ ensure title shows under poster
           posterOverride: posterUrl,
         };
       })
     );
-
-    const result = {
-      ...list.toObject(),
-      movies: moviesWithOverride,
-    };
+    
 
     res.json(result);
   } catch (err) {
