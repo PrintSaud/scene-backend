@@ -75,7 +75,8 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
     }
   });
   
-  router.post('/letterboxd/watchlist', protect, upload.single('file'), async (req, res) => {
+  router.post("/watchlist", protect, upload.single("file"), async (req, res) => {
+
     try {
       if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
   
@@ -141,7 +142,8 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
   
   
 
-  router.post('/letterboxd/ratings', protect, upload.single('file'), async (req, res) => {
+  router.post("/ratings", protect, upload.single("file"), async (req, res) => {
+
     try {
       if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
   
@@ -222,7 +224,8 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
     }
   });
 
-  router.post('/letterboxd/reviews', protect, upload.single('file'), async (req, res) => {
+  router.post("/reviews", protect, upload.single("file"), async (req, res) => {
+
     try {
       if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
   
