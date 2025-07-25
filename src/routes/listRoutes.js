@@ -115,20 +115,14 @@ router.get("/:id", protect, async (req, res) => {
 
     const viewerId = req.user._id.toString();
 
-    console.log("👤 Viewer ID:", viewerId);
-    console.log("📄 List Owner ID:", list.user._id.toString());
-    console.log("🎬 Movies in List:", list.movies.map((m) => m.title || m.id || m._id));
+
 
     const moviesWithOverride = await Promise.all(
       list.movies.map(async (movie) => {
         const movieId = movie.id || movie._id;
         const movieIdAsNumber = Number(movieId);
 
-        console.log("\n🧩 Checking movie:", movie.title || movieId);
-        console.log("📽  movieId (number):", movieIdAsNumber);
-        console.log("🔎 Looking for CustomPoster where:");
-        console.log("   userId =", viewerId);
-        console.log("   movieId ∈", [movieIdAsNumber, String(movieIdAsNumber)]);
+
 
         const ownerId = list.user._id.toString(); // list owner
 
@@ -138,7 +132,7 @@ router.get("/:id", protect, async (req, res) => {
         });
         
 
-        console.log("📸 Custom poster found?", !!custom, custom?.posterUrl);
+
 
         let posterUrl = null;
         let movieTitle = movie.title || "";
@@ -164,7 +158,7 @@ router.get("/:id", protect, async (req, res) => {
 
         if (!posterUrl) posterUrl = "/default-poster.jpg";
 
-        console.log("🎨 Final poster used:", posterUrl);
+
 
         return {
           ...movie,
@@ -175,7 +169,7 @@ router.get("/:id", protect, async (req, res) => {
       })
     );
 
-    console.log("\n✅ Finished processing all movies for list:", list.title);
+
     res.json({
       ...list.toObject(),
       movies: moviesWithOverride,
