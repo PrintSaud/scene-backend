@@ -112,21 +112,20 @@ router.get("/:id", protect, async (req, res) => {
     const list = await List.findById(req.params.id).populate("user", "username avatar");
     if (!list) return res.status(404).json({ message: "List not found" });
 
-    const viewerId = req.user._id.toString(); // viewer, not list owner
+    const viewerId = req.user._id.toString();
 
     const moviesWithOverride = await Promise.all(
       list.movies.map(async (movie) => {
-        const movieId = parseInt(movie.id || movie._id); // ✅ fallback to _id if needed
-    
-        // 🧠 Try to find viewer's custom poster
+        const movieId = parseInt(movie.id || movie._id);
+
         const custom = await CustomPoster.findOne({
           movieId,
           user: viewerId,
         });
-    
+
         let posterUrl = null;
-        let movieTitle = movie.title || ""; // fallback title in case it’s missing
-    
+        let movieTitle = movie.title || "";
+
         if (custom) {
           posterUrl = custom.posterUrl;
         } else if (movie.poster) {
@@ -140,23 +139,25 @@ router.get("/:id", protect, async (req, res) => {
             );
             const posterPath = tmdbRes.data.poster_path;
             if (posterPath) posterUrl = `${TMDB_IMG}${posterPath}`;
-            if (!movieTitle) movieTitle = tmdbRes.data.title; // 🧠 fix missing title too
+            if (!movieTitle) movieTitle = tmdbRes.data.title;
           } catch (err) {
             console.warn(`⚠️ Failed TMDB fetch for ${movieId}:`, err.message);
           }
         }
-    
+
         return {
           ...movie,
-          id: movieId, // ✅ ensure ID stays consistent
-          title: movieTitle, // ✅ ensure title shows under poster
+          id: movieId,
+          title: movieTitle,
           posterOverride: posterUrl,
         };
       })
     );
-    
 
-    res.json(result);
+    res.json({
+      ...list.toObject(),
+      movies: moviesWithOverride,
+    });
   } catch (err) {
     console.error("❌ Failed to fetch list:", err);
     res.status(500).json({ message: "❌ Failed to fetch list", error: err });
