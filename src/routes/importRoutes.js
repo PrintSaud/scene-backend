@@ -52,15 +52,20 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           });
         }
   
-        await Log.create({
-          user: req.user._id,
-          movie: movie._id,
-          rating,
-          rewatch,
-          watchedAt,
-          title: movie.title,
-          poster: movie.posterPath,
-        });
+        await Log.findOneAndUpdate(
+            { user: req.user._id, movie: movie._id },
+            {
+              $set: {
+                rating,
+                review: review || "", // if importing review
+                watchedAt: watchedAt || new Date(),
+                title: movie.title,
+                poster: movie.posterPath,
+              },
+            },
+            { upsert: true, new: true }
+          );
+          
   
         imported++;
       }
@@ -172,14 +177,20 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           });
         }
   
-        await Log.create({
-          user: req.user._id,
-          movie: movie._id,
-          rating,
-          watchedAt: new Date(),
-          title: movie.title,
-          poster: movie.posterPath,
-        });
+        await Log.findOneAndUpdate(
+            { user: req.user._id, movie: movie._id },
+            {
+              $set: {
+                rating,
+                review: review || "", // if importing review
+                watchedAt: watchedAt || new Date(),
+                title: movie.title,
+                poster: movie.posterPath,
+              },
+            },
+            { upsert: true, new: true }
+          );
+          
   
         created++;
       }
@@ -235,15 +246,20 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           });
         }
   
-        await Log.create({
-          user: req.user._id,
-          movie: movie._id,
-          rating,
-          review,
-          watchedAt: new Date(),
-          title: movie.title,
-          poster: movie.posterPath,
-        });
+        await Log.findOneAndUpdate(
+            { user: req.user._id, movie: movie._id },
+            {
+              $set: {
+                rating,
+                review: review || "", // if importing review
+                watchedAt: watchedAt || new Date(),
+                title: movie.title,
+                poster: movie.posterPath,
+              },
+            },
+            { upsert: true, new: true }
+          );
+          
   
         count++;
       }
