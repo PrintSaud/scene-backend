@@ -10,20 +10,15 @@ const protect = require('../middleware/authMiddleware');
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// POST /api/import/letterboxd/diary
 router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
   
       const csv = req.file.buffer.toString('utf-8');
-  
-      // Parse CSV
-      const { data } = Papa.parse(csv, {
-        header: true,
-        skipEmptyLines: true,
-      });
+      const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
   
       let imported = 0;
+  
       for (const row of data) {
         const title = row.Name?.trim();
         const year = parseInt(row.Year);
@@ -33,7 +28,6 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
   
         if (!title || !year) continue;
   
-        // Search TMDB
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/search/movie`, {
           params: {
             api_key: process.env.TMDB_API_KEY,
@@ -42,10 +36,12 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           },
         });
   
-        const movieData = tmdbRes.data.results?.[0];
+        const movieData = tmdbRes.data.results?.find(
+          (m) => m.title.toLowerCase() === title.toLowerCase()
+        );
+  
         if (!movieData) continue;
   
-        // ✅ Make sure it's in your DB
         let movie = await Movie.findOne({ tmdbId: movieData.id });
         if (!movie) {
           movie = await Movie.create({
@@ -56,7 +52,6 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           });
         }
   
-        // ✅ Log using real Mongo ID
         await Log.create({
           user: req.user._id,
           movie: movie._id,
@@ -77,7 +72,7 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
       res.status(500).json({ message: 'Import failed', error: err.message });
     }
   });
-   
+  
   router.post('/letterboxd/watchlist', protect, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
@@ -85,23 +80,31 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
       const csv = req.file.buffer.toString('utf-8');
       const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
   
+      const normalize = (str) =>
+        str?.toLowerCase().replace(/[^\w\s]/gi, "").replace(/\s+/g, " ").trim();
+  
       let added = 0;
       const user = await User.findById(req.user._id);
   
       for (const row of data) {
-        const title = row.Name?.trim();
+        const titleRaw = row.Name;
+        const title = normalize(titleRaw);
         const year = parseInt(row.Year);
+  
         if (!title || !year) continue;
   
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/search/movie`, {
           params: {
             api_key: process.env.TMDB_API_KEY,
-            query: title,
+            query: titleRaw,
             year,
           },
         });
   
-        const movieData = tmdbRes.data.results?.[0];
+        const movieData = tmdbRes.data.results?.find(
+          (m) => normalize(m.title) === title
+        );
+  
         if (!movieData) continue;
   
         const alreadyExists = user.watchlist.some(
@@ -126,6 +129,7 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
     }
   });
   
+  
 
   router.post('/letterboxd/ratings', protect, upload.single('file'), async (req, res) => {
     try {
@@ -135,10 +139,12 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
       const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
   
       let created = 0;
+  
       for (const row of data) {
         const title = row.Name?.trim();
         const year = parseInt(row.Year);
         const rating = parseFloat(row.Rating) || 0;
+  
         if (!title || !year || rating === 0) continue;
   
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/search/movie`, {
@@ -149,7 +155,11 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           },
         });
   
-        const movieData = tmdbRes.data.results?.[0];
+        // 🎯 Strict matching on lowercase title
+        const movieData = tmdbRes.data.results?.find(
+          (m) => m.title.toLowerCase() === title.toLowerCase()
+        );
+  
         if (!movieData) continue;
   
         let movie = await Movie.findOne({ tmdbId: movieData.id });
@@ -196,8 +206,10 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
         const year = parseInt(row.Year);
         const review = row.Review?.trim();
         const rating = parseFloat(row.Rating) || 0;
+  
         if (!title || !year || !review) continue;
   
+        // 🧼 TMDB Search
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/search/movie`, {
           params: {
             api_key: process.env.TMDB_API_KEY,
@@ -206,7 +218,11 @@ router.post('/letterboxd/diary', protect, upload.single('file'), async (req, res
           },
         });
   
-        const movieData = tmdbRes.data.results?.[0];
+        // 🎯 Strict title match
+        const movieData = tmdbRes.data.results?.find(
+          (m) => m.title.toLowerCase() === title.toLowerCase()
+        );
+  
         if (!movieData) continue;
   
         let movie = await Movie.findOne({ tmdbId: movieData.id });
