@@ -680,10 +680,11 @@ router.get('/user/:userId', async (req, res) => {
         let movieRuntime = null;
         let movieReleaseDate = null;
 
-        const customPoster = await CustomPoster.findOne({
-          userId: profileUserId,
-          movieId: log.movie
+        const custom = await CustomPoster.findOne({
+          userId: viewerId,
+          movieId: Number(movie.id), // 👈 FORCE CAST TO NUMBER
         });
+        
 
         if (customPoster) {
           posterUrl = customPoster.posterUrl;
