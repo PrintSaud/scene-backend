@@ -25,37 +25,49 @@ router.post("/list-cover", protect, upload.single("image"), async (req, res) => 
   });
 
   router.post("/avatar/:id", protect, upload.single("avatar"), async (req, res) => {
-    console.log("🔥 HIT /upload-avatar"); // 🔍 Add this log
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    const streamUpload = (fileBuffer) => {
-      return new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          {
-            folder: "avatars", // Optional: to group uploads
-            public_id: `${user._id}-${Date.now()}`, // Optional: unique name
-          },
-          (error, result) => {
-            if (result) resolve(result);
-            else reject(error);
-          }
-        );
-
-        streamifier.createReadStream(fileBuffer).pipe(stream);
-      });
-    };
-
-    const result = await streamUpload(req.file.buffer);
-
-    user.avatar = result.secure_url;
-    await user.save();
-
-    res.status(200).json({ message: "Avatar uploaded successfully", avatar: result.secure_url });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
+    console.log("🔥 Avatar upload route hit");
+  
+    try {
+      if (!req.file) {
+        console.log("❌ No file received");
+        return res.status(400).json({ message: "No file received" });
+      }
+  
+      const user = await User.findById(req.params.id);
+      if (!user) {
+        console.log("❌ User not found");
+        return res.status(404).json({ message: "User not found" });
+      }
+  
+      const streamUpload = (fileBuffer) => {
+        return new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: "avatars",
+              public_id: `${user._id}-${Date.now()}`,
+            },
+            (error, result) => {
+              if (result) resolve(result);
+              else reject(error);
+            }
+          );
+  
+          streamifier.createReadStream(fileBuffer).pipe(stream);
+        });
+      };
+  
+      const result = await streamUpload(req.file.buffer);
+  
+      console.log("✅ Cloudinary upload success", result.secure_url);
+  
+      user.avatar = result.secure_url;
+      await user.save();
+  
+      res.status(200).json({ message: "Avatar uploaded successfully", avatar: result.secure_url });
+    } catch (err) {
+      console.error("❌ Upload failed:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
 module.exports = router;
