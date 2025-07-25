@@ -114,17 +114,27 @@ router.get("/:id", protect, async (req, res) => {
 
     const viewerId = req.user._id.toString();
 
+    console.log("👤 Viewer ID:", viewerId);
+    console.log("📄 List Owner ID:", list.user._id.toString());
+    console.log("🎬 Movies in List:", list.movies.map((m) => m.title || m.id || m._id));
+
     const moviesWithOverride = await Promise.all(
       list.movies.map(async (movie) => {
         const movieId = movie.id || movie._id;
-const movieIdAsNumber = Number(movieId); // safely cast to number if possible
+        const movieIdAsNumber = Number(movieId); // safely cast to number
 
-const custom = await CustomPoster.findOne({
-  user: viewerId,
-  movieId: { $in: [movieIdAsNumber, String(movieIdAsNumber)] },
-});
+        console.log("\n🧩 Checking movie:", movie.title || movieId);
+        console.log("📽  movieId (number):", movieIdAsNumber);
+        console.log("🔎 Looking for CustomPoster where:");
+        console.log("   user =", viewerId);
+        console.log("   movieId ∈", [movieIdAsNumber, String(movieIdAsNumber)]);
 
-        
+        const custom = await CustomPoster.findOne({
+          user: viewerId,
+          movieId: { $in: [movieIdAsNumber, String(movieIdAsNumber)] },
+        });
+
+        console.log("📸 Custom poster found?", !!custom, custom?.posterUrl);
 
         let posterUrl = null;
         let movieTitle = movie.title || "";
@@ -138,25 +148,30 @@ const custom = await CustomPoster.findOne({
         } else {
           try {
             const tmdbRes = await axios.get(
-              `https://api.themoviedb.org/3/movie/${movieId}?api_key=${TMDB_API_KEY}`
+              `https://api.themoviedb.org/3/movie/${movieIdAsNumber}?api_key=${TMDB_API_KEY}`
             );
             const posterPath = tmdbRes.data.poster_path;
             if (posterPath) posterUrl = `${TMDB_IMG}${posterPath}`;
             if (!movieTitle) movieTitle = tmdbRes.data.title;
           } catch (err) {
-            console.warn(`⚠️ Failed TMDB fetch for ${movieId}:`, err.message);
+            console.warn(`⚠️ Failed TMDB fetch for ${movieIdAsNumber}:`, err.message);
           }
         }
 
+        if (!posterUrl) posterUrl = "/default-poster.jpg";
+
+        console.log("🎨 Final poster used:", posterUrl);
+
         return {
           ...movie,
-          id: movieId,
+          id: movieIdAsNumber,
           title: movieTitle,
           posterOverride: posterUrl,
         };
       })
     );
 
+    console.log("\n✅ Finished processing all movies for list:", list.title);
     res.json({
       ...list.toObject(),
       movies: moviesWithOverride,
