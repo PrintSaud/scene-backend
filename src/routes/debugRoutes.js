@@ -29,7 +29,7 @@ router.delete("/delete-july-25-logs", async (req, res) => {
       const end = new Date("2025-07-26T00:00:00.000Z");
   
       const result = await Log.deleteMany({
-        user: new mongoose.Types.ObjectId("68666f7a7b759477f069c7af"),
+        user: new mongoose.Types.ObjectId("6883eae4b18d87a94cd4bcb5"),
         createdAt: { $gte: start, $lt: end },
       });
   
