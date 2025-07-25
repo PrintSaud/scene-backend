@@ -130,10 +130,13 @@ router.get("/:id", protect, async (req, res) => {
         console.log("   userId =", viewerId);
         console.log("   movieId ∈", [movieIdAsNumber, String(movieIdAsNumber)]);
 
+        const ownerId = list.user._id.toString(); // list owner
+
         const custom = await CustomPoster.findOne({
-          userId: viewerId, // ✅ FIXED: this matches your schema
+          userId: ownerId, // ✅ always use list owner’s custom poster
           movieId: { $in: [movieIdAsNumber, String(movieIdAsNumber)] },
         });
+        
 
         console.log("📸 Custom poster found?", !!custom, custom?.posterUrl);
 
