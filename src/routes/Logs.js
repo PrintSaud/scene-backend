@@ -843,19 +843,21 @@ router.get('/filter/:filterType', protect, async (req, res) => {
 });
 
 // 🚨 TEMPORARY cleanup route
-router.get("/debug/cleanup-logs", async (req, res) => {
+// 🧼 TEMP CLEANUP ROUTE — Delete logs before July 3, 2025
+router.delete("/debug/delete-old-logs", async (req, res) => {
   try {
     const result = await Log.deleteMany({
       user: "68666f7a7b759477f069c7af",
-      importedFrom: "letterboxd",
+      createdAt: { $lt: new Date("2025-07-03T00:00:00Z") },
     });
 
-    res.send(`✅ Deleted ${result.deletedCount} imported logs.`);
+    res.json({ message: `✅ Deleted ${result.deletedCount} old logs.` });
   } catch (err) {
-    console.error(err);
-    res.status(500).send("❌ Error during cleanup.");
+    console.error("❌ Cleanup failed:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
+
 
 
 module.exports = router;
