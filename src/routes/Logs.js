@@ -655,15 +655,16 @@ router.delete("/:logId", protect, async (req, res) => {
   }
 });
 
-router.get('/user/:userId', async (req, res) => {
+router.get('/user/:userId', protect, async (req, res) => {
   try {
     const profileUserId = req.params.userId;
+    const viewerId = req.user._id.toString(); // ✅ Needed for poster override
 
     const logs = await Log.find({ user: profileUserId })
       .populate('user', 'username avatar')
-      .sort({ createdAt: -1 }); // newest logs first
+      .sort({ createdAt: -1 });
 
-    // 🔥 Deduplicate by movie: keep only latest log for each movie
+    // 🔥 Deduplicate by movie
     const uniqueLogsMap = new Map();
     logs.forEach((log) => {
       const movieId = log.movie?.toString();
@@ -671,7 +672,6 @@ router.get('/user/:userId', async (req, res) => {
         uniqueLogsMap.set(movieId, log);
       }
     });
-
     const uniqueLogs = Array.from(uniqueLogsMap.values());
 
     const logsWithDetails = await Promise.all(
@@ -680,25 +680,33 @@ router.get('/user/:userId', async (req, res) => {
         let movieRuntime = null;
         let movieReleaseDate = null;
 
-        const custom = await CustomPoster.findOne({
-          userId: viewerId,
-          movieId: Number(movie.id), // 👈 FORCE CAST TO NUMBER
-        });
-        
+        const movieId = log.movie?.id || log.movie;
 
-        if (customPoster) {
-          posterUrl = customPoster.posterUrl;
-        } else if (log.poster) {
-          posterUrl = log.poster.startsWith("http")
-            ? log.poster
-            : `${TMDB_IMG}${log.poster}`;
+        try {
+          const customPoster = await CustomPoster.findOne({
+            userId: viewerId,
+            movieId: Number(movieId),
+          });
+
+          if (customPoster) {
+            posterUrl = customPoster.posterUrl;
+          } else if (log.poster) {
+            posterUrl = log.poster.startsWith("http")
+              ? log.poster
+              : `${TMDB_IMG}${log.poster}`;
+          }
+        } catch (err) {
+          console.warn("❌ Failed to fetch custom poster:", err.message);
         }
 
-        if (log.movie && TMDB_API_KEY) {
+        // TMDB fallback
+        if (!posterUrl && movieId && TMDB_API_KEY) {
           try {
-            const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movie}?api_key=${TMDB_API_KEY}`);
+            const tmdbRes = await axios.get(
+              `https://api.themoviedb.org/3/movie/${movieId}?api_key=${TMDB_API_KEY}`
+            );
             const tmdbData = tmdbRes.data;
-            if (!posterUrl && tmdbData.poster_path) {
+            if (tmdbData.poster_path) {
               posterUrl = `${TMDB_IMG}${tmdbData.poster_path}`;
             }
             movieRuntime = tmdbData.runtime || null;
@@ -712,10 +720,10 @@ router.get('/user/:userId', async (req, res) => {
           ...log.toObject(),
           posterOverride: posterUrl,
           movie: {
-            id: log.movie,
+            id: movieId,
             runtime: movieRuntime,
-            release_date: movieReleaseDate
-          }
+            release_date: movieReleaseDate,
+          },
         };
       })
     );
@@ -726,6 +734,8 @@ router.get('/user/:userId', async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch user logs', error: err.message });
   }
 });
+
+
 
 router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
   try {
