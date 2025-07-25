@@ -60,4 +60,16 @@ router.get("/", async (req, res) => {
   }
 });
 
+// ✅ GET all poster overrides for a specific user (for lists, etc.)
+router.get("/user/:userId", async (req, res) => {
+  try {
+    const posters = await CustomPoster.find({ userId: req.params.userId }).lean();
+    res.json(posters); // Will return [{ movieId, posterUrl }]
+  } catch (err) {
+    console.error("❌ Failed to fetch custom posters:", err);
+    res.status(500).json({ error: 'Failed to fetch custom posters' });
+  }
+});
+
+
 module.exports = router;
