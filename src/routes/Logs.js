@@ -842,5 +842,20 @@ router.get('/filter/:filterType', protect, async (req, res) => {
   }
 });
 
+// 🚨 TEMPORARY cleanup route
+router.get("/debug/cleanup-logs", async (req, res) => {
+  try {
+    const result = await Log.deleteMany({
+      user: "68666f7a7b759477f069c7af",
+      importedFrom: "letterboxd",
+    });
+
+    res.send(`✅ Deleted ${result.deletedCount} imported logs.`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("❌ Error during cleanup.");
+  }
+});
+
 
 module.exports = router;
