@@ -78,7 +78,8 @@ const importRoutes = require('./routes/importRoutes');
 app.use('/api/import', importRoutes);
 const debugRoutes = require("./routes/debugRoutes");
 app.use("/api/debug", debugRoutes);
-app.use("/api/letterboxd", require("./routes/letterboxdRoutes"));
+app.use("/api/letterboxd", require("./routes/importRoutes")); // ✅
+
 
 
 
