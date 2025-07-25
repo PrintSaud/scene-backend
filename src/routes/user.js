@@ -233,20 +233,21 @@ router.get('/:userId/favorites', async (req, res) => {
 });
 
 // PATCH /api/users/:id — update user profile
-// PATCH /api/users/:id — update user profile
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', upload.single("avatar"), async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
+    if (req.file) {
+      const cloudUrl = await uploadToCloudinary(req.file.buffer, "scene/avatars");
+      user.avatar = cloudUrl;
+    }
+
     user.name = req.body.name || user.name;
     user.bio = req.body.bio || user.bio;
-    user.avatar = req.body.avatar || user.avatar;
     user.profileBackdrop = req.body.backdrop || user.profileBackdrop;
-    user.favorites = req.body.favorites || user.favorites;
     user.favoriteFilms = req.body.favoriteFilms || user.favoriteFilms;
 
-    // ✅ Save socials (connections)
     if (req.body.socials) {
       user.socials = {
         ...user.socials,
@@ -256,21 +257,10 @@ router.patch('/:id', async (req, res) => {
 
     await user.save();
 
-    res.json({
-      message: 'Profile updated successfully',
-      user: {
-        id: user._id,
-        name: user.name,
-        bio: user.bio,
-        avatar: user.avatar,
-        backdrop: user.profileBackdrop,
-        favoriteFilms: user.favoriteFilms,
-        socials: user.socials, // ✅ Return it!
-      },
-    });
+    res.json({ message: "✅ Profile updated", user });
   } catch (err) {
     console.error("❌ Update failed:", err.message);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
