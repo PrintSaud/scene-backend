@@ -233,6 +233,7 @@ router.get('/:userId/favorites', async (req, res) => {
 });
 
 // PATCH /api/users/:id — update user profile
+// PATCH /api/users/:id — update user profile
 router.patch('/:id', async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
@@ -242,8 +243,16 @@ router.patch('/:id', async (req, res) => {
     user.bio = req.body.bio || user.bio;
     user.avatar = req.body.avatar || user.avatar;
     user.profileBackdrop = req.body.backdrop || user.profileBackdrop;
-    user.favorites = req.body.favorites || user.favorites; // ❤️ from logs (keep this)
-    user.favoriteFilms = req.body.favoriteFilms || user.favoriteFilms; // ✅ NEW line
+    user.favorites = req.body.favorites || user.favorites;
+    user.favoriteFilms = req.body.favoriteFilms || user.favoriteFilms;
+
+    // ✅ Save socials (connections)
+    if (req.body.socials) {
+      user.socials = {
+        ...user.socials,
+        ...req.body.socials,
+      };
+    }
 
     await user.save();
 
@@ -255,9 +264,9 @@ router.patch('/:id', async (req, res) => {
         bio: user.bio,
         avatar: user.avatar,
         backdrop: user.profileBackdrop,
-        favoriteFilms: user.favoriteFilms, // ✅ correct key
+        favoriteFilms: user.favoriteFilms,
+        socials: user.socials, // ✅ Return it!
       },
-      
     });
   } catch (err) {
     console.error("❌ Update failed:", err.message);
