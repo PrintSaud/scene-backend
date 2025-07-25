@@ -119,9 +119,10 @@ router.get("/:id", protect, async (req, res) => {
         const movieId = parseInt(movie.id || movie._id);
 
         const custom = await CustomPoster.findOne({
-          movieId,
           user: viewerId,
+          movieId: { $in: [movieId, String(movieId)] },
         });
+        
 
         let posterUrl = null;
         let movieTitle = movie.title || "";
