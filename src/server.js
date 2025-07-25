@@ -76,7 +76,9 @@ const tmdbRoutes = require("./routes/tmdbRoutes");
 app.use("/api/tmdb", tmdbRoutes);
 const importRoutes = require('./routes/importRoutes');
 app.use('/api/import', importRoutes);
-app.use("/api/debug", require("./routes/debugRoutes"));
+const debugRoutes = require("./routes/debugRoutes");
+app.use("/api/debug", debugRoutes);
+
 
 
 // ⚡️ Important: Logs route without express.json(), so multer can parse multipart/form-data
