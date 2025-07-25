@@ -1,5 +1,4 @@
 // src/routes/user.js
-
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
@@ -9,6 +8,8 @@ const { getMovieDetails } = require("../services/tmdbService"); // ✅ Ad
 const protect = require("../middleware/authMiddleware");  // 🔔 REQUIRED 🔔
 const CustomPoster = require("../models/customPoster");  // Ensure this is imported!
 const Notification = require('../models/notification');  // 🔔 Add this line!
+const multer = require("multer");
+const upload = multer({ storage: multer.memoryStorage() }); // ✅ in-memory upload
 
 // get all users
 router.get('/', async (req, res) => {
