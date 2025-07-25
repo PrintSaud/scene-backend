@@ -22,15 +22,19 @@ router.delete("/cleanup-logs", async (req, res) => {
 });
 
 // ⚠️ TEMP ROUTE — Delete logs before July 3, 2025
-router.delete("/delete-old-logs", async (req, res) => {
+// ⚠️ TEMP ROUTE — Delete logs only from July 25, 2025
+router.delete("/delete-july-25-logs", async (req, res) => {
     try {
+      const start = new Date("2025-07-25T00:00:00.000Z");
+      const end = new Date("2025-07-26T00:00:00.000Z");
+  
       const result = await Log.deleteMany({
         user: new mongoose.Types.ObjectId("68666f7a7b759477f069c7af"),
-        createdAt: { $lt: new Date("2025-07-03T00:00:00Z") },
+        createdAt: { $gte: start, $lt: end },
       });
   
       res.json({
-        message: "🧼 Deleted logs before July 3, 2025!",
+        message: "🧼 Deleted logs created on July 25, 2025!",
         deleted: result.deletedCount,
       });
     } catch (err) {
@@ -38,6 +42,7 @@ router.delete("/delete-old-logs", async (req, res) => {
       res.status(500).json({ error: "Something went wrong" });
     }
   });
+  
   
 
 module.exports = router;
