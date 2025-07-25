@@ -16,7 +16,8 @@ const titlesMatch = (tmdbTitle, inputTitle) => {
   };
 
 // 🔄 Diary Import
-router.post("/diary", upload.single("file"), async (req, res) => {
+router.post("/diary", protect, upload.single("file"), async (req, res) => {
+    
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const csv = req.file.buffer.toString("utf-8");
@@ -87,11 +88,15 @@ router.post("/diary", upload.single("file"), async (req, res) => {
       const user = await User.findById(req.user._id);
   
       for (const row of data) {
-        const titleRaw = row.Name;
-        const title = normalize(titleRaw);
+        const titleRaw = row.Name?.trim();
         const year = parseInt(row.Year);
   
-        if (!title || !year) continue;
+        if (!titleRaw || isNaN(year)) {
+          console.warn("⚠️ Skipping row due to missing title/year:", row);
+          continue;
+        }
+  
+        const title = normalize(titleRaw);
   
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/search/movie`, {
           params: {
@@ -105,7 +110,10 @@ router.post("/diary", upload.single("file"), async (req, res) => {
           (m) => normalize(m.title) === title
         );
   
-        if (!movieData) continue;
+        if (!movieData || !movieData.id) {
+          console.warn("⚠️ Movie not found or missing ID for:", titleRaw);
+          continue;
+        }
   
         const alreadyExists = user.watchlist.some(
           (item) => item.tmdbId === movieData.id
@@ -128,6 +136,7 @@ router.post("/diary", upload.single("file"), async (req, res) => {
       res.status(500).json({ message: 'Import failed', error: err.message });
     }
   });
+  
   
   
 
