@@ -112,13 +112,13 @@ router.get("/:id", protect, async (req, res) => {
     const list = await List.findById(req.params.id).populate("user", "username avatar");
     if (!list) return res.status(404).json({ message: "List not found" });
 
-    const viewerId = req.user._id.toString(); // ✅ this is the *viewer* not the list owner
+    const viewerId = req.user._id.toString(); // viewer, not list owner
 
     const moviesWithOverride = await Promise.all(
       list.movies.map(async (movie) => {
         const custom = await CustomPoster.findOne({
           movieId: parseInt(movie.id),
-          user: viewerId, // ✅ show their own poster only
+          user: viewerId,
         });
 
         let posterUrl = null;
@@ -141,7 +141,7 @@ router.get("/:id", protect, async (req, res) => {
         }
 
         return {
-          ...movie.toObject(),
+          ...movie, // ✅ DO NOT use .toObject()
           posterOverride: posterUrl,
         };
       })
