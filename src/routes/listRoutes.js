@@ -116,12 +116,14 @@ router.get("/:id", protect, async (req, res) => {
 
     const moviesWithOverride = await Promise.all(
       list.movies.map(async (movie) => {
-        const movieId = parseInt(movie.id || movie._id);
+        const movieId = movie.id || movie._id;
+const movieIdAsNumber = Number(movieId); // safely cast to number if possible
 
-        const custom = await CustomPoster.findOne({
-          user: viewerId,
-          movieId: { $in: [movieId, String(movieId)] },
-        });
+const custom = await CustomPoster.findOne({
+  user: viewerId,
+  movieId: { $in: [movieIdAsNumber, String(movieIdAsNumber)] },
+});
+
         
 
         let posterUrl = null;
