@@ -107,6 +107,7 @@ router.get("/user/:userId", protectOptional, async (req, res) => {
 });
 
 // ✅ GET /api/lists/:id → get a list, show custom posters scoped to viewer
+// ✅ GET /api/lists/:id → get a list, show custom posters scoped to viewer
 router.get("/:id", protect, async (req, res) => {
   try {
     const list = await List.findById(req.params.id).populate("user", "username avatar");
@@ -121,16 +122,16 @@ router.get("/:id", protect, async (req, res) => {
     const moviesWithOverride = await Promise.all(
       list.movies.map(async (movie) => {
         const movieId = movie.id || movie._id;
-        const movieIdAsNumber = Number(movieId); // safely cast to number
+        const movieIdAsNumber = Number(movieId);
 
         console.log("\n🧩 Checking movie:", movie.title || movieId);
         console.log("📽  movieId (number):", movieIdAsNumber);
         console.log("🔎 Looking for CustomPoster where:");
-        console.log("   user =", viewerId);
+        console.log("   userId =", viewerId);
         console.log("   movieId ∈", [movieIdAsNumber, String(movieIdAsNumber)]);
 
         const custom = await CustomPoster.findOne({
-          user: viewerId,
+          userId: viewerId, // ✅ FIXED: this matches your schema
           movieId: { $in: [movieIdAsNumber, String(movieIdAsNumber)] },
         });
 
