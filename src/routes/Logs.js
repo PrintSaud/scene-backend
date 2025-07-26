@@ -16,6 +16,11 @@ const DEFAULT_BACKDROP = "/default-backdrop.jpg";
 const DEFAULT_AVATAR = "/default-avatar.jpg";
 const Notification = require('../models/notification');
 const expressJson = express.json();  // ⭐️ add this line
+
+
+
+
+
 router.post('/:logId/like', protect, async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId).populate('user', 'username');
@@ -496,7 +501,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
     // ✅ Step 3: Create Log
     const newLog = await Log.create({
       user: req.user._id,
-      movie: movie._id,
+      tmdbId: movie.tmdbId, // ✅ Use TMDB ID only
       review: review || "",
       rating: parseFloat(rating) || 0,
       rewatch: rewatch === "true" || false,
@@ -508,6 +513,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       poster: posterValue || movie.posterPath || "",
       importedFrom: "manual",
     });
+    
 
     res.status(201).json({ message: "✅ Log saved successfully!", log: newLog });
   } catch (err) {
