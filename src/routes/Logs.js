@@ -177,19 +177,27 @@ router.get('/:logId', async (req, res) => {
     if (log.movie && TMDB_API_KEY) {
       try {
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movie}?api_key=${TMDB_API_KEY}`);
+        console.log("🎬 TMDB movie response:", tmdbRes.data); // 🧪 Log full TMDB data
         backdrop_path = tmdbRes.data.backdrop_path;
         movieTitle = tmdbRes.data.title;
         tmdbPosterPath = tmdbRes.data.poster_path;
+
+        // 🛠️ Optional fallback: Try grabbing backdrop from /images if not found
+        if (!backdrop_path) {
+          console.log("⚠️ No backdrop_path found in movie — trying fallback /images");
+          const fallbackRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movie}/images?api_key=${TMDB_API_KEY}`);
+          backdrop_path = fallbackRes.data.backdrops?.[0]?.file_path || null;
+          console.log("🧩 Fallback backdrop_path:", backdrop_path);
+        }
       } catch (err) {
         console.warn(`⚠️ Failed to fetch TMDB details for movieId=${log.movie}: ${err.message}`);
       }
     }
 
-    // ✅ NEW: Check if the log owner has a custom poster for this movie
     let poster = DEFAULT_POSTER;
 
     const customPoster = await CustomPoster.findOne({
-      userId: log.user._id,  // Scope correctly to log owner!
+      userId: log.user._id,
       movieId: log.movie
     });
 
@@ -201,7 +209,12 @@ router.get('/:logId', async (req, res) => {
       poster = `https://image.tmdb.org/t/p/w500${tmdbPosterPath}`;
     }
 
-    const backdrop = backdrop_path ? `${TMDB_BACKDROP}${backdrop_path}` : DEFAULT_BACKDROP;
+    const backdrop = backdrop_path
+      ? `${TMDB_BACKDROP}${backdrop_path}`
+      : DEFAULT_BACKDROP;
+
+    console.log("✅ Final backdrop URL sent to frontend:", backdrop); // 🔍 SHOW THE FINAL ONE
+
     const likes = log.likes || [];
 
     const replies = await Promise.all(

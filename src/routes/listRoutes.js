@@ -106,7 +106,7 @@ router.get("/user/:userId", protectOptional, async (req, res) => {
   }
 });
 
-// ✅ GET /api/lists/:id → get a list, show custom posters scoped to viewer
+
 // ✅ GET /api/lists/:id → get a list, show custom posters scoped to viewer
 router.get("/:id", protect, async (req, res) => {
   try {
