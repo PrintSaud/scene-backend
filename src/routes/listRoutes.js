@@ -115,27 +115,32 @@ router.get("/:id", protect, async (req, res) => {
 
     const viewerId = req.user._id.toString();
 
-
-
     const moviesWithOverride = await Promise.all(
       list.movies.map(async (movie) => {
         const movieId = movie.id || movie._id;
         const movieIdAsNumber = Number(movieId);
 
-
+        // 🛑 Skip if movie ID is invalid or NaN
+        if (!movieIdAsNumber || isNaN(movieIdAsNumber)) {
+          console.warn("⛔ Skipping movie due to invalid ID:", movie);
+          return {
+            ...movie,
+            id: movieId,
+            title: movie.title || "Unknown Title",
+            posterOverride: "/default-poster.jpg",
+          };
+        }
 
         const ownerId = list.user._id.toString(); // list owner
 
-        const custom = await CustomPoster.findOne({
-          userId: ownerId, // ✅ always use list owner’s custom poster
-          movieId: { $in: [movieIdAsNumber, String(movieIdAsNumber)] },
-        });
-        
-
-
-
         let posterUrl = null;
         let movieTitle = movie.title || "";
+
+        // ✅ Safely fetch custom poster
+        const custom = await CustomPoster.findOne({
+          userId: ownerId,
+          movieId: { $in: [movieIdAsNumber, String(movieIdAsNumber)] },
+        });
 
         if (custom) {
           posterUrl = custom.posterUrl;
@@ -158,8 +163,6 @@ router.get("/:id", protect, async (req, res) => {
 
         if (!posterUrl) posterUrl = "/default-poster.jpg";
 
-
-
         return {
           ...movie,
           id: movieIdAsNumber,
@@ -168,7 +171,6 @@ router.get("/:id", protect, async (req, res) => {
         };
       })
     );
-
 
     res.json({
       ...list.toObject(),

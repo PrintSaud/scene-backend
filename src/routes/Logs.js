@@ -421,7 +421,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       review,
       rating,
       rewatch,
-      rewatchCount,  // ✅ new: read rewatchCount from req.body
+      rewatchCount,
       gif,
       watchedAt,
       title,
@@ -432,22 +432,48 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       ? await uploadToCloudinary(req.file.buffer, "scene/logs")
       : "";
 
-    const posterValue = poster && poster !== "undefined"
-      ? poster
-      : "";  // fallback safe: empty string (frontend handles fallback display)
+    const posterValue = poster && poster !== "undefined" ? poster : "";
 
+    // ✅ Step 1: Make sure movie exists in DB, or create it
+    const tmdbId = parseInt(movieId);
+    if (!tmdbId || isNaN(tmdbId)) {
+      return res.status(400).json({ message: "Invalid movieId" });
+    }
+
+    let movie = await Movie.findOne({ tmdbId });
+    if (!movie) {
+      try {
+        const tmdbRes = await axios.get(
+          `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}`
+        );
+        const tmdbData = tmdbRes.data;
+
+        movie = await Movie.create({
+          tmdbId: tmdbData.id,
+          title: tmdbData.title,
+          posterPath: tmdbData.poster_path,
+          releaseDate: tmdbData.release_date,
+        });
+      } catch (fetchErr) {
+        console.error("❌ TMDB fetch failed:", fetchErr.message);
+        return res.status(500).json({ message: "Failed to fetch movie data" });
+      }
+    }
+
+    // ✅ Step 2: Save the log with correct movie._id
     const newLog = await Log.create({
       user: req.user._id,
-      movie: movieId,
+      movie: movie._id, // ✅ safe reference
       review: review || "",
       rating: parseFloat(rating) || 0,
       rewatch: rewatch === "true" || false,
-      rewatchCount: parseInt(rewatchCount) || 0,  // ✅ new: store it properly!
+      rewatchCount: parseInt(rewatchCount) || 0,
       gif: gif || "",
       image: uploadedImage,
       watchedAt: watchedAt ? new Date(watchedAt) : Date.now(),
-      title: title || "",
-      poster: posterValue,
+      title: title || movie.title || "",
+      poster: posterValue || movie.posterPath || "",
+      importedFrom: "manual", // optional: good for debugging later
     });
 
     res.status(201).json({ message: "✅ Log saved successfully!", log: newLog });
@@ -456,6 +482,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
     res.status(500).json({ message: "Failed to save full log", error: err.message });
   }
 });
+
 
 
 // PATCH /api/logs/:logId → Edit an existing log safely
