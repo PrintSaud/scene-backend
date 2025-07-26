@@ -42,9 +42,10 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // 2️⃣ MongoDB connection
 const DB_URI = process.env.DB_URI;
-if (!DB_URI || !DB_URI.includes("scene")) {
-  console.error("❌ Invalid or missing DB_URI. Exiting...");
-  process.exit(1);
+if (!DB_URI) {
+  console.error("❌ MISSING DB_URI — check Railway Environment Variables");
+} else if (!DB_URI.includes("scene")) {
+  console.warn("⚠️ DB_URI doesn’t look like your Scene DB. Proceeding anyway.");
 }
 
 mongoose
