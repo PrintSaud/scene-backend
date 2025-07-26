@@ -254,7 +254,7 @@ router.get('/:logId', async (req, res) => {
       tmdbId: log.tmdbId,
     });
     
-    console.log("🎯 FULL LOG DATA:", log); // ✅ Add this line temporarily
+
 
     
     res.json({
@@ -264,11 +264,11 @@ router.get('/:logId', async (req, res) => {
         id: log.movie || null,
         title: movieTitle,
         backdrop_path: backdrop_path || null,
-        poster: poster  // ✅ Ensure movie.poster is correct
+        poster: poster
       },
-      poster: poster,  // ✅ Ensure top-level poster is also correct
-      posterOverride: poster,  // ✅ You can add this if frontend expects posterOverride prop
-      backdrop,
+      poster,
+      posterOverride: poster,
+      backdrop, // full URL (for fallback or older clients)
       customBackdrop: log.customBackdrop || "",
       review: log.review || "",
       rating: log.rating || 0,
@@ -277,8 +277,12 @@ router.get('/:logId', async (req, res) => {
       image: log.image || null,
       gif: log.gif || null,
       replies,
-      createdAt: log.createdAt
+      createdAt: log.createdAt,
+    
+      // ✅ ADD THIS:
+      reviewBackdrop: backdrop_path || null, // raw path like "/9PRsxxx.jpg"
     });
+    
     
     
 
