@@ -16,10 +16,11 @@ const replySchema = new mongoose.Schema({
 const logSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    movie: { type: mongoose.Schema.Types.ObjectId, ref: "Movie", required: false }, // 🔧 made optional
-    tmdbId: { type: Number, required: true }, // ✅ required for imports
+    movie: { type: mongoose.Schema.Types.ObjectId, ref: "Movie", required: false },
+    tmdbId: { type: Number, required: true },
     title: String,
     poster: String,
+    backdrop: { type: String, default: "" }, // ✅ ADD THIS
     review: { type: String, default: '' },
     rating: { type: Number, min: 0, max: 5 },
     rewatch: { type: Boolean, default: false },
@@ -34,6 +35,7 @@ const logSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
 
 
 

@@ -515,6 +515,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
           title: tmdbData.title,
           posterPath: tmdbData.poster_path,
           releaseDate: tmdbData.release_date,
+          backdropPath: tmdbData.backdrop_path,
         });
       } catch (fetchErr) {
         console.error("❌ TMDB fetch failed:", fetchErr.message);

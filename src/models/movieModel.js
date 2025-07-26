@@ -18,6 +18,9 @@ const movieSchema = new mongoose.Schema({
   posterPath: {
     type: String
   },
+  backdropPath: {       // ✅ ADD THIS
+    type: String,
+  },
   releaseDate: {
     type: Date
   },
