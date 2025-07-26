@@ -461,12 +461,13 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
 
     const posterValue = poster && poster !== "undefined" ? poster : "";
 
-    // ✅ Step 1: Make sure movie exists in DB, or create it
-    const tmdbId = parseInt(movieId);
+    // ✅ Step 1: Normalize and check TMDB ID
+    const tmdbId = movieId && typeof movieId === "string" ? parseInt(movieId) : movieId;
     if (!tmdbId || isNaN(tmdbId)) {
       return res.status(400).json({ message: "Invalid movieId" });
     }
 
+    // ✅ Step 2: Lookup or create Movie
     let movie = await Movie.findOne({ tmdbId });
     if (!movie) {
       try {
@@ -487,10 +488,15 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       }
     }
 
-    // ✅ Step 2: Save the log with correct movie._id
+    // ✅ Final safety check
+    if (!movie || !movie._id) {
+      return res.status(500).json({ message: "Movie document invalid or missing _id" });
+    }
+
+    // ✅ Step 3: Create Log
     const newLog = await Log.create({
       user: req.user._id,
-      movie: movie._id, // ✅ safe reference
+      movie: movie._id,
       review: review || "",
       rating: parseFloat(rating) || 0,
       rewatch: rewatch === "true" || false,
@@ -500,7 +506,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       watchedAt: watchedAt ? new Date(watchedAt) : Date.now(),
       title: title || movie.title || "",
       poster: posterValue || movie.posterPath || "",
-      importedFrom: "manual", // optional: good for debugging later
+      importedFrom: "manual",
     });
 
     res.status(201).json({ message: "✅ Log saved successfully!", log: newLog });
@@ -509,6 +515,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
     res.status(500).json({ message: "Failed to save full log", error: err.message });
   }
 });
+
 
 
 

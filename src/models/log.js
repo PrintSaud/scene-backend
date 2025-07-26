@@ -16,7 +16,7 @@ const replySchema = new mongoose.Schema({
 const logSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    movie: { type: String },
+    movie: { type: mongoose.Schema.Types.ObjectId, ref: 'Movie', required: true }, // ✅ FIXED!
     title: String,
     poster: String,
     review: { type: String, default: '' },
@@ -28,11 +28,12 @@ const logSchema = new mongoose.Schema(
     image: { type: String, default: "" },
     replies: [replySchema],
     parentComment: { type: mongoose.Schema.Types.ObjectId, ref: 'Reply', default: null },
-    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],  // ✅ ADD THIS LINE
+    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     customBackdrop: { type: String, default: "" },
   },
   { timestamps: true }
 );
+
 
 
 
