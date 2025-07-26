@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 const Log = require("../models/log");
 
-dotenv.config(); // ✅ Load .env with DB_URI
+dotenv.config(); // ✅ Load your DB credentials
 
 const DB_URI = process.env.DB_URI;
 
