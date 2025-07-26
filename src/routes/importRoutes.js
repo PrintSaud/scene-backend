@@ -11,6 +11,7 @@ const { findValidTMDBMatch } = require("../utils/tmdbUtils");
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
+
 // 🧠 Small delay helper to throttle requests
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -20,98 +21,6 @@ const titlesMatch = (tmdbTitle, inputTitle) => {
   
     return normalize(tmdbTitle) === normalize(inputTitle);
   };
-  
-
-// 🔄 Diary Import
-router.post("/diary", protect, upload.single("file"), async (req, res) => {
-    try {
-      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-  
-      const csv = req.file.buffer.toString("utf-8");
-      const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
-  
-      let count = 0;
-  
-      for (const row of data) {
-        const titleRaw = row.Name?.trim();
-        const date = row.Date?.trim();
-        const rating = parseFloat(row["Rating"]) || 0;
-        const rewatch = row.Rewatch === "Yes";
-  
-        // 🔒 Validate input
-        if (!titleRaw || !date || isNaN(new Date(date).getTime())) {
-          console.warn("⚠️ Skipping row with invalid title/date:", row);
-          continue;
-        }
-  
-        const year = new Date(date).getFullYear();
-  
-        // 🔍 TMDB search
-        const movieData = await findValidTMDBMatch(titleRaw, year);
-        if (
-          !movieData ||
-          !movieData.id ||
-          !movieData.title ||
-          !movieData.poster_path ||
-          isNaN(movieData.id)
-        ) {
-          console.warn("❌ Invalid TMDB data for:", titleRaw, movieData);
-          continue;
-        }
-  
-        // 🎬 Ensure movie exists in DB
-        let movie = await Movie.findOne({ tmdbId: movieData.id });
-        if (!movie) {
-          movie = await Movie.create({
-            tmdbId: movieData.id,
-            title: movieData.title,
-            posterPath: movieData.poster_path,
-            releaseDate: movieData.release_date,
-          });
-          console.log("🎯 Created new movie:", movie.title);
-        }
-  
-        if (!movie || !movie._id || isNaN(movie.tmdbId)) {
-          console.warn("❌ Skipping broken movie entry:", movie);
-          continue;
-        }
-  
-        // 🧼 Avoid duplicate logs
-        const alreadyLogged = await Log.findOne({
-          user: req.user._id,
-          movie: movie._id,
-          watchedAt: new Date(date),
-        });
-        if (alreadyLogged) {
-          console.log(`🔁 Already logged: ${titleRaw}`);
-          continue;
-        }
-  
-        // ✅ Create log with tmdbId
-        await Log.create({
-          user: req.user._id,
-          movie: movie._id,
-          tmdbId: movie.tmdbId, // ✅ KEY FIX
-          title: movie.title,
-          poster: movie.posterPath,
-          watchedAt: new Date(date),
-          rating,
-          rewatch,
-          importedFrom: "letterboxd",
-        });
-  
-        console.log(`✅ Imported diary: ${titleRaw}`);
-        count++;
-      }
-  
-      res.json({ message: `✅ Imported ${count} diary entries` });
-    } catch (err) {
-      console.error("❌ Diary import failed:", err);
-      res.status(500).json({ message: "Import failed", error: err.message });
-    }
-  });
-  
-  
 
   router.post("/watchlist", protect, upload.single("file"), async (req, res) => {
     try {
@@ -176,191 +85,75 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
       res.status(500).json({ message: "Import failed", error: err.message });
     }
   });
-  
-  
 
-  router.post("/ratings", protect, upload.single("file"), async (req, res) => {
-    try {
-      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-  
-      const csv = req.file.buffer.toString("utf-8");
-      const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
-  
-      let created = 0;
-  
-      for (const row of data) {
-        const titleRaw = row.Name?.trim();
-        const year = parseInt(row.Year);
-        const rating = parseFloat(row.Rating);
-  
-        // ❌ Skip any bad data
-        if (!titleRaw || isNaN(year) || isNaN(rating) || rating === 0) {
-          console.warn("⚠️ Skipping invalid row:", row);
-          continue;
-        }
-  
-        // 🔍 Search TMDB
-        const movieData = await findValidTMDBMatch(titleRaw, year);
-        await delay(200);
 
-        if (
-          !movieData ||
-          !movieData.id ||
-          !movieData.title ||
-          !movieData.poster_path ||
-          isNaN(movieData.id)
-        ) {
-          console.warn("❌ Invalid TMDB match for:", titleRaw, movieData);
-          continue;
-        }
-  
-        // 🗃️ Get or create Movie entry
-        let movie = await Movie.findOne({ tmdbId: movieData.id });
-        if (!movie) {
-          movie = await Movie.create({
-            tmdbId: movieData.id,
-            title: movieData.title,
-            posterPath: movieData.poster_path,
-            releaseDate: movieData.release_date,
-          });
-          console.log("🎯 Created new movie:", movie.title);
-        }
-  
-        // 🔁 Skip duplicate import
-        const existing = await Log.findOne({
-          user: req.user._id,
-          movie: movie._id,
-          importedFrom: "letterboxd",
-          rating: rating,
-        });
-  
-        if (existing) {
-          console.log(`🔁 Already logged rating for: ${titleRaw}`);
-          continue;
-        }
-  
-        // ✅ Create rating log
-        await Log.create({
-          user: req.user._id,
-          movie: movie._id,
-          tmdbId: movie.tmdbId, // ✅ Important for frontend
-          title: movie.title,
-          poster: movie.posterPath,
-          rating,
-          watchedAt: new Date(), // Optional default fallback
-          importedFrom: "letterboxd",
-        });
-  
-        console.log(`✅ Imported rating for: ${titleRaw}`);
-        created++;
+
+router.post("/logs", protect, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    const csv = req.file.buffer.toString("utf-8");
+    const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
+
+    const normalize = (str) =>
+      str?.toLowerCase().replace(/[^\w\s]/gi, "").replace(/\s+/g, " ").trim();
+
+    const latestLogs = new Map(); // key: normTitle + year, value: latest row
+
+    for (const row of data) {
+      const titleRaw = row.Name?.trim();
+      const year = parseInt(row.Year);
+      const rating = parseFloat(row.Rating) || 0;
+      const watchedAt = new Date(row.Date) || new Date();
+
+      if (!titleRaw || isNaN(year)) continue;
+
+      const normTitle = normalize(titleRaw);
+      const key = `${normTitle}-${year}`;
+
+      const existing = latestLogs.get(key);
+      if (!existing || new Date(watchedAt) > new Date(existing.Date)) {
+        latestLogs.set(key, { ...row, Rating: rating });
       }
-  
-      res.json({ message: `✅ Imported ${created} ratings!` });
-    } catch (err) {
-      console.error("❌ Ratings import failed:", err);
-      res.status(500).json({ message: "Import failed", error: err.message });
     }
-  });
-  
-  
-  const Papa = require("papaparse");
-  const { findValidTMDBMatch } = require("../utils/tmdb"); // Assuming you have this utility for searching movies
-  const Movie = require("../models/movie"); // Movie model
-  const Log = require("../models/log"); // Log model
-  
-  router.post("/reviews", protect, upload.single("file"), async (req, res) => {
-    try {
-      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-  
-      // Read the CSV file and parse it
-      const csv = req.file.buffer.toString("utf-8");
-      const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
-  
-      let count = 0;
-  
-      // Loop through each row and process it
-      for (const row of data) {
-        const titleRaw = row.Name?.trim();
-        const year = parseInt(row.Year);
-        const review = row.Review?.trim();
-        const rating = parseFloat(row.Rating) || 0;
-  
-        // Log the parsed data for debugging
-        console.log(`Processing movie: ${titleRaw}, Review: ${review}, Rating: ${rating}`);
-  
-        // ❌ Skip invalid data
-        if (!titleRaw || !review || !review.trim() || isNaN(year)) {
-          console.warn("⚠️ Skipping row due to missing or invalid data:", row);
-          continue;
-        }
-  
-        // 🔍 TMDB lookup
-        const movieData = await findValidTMDBMatch(titleRaw, year);
-        await delay(200); // ⏳ Throttle to avoid TMDB rate limiting
-  
-        if (
-          !movieData ||
-          !movieData.id ||
-          !movieData.title ||
-          !movieData.poster_path ||
-          isNaN(movieData.id)
-        ) {
-          console.warn("❌ Invalid TMDB match for:", titleRaw, movieData);
-          continue;
-        }
-  
-        // 🗃️ Get or create Movie
-        let movie = await Movie.findOne({ tmdbId: movieData.id });
-        if (!movie) {
-          movie = await Movie.create({
-            tmdbId: movieData.id,
-            title: movieData.title,
-            posterPath: movieData.poster_path,
-            releaseDate: movieData.release_date,
-          });
-          console.log("🎯 Created new movie:", movie.title);
-        }
-  
-        // 🔁 Avoid duplicates
-        const existing = await Log.findOne({
-          user: req.user._id,
-          movie: movie._id,
-          review,
-          importedFrom: "letterboxd",
-        });
-  
-        if (existing) {
-          console.log(`🔁 Already logged review for: ${titleRaw}`);
-          continue;
-        }
-  
-        // ✅ Create review log
-        const newLog = await Log.create({
-          user: req.user._id,
-          movie: movie._id,            // ✅ required for schema
-          tmdbId: movie.tmdbId,        // ✅ used for frontend
-          title: movie.title,
-          poster: movie.posterPath,
-          review,
-          rating,
-          watchedAt: new Date(),
-          importedFrom: "letterboxd",
-        });
-  
-        console.log(`✅ Imported review for: ${titleRaw}`);
-        count++;
-      }
-  
-      res.json({ message: `✅ Imported ${count} full reviews!` });
-    } catch (err) {
-      console.error("❌ Review import failed:", err);
-      res.status(500).json({ message: "Import failed", error: err.message });
-    }
-  });
-  
 
-  
-  
-  
-  
+    let imported = 0;
+    for (const row of latestLogs.values()) {
+      const titleRaw = row.Name?.trim();
+      const year = parseInt(row.Year);
+      const rating = parseFloat(row.Rating) || 0;
+      const watchedAt = new Date(row.Date) || new Date();
+
+      const movieData = await findValidTMDBMatch(titleRaw, year);
+      await delay(200); // TMDB rate limit
+
+      if (!movieData) continue;
+
+      const exists = await Log.findOne({
+        user: req.user._id,
+        tmdbId: movieData.id,
+      });
+
+      if (exists) continue;
+
+      await Log.create({
+        user: req.user._id,
+        tmdbId: movieData.id,
+        title: movieData.title,
+        poster: movieData.poster_path,
+        rating,
+        watchedAt,
+      });
+
+      imported++;
+    }
+
+    res.status(201).json({ message: `✅ Imported ${imported} logs.` });
+  } catch (err) {
+    console.error("❌ Import logs error:", err);
+    res.status(500).json({ message: "Server error during log import." });
+  }
+});
+
 module.exports = router;
+
