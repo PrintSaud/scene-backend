@@ -484,7 +484,9 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       watchedAt,
       title,
       poster,
+      backdrop, // ✅ ADD THIS LINE
     } = req.body;
+    
 
     const uploadedImage = req.file
       ? await uploadToCloudinary(req.file.buffer, "scene/logs")
@@ -527,7 +529,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
     // ✅ Step 3: Create Log
     const newLog = await Log.create({
       user: req.user._id,
-      tmdbId: movie.tmdbId, // ✅ Use TMDB ID only
+      tmdbId: movie.tmdbId,
       review: review || "",
       rating: parseFloat(rating) || 0,
       rewatch: rewatch === "true" || false,
@@ -537,8 +539,10 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       watchedAt: watchedAt ? new Date(watchedAt) : Date.now(),
       title: title || movie.title || "",
       poster: posterValue || movie.posterPath || "",
+      backdrop: backdrop || movie.backdrop_path || "", // ✅ ADD THIS
       importedFrom: "manual",
     });
+    
     
 
     res.status(201).json({ message: "✅ Log saved successfully!", log: newLog });
