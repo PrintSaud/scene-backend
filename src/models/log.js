@@ -16,7 +16,8 @@ const replySchema = new mongoose.Schema({
 const logSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    movie: { type: mongoose.Schema.Types.ObjectId, ref: 'Movie', required: true }, // ✅ FIXED!
+    movie: { type: mongoose.Schema.Types.ObjectId, ref: "Movie", required: true },
+    tmdbId: { type: Number }, // ✅ Add this line
     title: String,
     poster: String,
     review: { type: String, default: '' },
@@ -33,6 +34,7 @@ const logSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
 
 
 

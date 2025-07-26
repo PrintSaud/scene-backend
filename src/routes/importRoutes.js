@@ -66,6 +66,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
             posterPath: movieData.poster_path,
             releaseDate: movieData.release_date,
           });
+          console.log("🎯 Created new movie:", movie.title);
         }
   
         if (!movie || !movie._id || isNaN(movie.tmdbId)) {
@@ -79,12 +80,16 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
           movie: movie._id,
           watchedAt: new Date(date),
         });
-        if (alreadyLogged) continue;
+        if (alreadyLogged) {
+          console.log(`🔁 Already logged: ${titleRaw}`);
+          continue;
+        }
   
-        // ✅ Create log
+        // ✅ Create log with tmdbId
         await Log.create({
           user: req.user._id,
           movie: movie._id,
+          tmdbId: movie.tmdbId, // ✅ KEY FIX
           title: movie.title,
           poster: movie.posterPath,
           watchedAt: new Date(date),
@@ -93,7 +98,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
           importedFrom: "letterboxd",
         });
   
-        console.log(`✅ Imported: ${titleRaw}`);
+        console.log(`✅ Imported diary: ${titleRaw}`);
         count++;
       }
   
@@ -103,6 +108,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
       res.status(500).json({ message: "Import failed", error: err.message });
     }
   });
+  
   
 
   router.post("/watchlist", protect, upload.single("file"), async (req, res) => {
@@ -148,9 +154,11 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
           continue;
         }
   
-        // ✅ Push to watchlist
+        // ✅ Push to watchlist (and optionally store preview data)
         user.watchlist.push({
           tmdbId: movieData.id,
+          title: movieData.title,               // ✅ optional but helpful
+          posterPath: movieData.poster_path,   // ✅ optional but helpful
           addedAt: new Date(),
         });
   
@@ -165,6 +173,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
       res.status(500).json({ message: "Import failed", error: err.message });
     }
   });
+  
   
 
   router.post("/ratings", protect, upload.single("file"), async (req, res) => {
@@ -209,6 +218,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
             posterPath: movieData.poster_path,
             releaseDate: movieData.release_date,
           });
+          console.log("🎯 Created new movie:", movie.title);
         }
   
         // 🔁 Skip duplicate import
@@ -216,22 +226,23 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
           user: req.user._id,
           movie: movie._id,
           importedFrom: "letterboxd",
-          rating: { $exists: true },
+          rating: rating,
         });
   
         if (existing) {
-          console.log(`🔁 Already logged: ${titleRaw}`);
+          console.log(`🔁 Already logged rating for: ${titleRaw}`);
           continue;
         }
   
-        // ✅ Create log
+        // ✅ Create rating log
         await Log.create({
           user: req.user._id,
           movie: movie._id,
-          rating,
-          watchedAt: new Date(), // Default timestamp
+          tmdbId: movie.tmdbId, // ✅ Important for frontend
           title: movie.title,
           poster: movie.posterPath,
+          rating,
+          watchedAt: new Date(), // Optional default fallback
           importedFrom: "letterboxd",
         });
   
@@ -245,6 +256,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
       res.status(500).json({ message: "Import failed", error: err.message });
     }
   });
+  
   
   router.post("/reviews", protect, upload.single("file"), async (req, res) => {
     try {
@@ -289,6 +301,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
             posterPath: movieData.poster_path,
             releaseDate: movieData.release_date,
           });
+          console.log("🎯 Created new movie:", movie.title);
         }
   
         // 🔁 Avoid duplicates
@@ -308,11 +321,12 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
         await Log.create({
           user: req.user._id,
           movie: movie._id,
+          tmdbId: movie.tmdbId, // ✅ Added for frontend support
           title: movie.title,
           poster: movie.posterPath,
           review,
           rating,
-          watchedAt: new Date(),
+          watchedAt: new Date(), // fallback
           importedFrom: "letterboxd",
         });
   
@@ -326,5 +340,6 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
       res.status(500).json({ message: "Import failed", error: err.message });
     }
   });
+  
   
 module.exports = router;

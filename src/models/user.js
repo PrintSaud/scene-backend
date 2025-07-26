@@ -13,13 +13,19 @@ const UserSchema = new mongoose.Schema({
   },
   bio: { type: String },
 
-  watchlist: [{
-    tmdbId: { type: Number, required: true },
-    addedAt: { type: Date, default: Date.now }
-  }],
+  watchlist: [
+    {
+      tmdbId: { type: Number, index: true },  // ✅ add index
+      title: String,
+      posterPath: String,
+      addedAt: Date,
+    }
+  ],
+  
+  
   
   favorites: { type: [Number], default: [] },
-  
+
   favoriteFilms: {
     type: [
       {
