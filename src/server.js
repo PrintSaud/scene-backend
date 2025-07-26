@@ -8,6 +8,9 @@ require("dotenv").config();
 mongoose.set('debug', true);
 
 console.log("🧪 ENV CHECK — DB_URI:", process.env.DB_URI);
+console.log("🧪 ENV CHECK — JWT_SECRET:", process.env.JWT_SECRET);
+console.log("🧪 ENV CHECK — TMDB_KEY:", process.env.TMDB_API_KEY);
+
 
 const app = express();
 
@@ -119,11 +122,8 @@ io.on("connection", (socket) => {
 });
 
 // 6️⃣ Start server
-const PORT = process.env.PORT;
-if (!PORT) {
-  console.error("❌ No PORT provided by Railway. Exiting...");
-  process.exit(1);
-}
+const PORT = process.env.PORT || 5000;
+
 
 server.listen(PORT, () => {
   console.log(`🚀 Server + Socket.IO running on port ${PORT}`);
