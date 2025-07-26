@@ -707,7 +707,27 @@ router.get('/user/:userId', protect, async (req, res) => {
         let movieRuntime = null;
         let movieReleaseDate = null;
 
-        const movieId = log.movie?.id || log.movie;
+        const rawMovie = log.movie;
+
+        // 🔒 Skip logs with broken movie references
+        if (
+          !rawMovie ||
+          (!rawMovie._id && !rawMovie.id && typeof rawMovie !== "number" && typeof rawMovie !== "string")
+        ) {
+          console.warn("🚫 Skipping log with invalid movie reference:", log._id);
+          return null;
+        }
+
+        // Extract TMDB ID safely
+        const movieId =
+          typeof rawMovie === "object"
+            ? rawMovie.id || rawMovie._id?.toString()
+            : rawMovie;
+
+        if (!movieId || isNaN(movieId)) {
+          console.warn("🚫 Skipping log due to NaN movieId:", log._id);
+          return null;
+        }
 
         try {
           const customPoster = await CustomPoster.findOne({
@@ -726,7 +746,7 @@ router.get('/user/:userId', protect, async (req, res) => {
           console.warn("❌ Failed to fetch custom poster:", err.message);
         }
 
-        // TMDB fallback
+        // 🔁 TMDB fallback
         if (!posterUrl && movieId && TMDB_API_KEY) {
           try {
             const tmdbRes = await axios.get(
@@ -755,7 +775,7 @@ router.get('/user/:userId', protect, async (req, res) => {
       })
     );
 
-    res.json(logsWithDetails);
+    res.json(logsWithDetails.filter(Boolean)); // ❄️ Remove nulls
   } catch (err) {
     console.error("🔥 Server crash in /api/logs/user/:userId:", err);
     res.status(500).json({ message: 'Failed to fetch user logs', error: err.message });
