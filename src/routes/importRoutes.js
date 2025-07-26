@@ -318,17 +318,18 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
         }
   
         // ✅ Create review log
-        await Log.create({
-          user: req.user._id,
-          movie: movie._id,
-          tmdbId: movie.tmdbId, // ✅ Added for frontend support
-          title: movie.title,
-          poster: movie.posterPath,
-          review,
-          rating,
-          watchedAt: new Date(), // fallback
-          importedFrom: "letterboxd",
-        });
+// ✅ Create review log
+await Log.create({
+    user: req.user._id,
+    tmdbId: movie.tmdbId,        // ✅ REQUIRED
+    title: movie.title,
+    poster: movie.posterPath,
+    review,
+    rating,
+    watchedAt: new Date(),       // or row.Date if available
+    importedFrom: "letterboxd",  // optional tag
+  });
+  
   
         console.log(`✅ Imported review for: ${titleRaw}`);
         count++;
