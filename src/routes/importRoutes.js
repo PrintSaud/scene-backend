@@ -281,6 +281,8 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
   
         // 🔍 TMDB lookup
         const movieData = await findValidTMDBMatch(titleRaw, year);
+        await delay(200); // ⏳ Throttle to avoid TMDB rate limiting
+
         if (
           !movieData ||
           !movieData.id ||
