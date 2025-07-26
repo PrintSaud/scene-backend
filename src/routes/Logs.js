@@ -733,7 +733,7 @@ router.get('/user/:userId', protect, async (req, res) => {
 
     const uniqueLogsMap = new Map();
     logs.forEach((log) => {
-      const movieId = log.movie?.id || log.movie?.toString();
+      const movieId = log.movie?.id || log.movie?.toString() || log.tmdbId;
       if (movieId && !uniqueLogsMap.has(movieId)) {
         uniqueLogsMap.set(movieId, log);
       }
@@ -745,11 +745,10 @@ router.get('/user/:userId', protect, async (req, res) => {
       uniqueLogs.map(async (log) => {
         const rawMovie = log.movie;
         const movieId =
-          typeof rawMovie === "object" && rawMovie.id
-            ? rawMovie.id
-            : typeof rawMovie === "number"
-            ? rawMovie
-            : null;
+  (typeof rawMovie === "object" && rawMovie.id) ||
+  (typeof rawMovie === "number" && rawMovie) ||
+  log.tmdbId || null;
+
 
         if (!movieId || isNaN(movieId)) {
           console.warn(`🚫 Skipping log due to NaN movieId: ${log._id}`);
