@@ -36,3 +36,5 @@ async function deleteOldLogs() {
     mongoose.disconnect();
   }
 }
+
+module.exports = router;
