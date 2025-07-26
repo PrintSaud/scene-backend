@@ -122,7 +122,9 @@ io.on("connection", (socket) => {
 });
 
 // 6️⃣ Start server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8080;
+console.log(`🚀 Server + Socket.IO running on port ${PORT}`);
+
 
 
 server.listen(PORT, () => {
