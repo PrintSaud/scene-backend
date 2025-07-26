@@ -230,8 +230,16 @@ router.get('/:logId', async (req, res) => {
 
     const rewatchCount = await Log.countDocuments({
       user: log.user,
-      movie: log.movie
+      tmdbId: log.tmdbId,
+      rewatch: true,
     });
+    
+    const totalWatches = await Log.countDocuments({
+      user: log.user,
+      tmdbId: log.tmdbId,
+    });
+    
+    
     
     res.json({
       _id: log._id,
