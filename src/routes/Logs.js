@@ -128,6 +128,33 @@ router.get('/:logId/replies', async (req, res) => {
   }
 });
 
+// ✅ Add this FIRST — before router.get("/:logId")
+router.get("/debug", protect, async (req, res) => {
+  try {
+    const logs = await Log.find({ user: req.user._id });
+    console.log("📦 Total logs:", logs.length);
+
+    logs.forEach((log, i) => {
+      const movieField = log.movie;
+      const isValid = typeof movieField === "number" && !isNaN(movieField);
+      console.log(
+        `#${i + 1} Movie Field:`,
+        movieField,
+        "| Type:",
+        typeof movieField,
+        "| Valid Number:",
+        isValid
+      );
+    });
+
+    res.json({ message: "✅ Check terminal logs", totalLogs: logs.length });
+  } catch (err) {
+    console.error("❌ Debug failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 router.get('/:logId', async (req, res) => {
   try {
@@ -880,21 +907,6 @@ router.get('/filter/:filterType', protect, async (req, res) => {
   }
 });
 
-// 🚨 TEMPORARY cleanup route
-// 🧼 TEMP CLEANUP ROUTE — Delete logs before July 3, 2025
-router.delete("/debug/delete-old-logs", async (req, res) => {
-  try {
-    const result = await Log.deleteMany({
-      user: "68666f7a7b759477f069c7af",
-      createdAt: { $lt: new Date("2025-07-03T00:00:00Z") },
-    });
-
-    res.json({ message: `✅ Deleted ${result.deletedCount} old logs.` });
-  } catch (err) {
-    console.error("❌ Cleanup failed:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
-  }
-});
 
 
 
