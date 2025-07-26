@@ -625,13 +625,29 @@ router.get('/feed/:userId', async (req, res) => {
 
     const logsWithDetails = await Promise.all(
       logs.map(async (log) => {
-        let posterUrl = null;
-        const movieId = log.movie?.id || log.movie;
+        let movieId;
 
-        // 🔥 Scope poster lookup correctly by userId + movieId:
+        // ✅ Guard: properly extract numeric TMDB movie ID
+        if (typeof log.movie === "object" && log.movie?.id) {
+          movieId = log.movie.id;
+        } else if (typeof log.movie === "string") {
+          console.warn("⚠️ Skipping log with string movie ID:", log.movie);
+          return null;
+        } else {
+          movieId = log.movie;
+        }
+
+        if (!movieId || isNaN(Number(movieId))) {
+          console.warn("⚠️ Skipping log with invalid movieId:", log._id);
+          return null;
+        }
+
+        let posterUrl = "/default-poster.jpg";
+
+        // ✅ Lookup custom poster
         const customPoster = await CustomPoster.findOne({
           userId: log.user._id,
-          movieId: Number(movieId)
+          movieId: Number(movieId),
         });
 
         if (customPoster) {
@@ -639,24 +655,26 @@ router.get('/feed/:userId', async (req, res) => {
         } else if (log.movie && log.movie.poster_path) {
           posterUrl = `${TMDB_IMG}${log.movie.poster_path}`;
         } else if (log.poster) {
-          posterUrl = log.poster.startsWith("http") ? log.poster : `${TMDB_IMG}${log.poster}`;
-        } else {
-          posterUrl = "/default-poster.jpg";
+          posterUrl =
+            typeof log.poster === "string" && log.poster.startsWith("http")
+              ? log.poster
+              : `${TMDB_IMG}${log.poster}`;
         }
 
         return {
           ...log.toObject(),
-          posterOverride: posterUrl
+          posterOverride: posterUrl,
         };
       })
     );
 
-    res.json(logsWithDetails);
+    res.json(logsWithDetails.filter(Boolean)); // ✅ Remove nulls
   } catch (err) {
     console.error("🔥 Error fetching feed:", err);
     res.status(500).json({ message: "Failed to fetch feed" });
   }
 });
+
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
 router.patch('/:logId/backdrop', expressJson, protect, async (req, res) => {
