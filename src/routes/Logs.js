@@ -254,7 +254,8 @@ router.get('/:logId', async (req, res) => {
       tmdbId: log.tmdbId,
     });
     
-    
+    console.log("🎯 FULL LOG DATA:", log); // ✅ Add this line temporarily
+
     
     res.json({
       _id: log._id,
