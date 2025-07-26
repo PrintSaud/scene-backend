@@ -685,49 +685,40 @@ router.delete("/:logId", protect, async (req, res) => {
 router.get('/user/:userId', protect, async (req, res) => {
   try {
     const profileUserId = req.params.userId;
-    const viewerId = req.user._id.toString(); // ✅ Needed for poster override
+    const viewerId = req.user._id.toString();
 
     const logs = await Log.find({ user: profileUserId })
       .populate('user', 'username avatar')
       .sort({ createdAt: -1 });
 
-    // 🔥 Deduplicate by movie
     const uniqueLogsMap = new Map();
     logs.forEach((log) => {
-      const movieId = log.movie?.toString();
+      const movieId = log.movie?.id || log.movie?.toString();
       if (movieId && !uniqueLogsMap.has(movieId)) {
         uniqueLogsMap.set(movieId, log);
       }
     });
+
     const uniqueLogs = Array.from(uniqueLogsMap.values());
 
     const logsWithDetails = await Promise.all(
       uniqueLogs.map(async (log) => {
+        const rawMovie = log.movie;
+        const movieId =
+          typeof rawMovie === "object" && rawMovie.id
+            ? rawMovie.id
+            : typeof rawMovie === "number"
+            ? rawMovie
+            : null;
+
+        if (!movieId || isNaN(movieId)) {
+          console.warn(`🚫 Skipping log due to NaN movieId: ${log._id}`);
+          return null;
+        }
+
         let posterUrl = null;
         let movieRuntime = null;
         let movieReleaseDate = null;
-
-        const rawMovie = log.movie;
-
-        // 🔒 Skip logs with broken movie references
-        if (
-          !rawMovie ||
-          (!rawMovie._id && !rawMovie.id && typeof rawMovie !== "number" && typeof rawMovie !== "string")
-        ) {
-          console.warn("🚫 Skipping log with invalid movie reference:", log._id);
-          return null;
-        }
-
-        // Extract TMDB ID safely
-        const movieId =
-          typeof rawMovie === "object"
-            ? rawMovie.id || rawMovie._id?.toString()
-            : rawMovie;
-
-        if (!movieId || isNaN(movieId)) {
-          console.warn("🚫 Skipping log due to NaN movieId:", log._id);
-          return null;
-        }
 
         try {
           const customPoster = await CustomPoster.findOne({
@@ -746,8 +737,7 @@ router.get('/user/:userId', protect, async (req, res) => {
           console.warn("❌ Failed to fetch custom poster:", err.message);
         }
 
-        // 🔁 TMDB fallback
-        if (!posterUrl && movieId && TMDB_API_KEY) {
+        if (!posterUrl && TMDB_API_KEY) {
           try {
             const tmdbRes = await axios.get(
               `https://api.themoviedb.org/3/movie/${movieId}?api_key=${TMDB_API_KEY}`
@@ -775,7 +765,8 @@ router.get('/user/:userId', protect, async (req, res) => {
       })
     );
 
-    res.json(logsWithDetails.filter(Boolean)); // ❄️ Remove nulls
+    const validLogs = logsWithDetails.filter((log) => log !== null);
+    res.json(validLogs);
   } catch (err) {
     console.error("🔥 Server crash in /api/logs/user/:userId:", err);
     res.status(500).json({ message: 'Failed to fetch user logs', error: err.message });
