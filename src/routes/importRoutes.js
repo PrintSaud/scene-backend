@@ -11,6 +11,8 @@ const { findValidTMDBMatch } = require("../utils/tmdbUtils");
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
+// 🧠 Small delay helper to throttle requests
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const titlesMatch = (tmdbTitle, inputTitle) => {
     const normalize = (str) =>
@@ -133,6 +135,7 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
   
         // 🔍 TMDB search
         const movieData = await findValidTMDBMatch(titleRaw, year);
+        
         if (
           !movieData ||
           !movieData.id ||
@@ -198,6 +201,8 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
   
         // 🔍 Search TMDB
         const movieData = await findValidTMDBMatch(titleRaw, year);
+        await delay(200);
+
         if (
           !movieData ||
           !movieData.id ||
