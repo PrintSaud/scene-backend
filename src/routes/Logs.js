@@ -16,6 +16,8 @@ const DEFAULT_BACKDROP = "/default-backdrop.jpg";
 const DEFAULT_AVATAR = "/default-avatar.jpg";
 const Notification = require('../models/notification');
 const expressJson = express.json();  // ⭐️ add this line
+const Movie = require("../models/movieModel");
+
 
 
 
