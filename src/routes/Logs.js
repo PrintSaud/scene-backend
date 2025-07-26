@@ -174,31 +174,33 @@ router.get('/:logId', async (req, res) => {
     let movieTitle = "Untitled";
     let tmdbPosterPath = null;
 
-    if (log.movie && TMDB_API_KEY) {
+    // ✅ Correct way: always use tmdbId (not log.movie)
+    const tmdbId = log.tmdbId;
+
+    if (tmdbId && TMDB_API_KEY) {
       try {
-        const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movie}?api_key=${TMDB_API_KEY}`);
-        console.log("🎬 TMDB movie response:", tmdbRes.data); // 🧪 Log full TMDB data
+        const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}`);
+        console.log("🎬 TMDB movie response:", tmdbRes.data);
         backdrop_path = tmdbRes.data.backdrop_path;
         movieTitle = tmdbRes.data.title;
         tmdbPosterPath = tmdbRes.data.poster_path;
 
-        // 🛠️ Optional fallback: Try grabbing backdrop from /images if not found
         if (!backdrop_path) {
-          console.log("⚠️ No backdrop_path found in movie — trying fallback /images");
-          const fallbackRes = await axios.get(`https://api.themoviedb.org/3/movie/${log.movie}/images?api_key=${TMDB_API_KEY}`);
+          const fallbackRes = await axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/images?api_key=${TMDB_API_KEY}`);
           backdrop_path = fallbackRes.data.backdrops?.[0]?.file_path || null;
           console.log("🧩 Fallback backdrop_path:", backdrop_path);
         }
       } catch (err) {
-        console.warn(`⚠️ Failed to fetch TMDB details for movieId=${log.movie}: ${err.message}`);
+        console.warn(`⚠️ Failed to fetch TMDB for tmdbId=${tmdbId}: ${err.message}`);
       }
     }
 
+    // ✅ Poster logic
     let poster = DEFAULT_POSTER;
 
     const customPoster = await CustomPoster.findOne({
       userId: log.user._id,
-      movieId: log.movie
+      movieId: tmdbId
     });
 
     if (customPoster) {
@@ -213,7 +215,7 @@ router.get('/:logId', async (req, res) => {
       ? `${TMDB_BACKDROP}${backdrop_path}`
       : DEFAULT_BACKDROP;
 
-    console.log("✅ Final backdrop URL sent to frontend:", backdrop); // 🔍 SHOW THE FINAL ONE
+    console.log("✅ Final backdrop URL sent to frontend:", backdrop);
 
     const likes = log.likes || [];
 
@@ -224,7 +226,7 @@ router.get('/:logId', async (req, res) => {
 
         if (r.user) {
           replyUser = await User.findById(r.user).select('username avatar');
-          const userLog = await Log.findOne({ user: replyUser?._id, movie: log.movie });
+          const userLog = await Log.findOne({ user: replyUser?._id, tmdbId });
           if (userLog) ratingForThisMovie = userLog.rating || null;
         }
 
@@ -248,27 +250,24 @@ router.get('/:logId', async (req, res) => {
       tmdbId: log.tmdbId,
       rewatch: true,
     });
-    
+
     const totalWatches = await Log.countDocuments({
       user: log.user,
       tmdbId: log.tmdbId,
     });
-    
 
-
-    
     res.json({
       _id: log._id,
       user: log.user || null,
       movie: {
-        id: log.movie || null,
+        id: log.tmdbId || null,
         title: movieTitle,
         backdrop_path: backdrop_path || null,
-        poster: poster
+        poster
       },
       poster,
       posterOverride: poster,
-      backdrop, // full URL (for fallback or older clients)
+      backdrop,
       customBackdrop: log.customBackdrop || "",
       review: log.review || "",
       rating: log.rating || 0,
@@ -278,19 +277,15 @@ router.get('/:logId', async (req, res) => {
       gif: log.gif || null,
       replies,
       createdAt: log.createdAt,
-    
-      // ✅ ADD THIS:
-      reviewBackdrop: backdrop_path || null, // raw path like "/9PRsxxx.jpg"
+      reviewBackdrop: backdrop_path || null
     });
-    
-    
-    
 
   } catch (err) {
     console.error("🔥 Error in GET /api/logs/:logId:", err);
     res.status(500).json({ message: "Server error in /api/logs/:logId" });
   }
 });
+
 
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
   const { text, gif, externalImage, parentComment } = req.body;
