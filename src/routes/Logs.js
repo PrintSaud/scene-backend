@@ -418,12 +418,13 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
 // Popular Logs
 router.get('/movie/:id/popular', protect, async (req, res) => {
   try {
-    const logs = await Log.find({ movieId: req.params.id, review: { $exists: true } })
+    const logs = await Log.find({ tmdbId: parseInt(req.params.id), review: { $exists: true } })
       .populate('user', 'username avatar')
       .sort({ createdAt: -1 })
       .limit(10);
     res.json(logs);
   } catch (err) {
+    console.error("❌ Popular logs fetch error:", err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -433,7 +434,7 @@ router.get('/movie/:id/friends', protect, async (req, res) => {
   try {
     const friends = req.user.following || [];
     const logs = await Log.find({
-      movieId: req.params.id,
+      tmdbId: parseInt(req.params.id),
       user: { $in: friends },
     })
       .populate('user', 'username avatar')
@@ -441,9 +442,11 @@ router.get('/movie/:id/friends', protect, async (req, res) => {
 
     res.json(logs);
   } catch (err) {
+    console.error("❌ Friend logs fetch error:", err);
     res.status(500).json({ message: err.message });
   }
 });
+
 
 // POST /api/logs/full → Full-featured log (text, rating, gif, image, etc.)
 router.post('/full', protect, upload.single('image'), async (req, res) => {
@@ -851,20 +854,26 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
   }
 });
 
-
 router.get('/user/:userId/movie/:movieId', async (req, res) => {
   try {
+    const userId = req.params.userId;
+    const tmdbId = parseInt(req.params.movieId);
+    if (!userId || isNaN(tmdbId)) {
+      return res.status(400).json({ message: "Invalid user or movie ID" });
+    }
+
     const logs = await Log.find({
-      user: req.params.userId,
-      movie: req.params.movieId,
+      user: userId,
+      tmdbId: tmdbId,
     }).sort({ createdAt: -1 });
 
     res.json(logs);
   } catch (err) {
-    console.error("🔥 Failed to fetch logs for user/movie:", err);
+    console.error("🔥 Failed to fetch logs for user/movie:", err.message);
     res.status(500).json({ message: "Failed to fetch logs for user/movie" });
   }
 });
+
 
 
 // ✅ TEMP TEST ROUTE — check user field type
