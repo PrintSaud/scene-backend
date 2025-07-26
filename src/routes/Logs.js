@@ -745,10 +745,9 @@ router.get('/user/:userId', protect, async (req, res) => {
       uniqueLogs.map(async (log) => {
         const rawMovie = log.movie;
         const movieId =
-  (typeof rawMovie === "object" && rawMovie.id) ||
-  (typeof rawMovie === "number" && rawMovie) ||
-  log.tmdbId || null;
-
+          (typeof rawMovie === "object" && rawMovie.id) ||
+          (typeof rawMovie === "number" && rawMovie) ||
+          log.tmdbId || null;
 
         if (!movieId || isNaN(movieId)) {
           console.warn(`🚫 Skipping log due to NaN movieId: ${log._id}`);
@@ -811,6 +810,7 @@ router.get('/user/:userId', protect, async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch user logs', error: err.message });
   }
 });
+
 
 
 

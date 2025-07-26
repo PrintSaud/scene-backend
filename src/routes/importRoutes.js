@@ -263,31 +263,41 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
   });
   
   
+  const Papa = require("papaparse");
+  const { findValidTMDBMatch } = require("../utils/tmdb"); // Assuming you have this utility for searching movies
+  const Movie = require("../models/movie"); // Movie model
+  const Log = require("../models/log"); // Log model
+  
   router.post("/reviews", protect, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
   
+      // Read the CSV file and parse it
       const csv = req.file.buffer.toString("utf-8");
       const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
   
       let count = 0;
   
+      // Loop through each row and process it
       for (const row of data) {
         const titleRaw = row.Name?.trim();
         const year = parseInt(row.Year);
         const review = row.Review?.trim();
         const rating = parseFloat(row.Rating) || 0;
   
+        // Log the parsed data for debugging
+        console.log(`Processing movie: ${titleRaw}, Review: ${review}, Rating: ${rating}`);
+  
         // ❌ Skip invalid data
-        if (!titleRaw || !review || isNaN(year)) {
-          console.warn("⚠️ Skipping row due to missing title/review/year:", row);
+        if (!titleRaw || !review || !review.trim() || isNaN(year)) {
+          console.warn("⚠️ Skipping row due to missing or invalid data:", row);
           continue;
         }
   
         // 🔍 TMDB lookup
         const movieData = await findValidTMDBMatch(titleRaw, year);
         await delay(200); // ⏳ Throttle to avoid TMDB rate limiting
-
+  
         if (
           !movieData ||
           !movieData.id ||
@@ -325,19 +335,17 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
         }
   
         // ✅ Create review log
-        await Log.create({
-            user: req.user._id,
-            movie: movie._id,            // ✅ required for schema
-            tmdbId: movie.tmdbId,        // ✅ used for frontend
-            title: movie.title,
-            poster: movie.posterPath,
-            review,
-            rating,
-            watchedAt: new Date(),
-            importedFrom: "letterboxd",
-          });
-          
-  
+        const newLog = await Log.create({
+          user: req.user._id,
+          movie: movie._id,            // ✅ required for schema
+          tmdbId: movie.tmdbId,        // ✅ used for frontend
+          title: movie.title,
+          poster: movie.posterPath,
+          review,
+          rating,
+          watchedAt: new Date(),
+          importedFrom: "letterboxd",
+        });
   
         console.log(`✅ Imported review for: ${titleRaw}`);
         count++;
@@ -349,6 +357,10 @@ router.post("/diary", protect, upload.single("file"), async (req, res) => {
       res.status(500).json({ message: "Import failed", error: err.message });
     }
   });
+  
+
+  
+  
   
   
 module.exports = router;
