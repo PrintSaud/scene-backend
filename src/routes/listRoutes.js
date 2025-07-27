@@ -332,12 +332,16 @@ router.post('/:id/share', protect, async (req, res) => {
 // 🔍 Search Lists by title
 router.get("/search", protect, async (req, res) => {
   try {
-    const query = req.query.query?.trim();
+    const query = req.query.q?.trim(); // 🔄 changed from req.query.query
+
     if (!query) return res.status(400).json({ message: "Query is required" });
 
     const regex = new RegExp(query, "i");
 
-    const lists = await List.find({ title: regex })
+    const lists = await List.find({
+      title: regex,
+      isPrivate: false, // 🔒 Only public lists
+    })
       .limit(20)
       .populate("user", "username avatar");
 
@@ -347,5 +351,6 @@ router.get("/search", protect, async (req, res) => {
     res.status(500).json({ message: "❌ Failed to fetch list", error: err });
   }
 });
+
 
 module.exports = router;
