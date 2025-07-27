@@ -107,12 +107,12 @@ router.get("/user/:userId", protectOptional, async (req, res) => {
 });
 
 // 🔍 Search Lists by title
-// 🔍 Search Lists by title
 router.get("/search", protect, async (req, res) => {
-  try {
-    const query = req.query.q?.trim(); // ✅ match frontend (?q=)
+  console.log("🌐 /api/lists/search route HIT");
 
-    console.log("🔎 Incoming search query:", query); // 💬 Log incoming query
+  try {
+    const query = req.query.q?.trim();
+    console.log("🔎 Incoming search query:", query);
 
     if (!query) {
       console.warn("⚠️ No query provided in search request.");
@@ -136,6 +136,7 @@ router.get("/search", protect, async (req, res) => {
     res.status(500).json({ message: "❌ Failed to fetch list", error: err });
   }
 });
+
 
 
 // ✅ GET /api/lists/:id → get a list, show custom posters scoped to viewer
