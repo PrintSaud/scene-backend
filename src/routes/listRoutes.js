@@ -332,7 +332,7 @@ router.post('/:id/share', protect, async (req, res) => {
 // 🔍 Search Lists by title
 router.get("/search", protect, async (req, res) => {
   try {
-    const query = req.query.q?.trim(); // 🔄 changed from req.query.query
+    const query = req.query.query?.trim(); // ✅ changed from q → query
 
     if (!query) return res.status(400).json({ message: "Query is required" });
 
@@ -340,7 +340,7 @@ router.get("/search", protect, async (req, res) => {
 
     const lists = await List.find({
       title: regex,
-      isPrivate: false, // 🔒 Only public lists
+      isPrivate: false,
     })
       .limit(20)
       .populate("user", "username avatar");
