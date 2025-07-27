@@ -109,7 +109,8 @@ router.get("/user/:userId", protectOptional, async (req, res) => {
 // 🔍 Search Lists by title
 router.get("/search", protect, async (req, res) => {
   try {
-    const query = req.query.query?.trim(); // ✅ changed from q → query
+    const query = req.query.q?.trim(); // ✅ match the frontend: ?q=searchTerm
+
 
     if (!query) return res.status(400).json({ message: "Query is required" });
 
