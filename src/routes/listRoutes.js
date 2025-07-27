@@ -107,12 +107,17 @@ router.get("/user/:userId", protectOptional, async (req, res) => {
 });
 
 // 🔍 Search Lists by title
+// 🔍 Search Lists by title
 router.get("/search", protect, async (req, res) => {
   try {
-    const query = req.query.q?.trim(); // ✅ match the frontend: ?q=searchTerm
+    const query = req.query.q?.trim(); // ✅ match frontend (?q=)
 
+    console.log("🔎 Incoming search query:", query); // 💬 Log incoming query
 
-    if (!query) return res.status(400).json({ message: "Query is required" });
+    if (!query) {
+      console.warn("⚠️ No query provided in search request.");
+      return res.status(400).json({ message: "Query is required" });
+    }
 
     const regex = new RegExp(query, "i");
 
@@ -123,12 +128,15 @@ router.get("/search", protect, async (req, res) => {
       .limit(20)
       .populate("user", "username avatar");
 
+    console.log(`✅ Found ${lists.length} lists for query: "${query}"`);
+
     res.json(lists);
   } catch (err) {
     console.error("❌ List search error:", err);
     res.status(500).json({ message: "❌ Failed to fetch list", error: err });
   }
 });
+
 
 // ✅ GET /api/lists/:id → get a list, show custom posters scoped to viewer
 router.get("/:id", protect, async (req, res) => {
