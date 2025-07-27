@@ -638,7 +638,7 @@ router.get('/feed/:userId', async (req, res) => {
         }
 
         if (!movieId || isNaN(Number(movieId))) {
-          console.warn("⚠️ Skipping log with invalid movieId:", log._id);
+        //  console.warn("⚠️ Skipping log with invalid movieId:", log._id);
           return null;
         }
 
