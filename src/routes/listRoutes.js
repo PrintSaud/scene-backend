@@ -111,7 +111,7 @@ router.get("/search", protect, async (req, res) => {
   console.log("🌐 /api/lists/search route HIT");
 
   try {
-    const query = req.query.q?.trim();
+    const query = req.query.query?.trim(); // ✅ updated key
     console.log("🔎 Incoming search query:", query);
 
     if (!query) {
