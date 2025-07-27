@@ -106,6 +106,28 @@ router.get("/user/:userId", protectOptional, async (req, res) => {
   }
 });
 
+// 🔍 Search Lists by title
+router.get("/search", protect, async (req, res) => {
+  try {
+    const query = req.query.query?.trim(); // ✅ changed from q → query
+
+    if (!query) return res.status(400).json({ message: "Query is required" });
+
+    const regex = new RegExp(query, "i");
+
+    const lists = await List.find({
+      title: regex,
+      isPrivate: false,
+    })
+      .limit(20)
+      .populate("user", "username avatar");
+
+    res.json(lists);
+  } catch (err) {
+    console.error("❌ List search error:", err);
+    res.status(500).json({ message: "❌ Failed to fetch list", error: err });
+  }
+});
 
 // ✅ GET /api/lists/:id → get a list, show custom posters scoped to viewer
 router.get("/:id", protect, async (req, res) => {
@@ -329,28 +351,7 @@ router.post('/:id/share', protect, async (req, res) => {
   }
 });
 
-// 🔍 Search Lists by title
-router.get("/search", protect, async (req, res) => {
-  try {
-    const query = req.query.query?.trim(); // ✅ changed from q → query
 
-    if (!query) return res.status(400).json({ message: "Query is required" });
-
-    const regex = new RegExp(query, "i");
-
-    const lists = await List.find({
-      title: regex,
-      isPrivate: false,
-    })
-      .limit(20)
-      .populate("user", "username avatar");
-
-    res.json(lists);
-  } catch (err) {
-    console.error("❌ List search error:", err);
-    res.status(500).json({ message: "❌ Failed to fetch list", error: err });
-  }
-});
 
 
 module.exports = router;
