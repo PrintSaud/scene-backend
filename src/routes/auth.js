@@ -168,10 +168,8 @@ router.post("/reset-password", async (req, res) => {
       return res.status(401).json({ error: "Invalid or expired reset code." });
     }
 
-    // Hash the new password
-    const bcrypt = require("bcryptjs");
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(newPassword, salt);
+    // ✅ Just assign the new password directly — pre-save hook will hash it
+    user.password = newPassword;
 
     // Clear reset fields
     user.resetCode = undefined;
@@ -185,6 +183,7 @@ router.post("/reset-password", async (req, res) => {
     res.status(500).json({ error: "Something went wrong." });
   }
 });
+
 
 
 
