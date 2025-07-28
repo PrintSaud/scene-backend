@@ -114,4 +114,19 @@ router.delete("/:id", protect, async (req, res) => {
   }
 });
 
+// GET /api/notifications/unread/:userId
+router.get('/unread/:userId', async (req, res) => {
+  try {
+    const count = await Notification.countDocuments({
+      to: req.params.userId,
+      read: false,
+    });
+    res.json({ count });
+  } catch (err) {
+    console.error("❌ Failed to fetch unread count:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
 module.exports = router;
