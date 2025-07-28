@@ -22,10 +22,11 @@ app.use(
       "https://scene-frontend-production.up.railway.app",
     ],
     credentials: true,
-    methods: ["GET", "POST", "PATCH", "DELETE"],
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE"], // ✅ added PUT
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
 
 app.options("*", cors({
   origin: [
@@ -33,9 +34,10 @@ app.options("*", cors({
     "https://scene-frontend-production.up.railway.app",
   ],
   credentials: true,
-  methods: ["GET", "POST", "PATCH", "DELETE"],
+  methods: ["GET", "POST", "PATCH", "PUT", "DELETE"], // ✅ added PUT
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
+
 
 // 🔔 DO NOT register express.json() globally here!
 // app.use(express.json());
