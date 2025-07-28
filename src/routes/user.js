@@ -376,14 +376,15 @@ router.post("/:id/share", protect, async (req, res) => {
     await Promise.all(
       recipients.map(async (rid) => {
         await Notification.create({
-          type: "share-review",
-          message: "suggested you to see this review!",
+          type: "suggestion",
+          message: "suggested you to check out this review!",
           from: userId,
           to: rid,
           reviewId: log._id,
+          movieId: log.tmdbId || log.movie?.id, // ✅ critical
           read: false,
           createdAt: new Date(),
-        });
+        });        
       })
     );
 

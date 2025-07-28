@@ -225,15 +225,18 @@ router.post("/:id/like", protect, async (req, res) => {
       list.likes.push(userId);
 
       if (list.user && String(list.user._id) !== userId) {
-        await Notification.create({
-          type: "list_like", // ✅ Correct semantic type
-          message: "liked your list",
-          from: userId,
-          to: list.user._id,
-          listId: list._id,
-          read: false,
-          createdAt: new Date(),
-        });
+        const sender = await User.findById(userId);
+
+await Notification.create({
+  type: "list_like", // ✅ Specific and clear
+  message: `@${sender.username} liked your list!`, // ✅ Friendly text
+  from: sender._id,
+  to: list.user._id,
+  listId: list._id,
+  read: false,
+  createdAt: new Date(),
+});
+
       }
     }
 
