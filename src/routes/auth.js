@@ -101,6 +101,91 @@ router.post("/verify-email-code", async (req, res) => {
   }
 });
 
+// 📩 Forgot Password
+router.post("/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email is required." });
+
+  try {
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) return res.status(404).json({ error: "No user found with this email." });
+
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    user.resetCode = resetCode;
+    user.resetCodeExpires = Date.now() + 15 * 60 * 1000; // 15 mins
+    await user.save();
+
+    await sendEmail(
+      user.email,
+      "Reset your Scene password 🎬",
+      `Here’s your password reset code: ${resetCode}`
+    );
+
+    res.status(200).json({ message: "Reset code sent to your email." });
+  } catch (err) {
+    console.error("❌ Forgot password error:", err);
+    res.status(500).json({ error: "Something went wrong." });
+  }
+});
+
+// ✅ Verify reset code
+router.post("/verify-reset-code", async (req, res) => {
+  const { email, code } = req.body;
+
+  try {
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    if (
+      user.resetCode !== code ||
+      !user.resetCodeExpires ||
+      user.resetCodeExpires < new Date()
+    ) {
+      return res.status(401).json({ error: "Invalid or expired code." });
+    }
+
+    res.status(200).json({ message: "Code verified." });
+  } catch (err) {
+    console.error("❌ Verify code error:", err);
+    res.status(500).json({ error: "Something went wrong." });
+  }
+});
+
+// ✅ Reset password
+router.post("/reset-password", async (req, res) => {
+  const { email, code, newPassword } = req.body;
+
+  try {
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    if (
+      user.resetCode !== code ||
+      !user.resetCodeExpires ||
+      user.resetCodeExpires < new Date()
+    ) {
+      return res.status(401).json({ error: "Invalid or expired reset code." });
+    }
+
+    // Hash the new password
+    const bcrypt = require("bcryptjs");
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+
+    // Clear reset fields
+    user.resetCode = undefined;
+    user.resetCodeExpires = undefined;
+
+    await user.save();
+
+    res.status(200).json({ message: "Password has been reset successfully." });
+  } catch (err) {
+    console.error("❌ Reset password error:", err);
+    res.status(500).json({ error: "Something went wrong." });
+  }
+});
+
+
 
 // 🧠 Google OAuth
 router.post('/google', async (req, res) => {
