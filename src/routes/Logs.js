@@ -860,18 +860,18 @@ router.get('/user/:userId', protect, async (req, res) => {
   }
 });
 
-
-// POST /api/logs/:id/share → share a review with selected users
+// src/routes/logRoutes.js
 router.post("/:id/share", protect, async (req, res) => {
-  const { recipients } = req.body; // Array of user IDs
+  const { recipients } = req.body;
   const logId = req.params.id;
   const userId = req.user._id;
+
+  console.log("📤 SHARING REVIEW FIRED — reviewId:", logId); // 👈 add this
+  console.log("🔗 Recipients:", recipients);
 
   try {
     const log = await Log.findById(logId);
     if (!log) return res.status(404).json({ message: "Review not found" });
-
-    console.log("📤 Sharing review", logId, "with:", recipients);
 
     await Promise.all(
       recipients.map(async (rid) => {
@@ -886,7 +886,7 @@ router.post("/:id/share", protect, async (req, res) => {
           createdAt: new Date(),
         });
 
-        console.log("✅ Created share-review notif for", rid, "→", notif._id);
+        console.log("✅ Created share-review notif for", rid, "→", notif._id); // 👈
       })
     );
 
@@ -896,6 +896,8 @@ router.post("/:id/share", protect, async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+
 
 router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
   try {

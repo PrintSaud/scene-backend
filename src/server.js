@@ -87,7 +87,8 @@ app.use('/api/letterboxd', importRoutes); // ✅ add this
 
 
 // ⚡️ Important: Logs route without express.json(), so multer can parse multipart/form-data
-app.use("/api/logs", require("./routes/Logs"));
+app.use("/api/logs", express.json(), require("./routes/Logs")); // ✅ now JSON body works
+
 
 // 4️⃣ Health check
 app.get("/", (req, res) => {
