@@ -376,12 +376,12 @@ router.post("/:id/share", protect, async (req, res) => {
     await Promise.all(
       recipients.map(async (rid) => {
         await Notification.create({
-          type: "suggestion",
+          type: "share-review", // ✅ this must match frontend logic
           message: "suggested you to check out this review!",
           from: userId,
           to: rid,
           reviewId: log._id,
-          movieId: log.tmdbId || log.movie?.id, // ✅ critical
+          movieId: log.tmdbId || log.movie?.id, // optional: for fallback nav
           read: false,
           createdAt: new Date(),
         });        
@@ -394,6 +394,7 @@ router.post("/:id/share", protect, async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
 
 
 // ✅ Save recent GIF
