@@ -108,11 +108,9 @@ router.get("/user/:userId", protectOptional, async (req, res) => {
 
 // 🔍 Search Lists by title
 router.get("/search", protect, async (req, res) => {
-  console.log("🌐 /api/lists/search route HIT");
 
   try {
     const query = req.query.query?.trim(); // ✅ updated key
-    console.log("🔎 Incoming search query:", query);
 
     if (!query) {
       console.warn("⚠️ No query provided in search request.");
@@ -127,8 +125,6 @@ router.get("/search", protect, async (req, res) => {
     })
       .limit(20)
       .populate("user", "username avatar");
-
-    console.log(`✅ Found ${lists.length} lists for query: "${query}"`);
 
     res.json(lists);
   } catch (err) {
@@ -230,11 +226,11 @@ router.post("/:id/like", protect, async (req, res) => {
 
       if (list.user && String(list.user._id) !== userId) {
         await Notification.create({
-          type: "list_like",  // ✅ Consistent type for frontend `getActionText` if needed
-          message: "liked your list",  // ✅ Short clean consistent message
+          type: "list_like", // ✅ Correct semantic type
+          message: "liked your list",
           from: userId,
           to: list.user._id,
-          listId: list._id,  // ✅ Include listId for frontend navigation
+          listId: list._id,
           read: false,
           createdAt: new Date(),
         });
@@ -338,12 +334,12 @@ router.post('/:id/share', protect, async (req, res) => {
     const list = await List.findById(listId);
     if (!list) return res.status(404).json({ message: "List not found" });
 
-    const message = `shared a list with you`;  // ✅ Clean short message (no @username)
+    const message = `suggested you check out their list!`; // ✅ Friendly consistent text
 
     await Promise.all(
       recipients.map(async (rid) => {
         await Notification.create({
-          type: "share-list",
+          type: "share-list", // ✅ matches frontend case
           message,
           from: sender._id,
           to: rid,
@@ -360,6 +356,7 @@ router.post('/:id/share', protect, async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
 
 
 

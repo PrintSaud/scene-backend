@@ -335,6 +335,8 @@ router.get("/:id/following", async (req, res) => {
     res.status(500).json({ message: "❌ Failed to fetch following", error: err });
   }
 });
+
+
 router.post('/:id/suggest', async (req, res) => {
   const { friends, resourceType, resourceTitle } = req.body;
 
@@ -382,6 +384,7 @@ router.post('/:id/suggest', async (req, res) => {
 });
 
 // POST /api/users/:id/notify/share
+// POST /api/users/:id/notify/share
 router.post('/:id/notify/share', async (req, res) => {
   try {
     const { fromUserId, movieId } = req.body;
@@ -393,11 +396,11 @@ router.post('/:id/notify/share', async (req, res) => {
     if (!fromUser) return res.status(404).json({ message: "Sender not found" });
 
     await Notification.create({
-      type: "share-movie",  // ✅ Use explicit type matching your frontend check
-      message: "shared a movie with you",  // ✅ Short clean consistent message
+      type: "suggest_movie", // ✅ match frontend
+      message: "suggested you check out this film!", // ✅ polished
       from: fromUserId,
       to: recipient._id,
-      movieId,  // ✅ So frontend can navigate to `/movie/:movieId`
+      movieId,
       read: false,
       createdAt: new Date(),
     });
@@ -407,6 +410,38 @@ router.post('/:id/notify/share', async (req, res) => {
     res.status(500).json({ message: "❌ Failed to send notification", error: err.message });
   }
 });
+
+// POST /api/logs/:id/share → share a review with selected users
+router.post("/:id/share", protect, async (req, res) => {
+  const { recipients } = req.body; // Array of user IDs
+  const logId = req.params.id;
+  const userId = req.user._id;
+
+  try {
+    const log = await Log.findById(logId);
+    if (!log) return res.status(404).json({ message: "Review not found" });
+
+    await Promise.all(
+      recipients.map(async (rid) => {
+        await Notification.create({
+          type: "share-review",
+          message: "suggested you to see this review!",
+          from: userId,
+          to: rid,
+          reviewId: log._id,
+          read: false,
+          createdAt: new Date(),
+        });
+      })
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Failed to share review:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 
 // ✅ Save recent GIF
 router.post("/gif/recent", async (req, res) => {
