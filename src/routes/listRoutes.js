@@ -213,7 +213,7 @@ router.get("/:id", protect, async (req, res) => {
 // like
 router.post("/:id/like", protect, async (req, res) => {
   try {
-    const list = await List.findById(req.params.id).populate('user', 'username');
+    const list = await List.findById(req.params.id).populate('user', 'username avatar');
     if (!list) return res.status(404).json({ message: "List not found" });
 
     const userId = req.user._id.toString();
@@ -227,16 +227,26 @@ router.post("/:id/like", protect, async (req, res) => {
       if (list.user && String(list.user._id) !== userId) {
         const sender = await User.findById(userId);
 
-await Notification.create({
-  type: "list_like", // ✅ Specific and clear
-  message: `@${sender.username} liked your list!`, // ✅ Friendly text
-  from: sender._id,
-  to: list.user._id,
-  listId: list._id,
-  read: false,
-  createdAt: new Date(),
-});
+        const notif = await Notification.create({
+          type: "list_like",
+          message: `@${sender.username} liked your list!`,
+          from: sender._id,
+          to: list.user._id,
+          listId: list._id,
+          read: false,
+          createdAt: new Date(),
+        });
 
+        // ✅ Emit to recipient via socket
+        const io = req.app.get("io");
+        io.to(list.user._id.toString()).emit("notification", {
+          ...notif._doc,
+          from: {
+            _id: sender._id,
+            username: sender.username,
+            avatar: sender.avatar,
+          },
+        });
       }
     }
 
@@ -247,6 +257,7 @@ await Notification.create({
     res.status(500).json({ message: "Failed to like/unlike list", error: err.message });
   }
 });
+
 
 
 // ✅ Save / Unsave

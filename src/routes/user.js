@@ -54,7 +54,7 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
       user.following.push(req.params.targetId);
       targetUser.followers.push(req.params.userId);
 
-      await Notification.create({
+      const notif = await Notification.create({
         type: "follow",
         message: `@${user.username} just followed you`,
         from: user._id,
@@ -62,18 +62,33 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
         read: false,
         createdAt: new Date(),
       });
+
+      // ✅ Emit real-time follow notification
+      const io = req.app.get("io");
+      io.to(targetUser._id.toString()).emit("notification", {
+        ...notif._doc,
+        from: {
+          _id: user._id,
+          username: user.username,
+          avatar: user.avatar,
+        },
+      });
     }
 
     // ✅ Clean corrupted watchlist entries before save
-    user.watchlist = (user.watchlist || []).filter(item => item && typeof item === 'object' && typeof item.tmdbId === 'number');
-    targetUser.watchlist = (targetUser.watchlist || []).filter(item => item && typeof item === 'object' && typeof item.tmdbId === 'number');
+    user.watchlist = (user.watchlist || []).filter(
+      item => item && typeof item === 'object' && typeof item.tmdbId === 'number'
+    );
+    targetUser.watchlist = (targetUser.watchlist || []).filter(
+      item => item && typeof item === 'object' && typeof item.tmdbId === 'number'
+    );
 
     await user.save();
     await targetUser.save();
 
     res.status(200).json({
       following: !isFollowing,
-      message: isFollowing ? 'Unfollowed user' : 'Now following user'
+      message: isFollowing ? 'Unfollowed user' : 'Now following user',
     });
   } catch (err) {
     console.error("❌ Failed to toggle follow:", err);
@@ -347,7 +362,7 @@ router.post('/:id/notify/share', async (req, res) => {
     const fromUser = await User.findById(fromUserId);
     if (!fromUser) return res.status(404).json({ message: "Sender not found" });
 
-    await Notification.create({
+    const notif = await Notification.create({
       type: "suggest_movie", // ✅ match frontend
       message: "suggested you check out this film!", // ✅ polished
       from: fromUserId,
@@ -357,11 +372,23 @@ router.post('/:id/notify/share', async (req, res) => {
       createdAt: new Date(),
     });
 
+    // ✅ Real-time emit
+    const io = req.app.get("io");
+    io.to(recipient._id.toString()).emit("notification", {
+      ...notif._doc,
+      from: {
+        _id: fromUser._id,
+        username: fromUser.username,
+        avatar: fromUser.avatar,
+      },
+    });
+
     res.json({ message: "✅ Notification sent" });
   } catch (err) {
     res.status(500).json({ message: "❌ Failed to send notification", error: err.message });
   }
 });
+
 
 
 

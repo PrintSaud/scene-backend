@@ -37,15 +37,23 @@ router.post('/:logId/like', protect, async (req, res) => {
       log.likes.push(userId);
 
       if (String(log.user._id) !== String(userId)) {
-        await Notification.create({
+        const notif = await Notification.create({
           type: "review_like",
-          message: "liked your review",  // 🔥 Use short clean message without dynamic title
+          message: "liked your review",
           from: userId,
           to: log.user._id,
-          relatedId: log._id,  // Ensure this exists for frontend navigation
+          relatedId: log._id,
           read: false,
           createdAt: new Date(),
-        });        
+        });
+
+        // 📡 Real-time notif
+        const io = req.app.get("io");
+        const fromUser = await User.findById(userId).select("username avatar");
+        io.to(log.user._id.toString()).emit("notification", {
+          ...notif._doc,
+          from: fromUser,
+        });
       }
     }
 
@@ -56,6 +64,7 @@ router.post('/:logId/like', protect, async (req, res) => {
     res.status(500).json({ message: "Failed to like/unlike log" });
   }
 });
+
 
 
 router.get('/proxy/tmdb/images/:movieId', async (req, res) => {
@@ -316,31 +325,44 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     log.replies.push(newReply);
     await log.save();
 
-    // 🔔 Notify log owner if direct reply:
-    if (!parentComment && log.user.toString() !== req.user._id.toString()) {
-      await Notification.create({
+    const io = req.app.get("io");
+    const fromUser = await User.findById(req.user._id).select("username avatar");
+
+    // 🔔 Notify log owner if direct reply
+    if (!parentComment && String(log.user) !== String(req.user._id)) {
+      const notif = await Notification.create({
         type: 'reply',
-        message: 'replied to your review',  // ✅ Clean consistent message
+        message: 'replied to your review',
         from: req.user._id,
         to: log.user,
         relatedId: log._id,
         read: false,
         createdAt: new Date(),
       });
+
+      io.to(log.user.toString()).emit("notification", {
+        ...notif._doc,
+        from: fromUser,
+      });
     }
 
-    // 🔔 Notify parent comment owner if replying to a comment:
+    // 🔔 Notify parent comment owner if nested reply
     if (parentComment) {
       const parentReply = log.replies.id(parentComment);
-      if (parentReply && parentReply.user.toString() !== req.user._id.toString()) {
-        await Notification.create({
+      if (parentReply && String(parentReply.user) !== String(req.user._id)) {
+        const notif = await Notification.create({
           type: 'reply',
-          message: 'replied to your comment',  // ✅ Clean consistent message
+          message: 'replied to your comment',
           from: req.user._id,
           to: parentReply.user,
           relatedId: log._id,
           read: false,
           createdAt: new Date(),
+        });
+
+        io.to(parentReply.user.toString()).emit("notification", {
+          ...notif._doc,
+          from: fromUser,
         });
       }
     }
@@ -364,6 +386,10 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+
+
+
 // ✅ Review Like → Notify review owner
 router.post('/:logId/like', protect, async (req, res) => {
   try {
@@ -378,15 +404,29 @@ router.post('/:logId/like', protect, async (req, res) => {
     } else {
       log.likes.push(userId);
 
+      // 🔔 Only notify if liking someone else's review
       if (String(log.user._id) !== String(userId)) {
-        await Notification.create({
-          type: "review_like",  // ✅ Use consistent type
-          message: "liked your review",  // ✅ Clean consistent message
+        const fromUser = await User.findById(userId);
+        const io = req.app.get("io");
+
+        const notif = await Notification.create({
+          type: "review_like",
+          message: "liked your review",
           from: userId,
           to: log.user._id,
-          relatedId: log._id,  // ✅ So frontend can navigate correctly
+          relatedId: log._id,
           read: false,
           createdAt: new Date(),
+        });
+
+        // 📡 Emit real-time notification
+        io.to(log.user._id.toString()).emit("notification", {
+          ...notif._doc,
+          from: {
+            _id: fromUser._id,
+            username: fromUser.username,
+            avatar: fromUser.avatar,
+          },
         });
       }
     }
@@ -395,9 +435,10 @@ router.post('/:logId/like', protect, async (req, res) => {
     res.json({ liked: !liked });
   } catch (err) {
     console.error("❌ Like review failed:", err);
-    res.status(500).json({ message: "Failed to like/unlike review" });
+    res.status(500).json({ message: "Failed to like/unlike review", error: err.message });
   }
 });
+
 
 // ✅ Reply Like → Notify reply owner
 router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
@@ -416,15 +457,29 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
     } else {
       reply.likes.push(userId);
 
+      // 🔔 Send notification only if user is not liking their own reply
       if (String(reply.user) !== String(userId)) {
-        await Notification.create({
-          type: "reaction",  // ✅ Use consistent type for reply-like notifications
-          message: "liked your reply",  // ✅ Clean consistent message
+        const fromUser = await User.findById(userId);
+        const io = req.app.get("io");
+
+        const notif = await Notification.create({
+          type: "reaction",
+          message: "liked your reply",
           from: userId,
           to: reply.user,
-          relatedId: log._id,  // ✅ So frontend can navigate to /review/:relatedId
+          relatedId: log._id,
           read: false,
           createdAt: new Date(),
+        });
+
+        // 🚀 Emit real-time notification
+        io.to(reply.user.toString()).emit("notification", {
+          ...notif._doc,
+          from: {
+            _id: fromUser._id,
+            username: fromUser.username,
+            avatar: fromUser.avatar,
+          },
         });
       }
     }
@@ -433,9 +488,10 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
     res.json({ liked: !liked });
   } catch (err) {
     console.error("❌ Like reply failed:", err);
-    res.status(500).json({ message: "Failed to like/unlike reply" });
+    res.status(500).json({ message: "Failed to like/unlike reply", error: err.message });
   }
 });
+
 
 
 // Popular Logs
@@ -866,12 +922,15 @@ router.post("/:id/share", protect, async (req, res) => {
   const logId = req.params.id;
   const userId = req.user._id;
 
-  console.log("📤 SHARING REVIEW FIRED — reviewId:", logId); // 👈 add this
+  console.log("📤 SHARING REVIEW FIRED — reviewId:", logId);
   console.log("🔗 Recipients:", recipients);
 
   try {
     const log = await Log.findById(logId);
     if (!log) return res.status(404).json({ message: "Review not found" });
+
+    const fromUser = await User.findById(userId);
+    const io = req.app.get("io");
 
     await Promise.all(
       recipients.map(async (rid) => {
@@ -886,7 +945,17 @@ router.post("/:id/share", protect, async (req, res) => {
           createdAt: new Date(),
         });
 
-        console.log("✅ Created share-review notif for", rid, "→", notif._id); // 👈
+        console.log("✅ Created share-review notif for", rid, "→", notif._id);
+
+        // 🔔 Emit real-time notification
+        io.to(rid).emit("notification", {
+          ...notif._doc,
+          from: {
+            _id: fromUser._id,
+            username: fromUser.username,
+            avatar: fromUser.avatar,
+          },
+        });
       })
     );
 
@@ -896,6 +965,7 @@ router.post("/:id/share", protect, async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
 
 
 
@@ -916,14 +986,27 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
       reply.likes.push(userId);
 
       if (String(reply.user) !== String(userId)) {
-        await Notification.create({
+        const fromUser = await User.findById(userId);
+
+        const notif = await Notification.create({
           type: "reaction",  // ✅ Match frontend expectation exactly
           message: "liked your reply",  // ✅ Clean consistent message
           from: userId,
           to: reply.user,
-          relatedId: log._id,  // ✅ Ensure frontend can navigate to /review/:relatedId
+          relatedId: log._id, // ✅ For frontend routing: /review/:relatedId
           read: false,
           createdAt: new Date(),
+        });
+
+        // 🔔 Emit real-time notification
+        const io = req.app.get("io");
+        io.to(reply.user.toString()).emit("notification", {
+          ...notif._doc,
+          from: {
+            _id: fromUser._id,
+            username: fromUser.username,
+            avatar: fromUser.avatar,
+          },
         });
       }
     }
@@ -935,6 +1018,7 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
     res.status(500).json({ message: "Failed to like/unlike reply", error: err.message });
   }
 });
+
 
 router.get('/user/:userId/movie/:movieId', async (req, res) => {
   try {

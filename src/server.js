@@ -109,6 +109,9 @@ const io = new Server(server, {
   },
 });
 
+// 💥 Make io accessible in routes
+app.set("io", io);
+
 io.on("connection", (socket) => {
   console.log("⚡ New client connected:", socket.id);
 
@@ -121,6 +124,7 @@ io.on("connection", (socket) => {
     console.log("❌ Client disconnected:", socket.id);
   });
 });
+
 
 // 6️⃣ Start server
 const PORT = process.env.PORT || 8080;
