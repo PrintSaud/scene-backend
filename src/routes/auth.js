@@ -14,7 +14,7 @@ router.post('/register', async (req, res) => {
   try {
     let { name, username, email, password, avatar } = req.body;
 
-    username = username.trim().toLowerCase();
+    username = username.trim(); // ✅ FIXED HERE
     email = email.trim().toLowerCase();
 
     const existingUser = await User.findOne({ email });
@@ -33,7 +33,6 @@ router.post('/register', async (req, res) => {
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
       expiresIn: '30d',
     });
-    
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -51,6 +50,7 @@ router.post('/register', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 
 // 🧠 Google OAuth
