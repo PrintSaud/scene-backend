@@ -11,11 +11,12 @@ const saveImageFromUrl = require('../utils/saveImageFromUrl');
 const sendEmail = require("../utils/sendEmail");
 
 // 📥 Register
+
 router.post('/register', async (req, res) => {
   try {
     let { name, username, email, password, avatar } = req.body;
 
-    username = username.trim(); // ✅ FIXED HERE
+    username = username.trim();
     email = email.trim().toLowerCase();
 
     const existingUser = await User.findOne({ email });
@@ -28,15 +29,35 @@ router.post('/register', async (req, res) => {
     if (existingUsername)
       return res.status(400).json({ error: 'Username already taken' });
 
-    const user = new User({ name, username, email, password, avatar });
+    // ✅ Generate 6-digit code
+    const verificationCode = crypto.randomInt(100000, 999999).toString();
+
+    // ✅ Set code + expiration
+    const user = new User({
+      name,
+      username,
+      email,
+      password,
+      avatar,
+      verificationCode,
+      verificationCodeExpires: new Date(Date.now() + 10 * 60 * 1000) // 10 mins
+    });
+
     await user.save();
+
+    // ✅ Send email
+    await sendEmail(
+      email,
+      "Your Scene verification code",
+      `Welcome to Scene! 🎬\n\nHere’s your 6-digit verification code:\n\n${verificationCode}\n\nThis code expires in 10 minutes.`
+    );
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
       expiresIn: '30d',
     });
 
     res.status(201).json({
-      message: 'User registered successfully',
+      message: 'User registered successfully. Verification email sent.',
       token,
       user: {
         _id: user._id,
@@ -51,6 +72,7 @@ router.post('/register', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 router.post("/verify-email-code", async (req, res) => {
   const { email, code } = req.body;
