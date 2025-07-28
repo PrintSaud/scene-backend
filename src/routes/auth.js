@@ -153,6 +153,7 @@ router.post("/verify-reset-code", async (req, res) => {
 
 // ✅ Reset password
 router.post("/reset-password", async (req, res) => {
+  console.log("🔁 RESET PASSWORD HIT");
   const { email, code, newPassword } = req.body;
 
   try {
@@ -322,69 +323,6 @@ router.put('/profile', protect, async (req, res) => {
   }
 });
 
-// 🔐 Forgot Password Flow
-router.post('/forgot-password', async (req, res) => {
-  const { email } = req.body;
-
-  try {
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) return res.status(404).json({ error: 'Email not found' });
-
-    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const expires = new Date(Date.now() + 10 * 60 * 1000);
-
-    user.resetCode = resetCode;
-    user.resetCodeExpires = expires;
-    await user.save();
-
-    console.log(`📧 Reset code for ${email}: ${resetCode}`);
-    res.status(200).json({ message: 'Reset code sent to email' });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-router.post('/verify-reset-code', async (req, res) => {
-  const { email, code } = req.body;
-
-  try {
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user || !user.resetCode)
-      return res.status(400).json({ error: 'Invalid reset attempt' });
-
-    if (user.resetCode !== code)
-      return res.status(401).json({ error: 'Incorrect reset code' });
-
-    if (Date.now() > new Date(user.resetCodeExpires))
-      return res.status(410).json({ error: 'Reset code has expired' });
-
-    res.status(200).json({ message: 'Code verified successfully' });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-router.post('/reset-password', async (req, res) => {
-  const { email, code, newPassword } = req.body;
-
-  try {
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    if (user.resetCode !== code || new Date() > user.resetCodeExpires)
-      return res.status(401).json({ error: 'Invalid or expired reset code' });
-
-    user.password = newPassword;
-    user.resetCode = undefined;
-    user.resetCodeExpires = undefined;
-
-    await user.save();
-
-    res.status(200).json({ message: 'Password reset successful' });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
 
 // 🔍 Username + Email Availability Checks
 router.get('/check-username', async (req, res) => {
