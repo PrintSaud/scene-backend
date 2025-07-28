@@ -8,6 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const crypto = require('crypto');
 const saveImageFromUrl = require('../utils/saveImageFromUrl');
+const sendEmail = require("../utils/sendEmail");
 
 // 📥 Register
 router.post('/register', async (req, res) => {
@@ -51,6 +52,32 @@ router.post('/register', async (req, res) => {
   }
 });
 
+router.post("/verify-email-code", async (req, res) => {
+  const { email, code } = req.body;
+
+  try {
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (
+      user.verificationCode !== code ||
+      !user.verificationCodeExpires ||
+      user.verificationCodeExpires < new Date()
+    ) {
+      return res.status(401).json({ error: "Invalid or expired code" });
+    }
+
+    // Clear verification code
+    user.verificationCode = undefined;
+    user.verificationCodeExpires = undefined;
+    await user.save();
+
+    res.status(200).json({ message: "Email verified successfully" });
+  } catch (err) {
+    console.error("❌ Verification error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 
 // 🧠 Google OAuth

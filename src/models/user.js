@@ -77,6 +77,11 @@ const UserSchema = new mongoose.Schema({
   resetCode: { type: String, default: null },
   resetCodeExpires: { type: Date, default: null },
 
+  verificationCode: { type: String },
+verificationCodeExpires: { type: Date },
+
+  
+
   notifications: [
     {
       type: { type: String },
