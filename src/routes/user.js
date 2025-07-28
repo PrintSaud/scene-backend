@@ -363,41 +363,7 @@ router.post('/:id/notify/share', async (req, res) => {
   }
 });
 
-// POST /api/logs/:id/share → share a review with selected users
-router.post("/:id/share", protect, async (req, res) => {
-  const { recipients } = req.body; // Array of user IDs
-  const logId = req.params.id;
-  const userId = req.user._id;
 
-  try {
-    const log = await Log.findById(logId);
-    if (!log) return res.status(404).json({ message: "Review not found" });
-
-    console.log("📤 Sharing review", logId, "with:", recipients);
-
-    await Promise.all(
-      recipients.map(async (rid) => {
-        const notif = await Notification.create({
-          type: "share-review",
-          message: "suggested you to check out this review!",
-          from: userId,
-          to: rid,
-          reviewId: log._id,
-          movieId: log.tmdbId || log.movie?.id,
-          read: false,
-          createdAt: new Date(),
-        });
-
-        console.log("✅ Created share-review notif for", rid, "→", notif._id);
-      })
-    );
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("❌ Failed to share review:", err);
-    res.status(500).json({ message: "Internal server error" });
-  }
-});
 
 
 
