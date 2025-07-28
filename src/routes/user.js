@@ -336,54 +336,6 @@ router.get("/:id/following", async (req, res) => {
   }
 });
 
-
-router.post('/:id/suggest', async (req, res) => {
-  const { friends, resourceType, resourceTitle } = req.body;
-
-  if (!Array.isArray(friends) || friends.length === 0) {
-    return res.status(400).json({ message: "❌ No friends selected." });
-  }
-
-  if (!resourceTitle || typeof resourceTitle !== "string") {
-    return res.status(400).json({ message: "❌ resourceTitle is missing." });
-  }
-
-  try {
-    const sender = await User.findById(req.params.id);
-    if (!sender) return res.status(404).json({ message: "Sender not found" });
-
-    const labelMap = {
-      movie: "🎬 movie",
-      list: "📋 list",
-      log: "📝 review",
-      poll: "🗳️ poll"
-    };
-
-    const label = labelMap[resourceType] || "resource";
-    const message = `@${sender.username} suggested you check out ${label}: "${resourceTitle}"`;
-
-    for (let friendId of friends) {
-      const friend = await User.findById(friendId);
-      if (!friend) continue;
-
-      await Notification.create({
-        type: "suggestion",
-        message,
-        from: sender._id,
-        to: friend._id,
-        read: false,
-        createdAt: new Date()
-      });
-    }
-
-    res.status(200).json({ message: `✅ Suggested to ${friends.length} friend(s)!` });
-  } catch (err) {
-    console.error("❌ Suggestion failed:", err);
-    res.status(500).json({ message: "Something went wrong", error: err.message });
-  }
-});
-
-// POST /api/users/:id/notify/share
 // POST /api/users/:id/notify/share
 router.post('/:id/notify/share', async (req, res) => {
   try {
