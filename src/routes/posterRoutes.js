@@ -49,37 +49,29 @@ router.get("/user/:userId", async (req, res) => {
 });
 
 // ✅ PATCHED POST /api/posters/batch
-router.post("/batch", async (req, res) => {
-  console.log("🧪 POST /api/posters/batch body:", req.body); // <== ADD THIS
+router.post("/batch", protect, async (req, res) => {
   try {
-    const { userId, movieIds } = req.body;
+    const userId = req.user._id; // ✅ from token
+    const { movieIds } = req.body;
 
-    console.log("📥 Batch Poster Request Received:", {
-      userId,
-      movieIds,
-    });
+    console.log("📥 Batch Poster Request Received:", { userId, movieIds });
 
     if (!userId || !Array.isArray(movieIds)) {
-      console.warn("❌ Missing userId or movieIds array");
       return res.status(400).json({ message: "Missing or invalid data" });
     }
 
-    // Clean and sanitize movieIds
     const validIds = movieIds
       .map((id) => Number(id))
       .filter((id) => !isNaN(id));
 
     if (!validIds.length) {
-      console.warn("⚠️ No valid movieIds after cleanup:", movieIds);
       return res.status(400).json({ message: "No valid movieIds" });
     }
 
     const posters = await CustomPoster.find({
-      userId: userId,
+      userId,
       movieId: { $in: validIds },
     });
-
-    console.log(`🎯 Found ${posters.length} custom poster(s)`);
 
     const result = {};
     posters.forEach((p) => {
@@ -92,6 +84,7 @@ router.post("/batch", async (req, res) => {
     res.status(500).json({ message: "Server error fetching custom posters" });
   }
 });
+
 
 
 
