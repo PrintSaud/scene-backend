@@ -42,12 +42,23 @@ router.post("/batch", protect, async (req, res) => {
 
 
 // ✅ POST or update a poster override for a movie (per user)
+// ✅ POST or update a poster override for a movie (per user)
 router.post("/:movieId", protect, async (req, res) => {
   const { posterUrl } = req.body;
   const userId = req.user._id;
   const movieId = req.params.movieId;
 
   if (!posterUrl) return res.status(400).json({ error: "posterUrl required" });
+
+  // 🔒 Restrict all posters for Possession (TMDB ID 11020)
+  if (
+    movieId === "11020" &&
+    posterUrl !== "https://image.tmdb.org/t/p/original/iAdsTUNjpHIREH4C4UNhkbVDWYi.jpg"
+  ) {
+    return res.status(403).json({
+      error: "Custom posters for this movie are restricted.",
+    });
+  }
 
   try {
     const updated = await CustomPoster.findOneAndUpdate(
@@ -62,6 +73,7 @@ router.post("/:movieId", protect, async (req, res) => {
     res.status(500).json({ message: "Server error saving poster override" });
   }
 });
+
 
 // 🔥 Optional: GET all poster overrides (for admin/debug/tools)
 router.get("/", async (req, res) => {
