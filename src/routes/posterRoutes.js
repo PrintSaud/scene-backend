@@ -49,35 +49,33 @@ router.get("/user/:userId", async (req, res) => {
 });
 
 // POST /api/posters/batch
-// ✅ Robust POST /api/posters/batch with debug logging
+// ✅ PATCHED POST /api/posters/batch
 router.post("/batch", async (req, res) => {
   try {
     const { userId, movieIds } = req.body;
 
-    console.log("📥 Received batch poster request:");
-    console.log("🧑‍🎨 userId:", userId);
-    console.log("🎬 Raw movieIds:", movieIds);
+    console.log("📥 Batch Poster Request Received:", {
+      userId,
+      movieIds,
+    });
 
-    // Validate presence
     if (!userId || !Array.isArray(movieIds)) {
-      console.warn("❌ Invalid request: missing userId or movieIds array");
+      console.warn("❌ Missing userId or movieIds array");
       return res.status(400).json({ message: "Missing or invalid data" });
     }
 
-    // Sanitize + dedupe
+    // Clean and sanitize movieIds
     const validIds = movieIds
       .map((id) => Number(id))
       .filter((id) => !isNaN(id));
 
-    console.log("✅ Cleaned valid movieIds:", validIds);
-
-    if (validIds.length === 0) {
-      console.warn("⚠️ No valid movieIds after cleanup");
+    if (!validIds.length) {
+      console.warn("⚠️ No valid movieIds after cleanup:", movieIds);
       return res.status(400).json({ message: "No valid movieIds" });
     }
 
     const posters = await CustomPoster.find({
-      userId,
+      userId: userId,
       movieId: { $in: validIds },
     });
 
@@ -88,12 +86,13 @@ router.post("/batch", async (req, res) => {
       result[p.movieId] = p.posterUrl;
     });
 
-    res.json(result);
+    return res.json(result);
   } catch (err) {
     console.error("❌ Custom poster batch error:", err);
     res.status(500).json({ message: "Server error fetching custom posters" });
   }
 });
+
 
 
 
