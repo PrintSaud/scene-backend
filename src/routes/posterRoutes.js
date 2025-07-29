@@ -71,5 +71,28 @@ router.get("/user/:userId", async (req, res) => {
   }
 });
 
+// POST /api/posters/batch
+router.post("/batch", async (req, res) => {
+  try {
+    const { userId, movieIds } = req.body;
+    if (!userId || !movieIds) return res.status(400).json({ message: "Missing data" });
+
+    const posters = await CustomPoster.find({
+      user: userId,
+      movieId: { $in: movieIds },
+    });
+
+    const result = {};
+    posters.forEach((p) => {
+      result[p.movieId] = p.posterUrl;
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error("❌ Custom poster batch error", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 
 module.exports = router;
