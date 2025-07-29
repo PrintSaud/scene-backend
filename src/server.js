@@ -84,6 +84,8 @@ const importRoutes = require('./routes/importRoutes');
 app.use('/api/import', importRoutes);
 app.use('/api/letterboxd', importRoutes); // ✅ add this
 app.use("/api/logs", express.json(), require("./routes/Logs")); // ✅ now JSON body works
+const posterRoutes = require("./routes/posterRoutes");
+app.use("/api/posters", posterRoutes);
 
 
 // 4️⃣ Health check

@@ -48,7 +48,6 @@ router.get("/user/:userId", async (req, res) => {
   }
 });
 
-// POST /api/posters/batch
 // ✅ PATCHED POST /api/posters/batch
 router.post("/batch", async (req, res) => {
   try {
