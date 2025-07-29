@@ -7,8 +7,7 @@ const CustomPoster = require("../models/customPoster");
 // ✅ PATCHED POST /api/posters/batch
 router.post("/batch", protect, async (req, res) => {
   try {
-    const userId = req.user?._id || req.body.userId; // ✅ fallback to body
-    const { movieIds } = req.body;
+    const { userId, movieIds } = req.body;
 
     console.log("📥 Batch Poster Request Received:", { userId, movieIds });
 
@@ -40,6 +39,7 @@ router.post("/batch", protect, async (req, res) => {
     res.status(500).json({ message: "Server error fetching custom posters" });
   }
 });
+
 
 // ✅ POST or update a poster override for a movie (per user)
 router.post("/:movieId", protect, async (req, res) => {
