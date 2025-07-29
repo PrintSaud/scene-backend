@@ -51,7 +51,7 @@ router.get("/user/:userId", async (req, res) => {
 // ✅ PATCHED POST /api/posters/batch
 router.post("/batch", protect, async (req, res) => {
   try {
-    const userId = req.user._id; // ✅ from token
+    const userId = req.user?._id || req.body.userId; // ✅ fallback to body
     const { movieIds } = req.body;
 
     console.log("📥 Batch Poster Request Received:", { userId, movieIds });
