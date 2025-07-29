@@ -185,7 +185,40 @@ router.post("/auth/reset-password", async (req, res) => {
   }
 });
 
+router.post("/request-reset-code", async (req, res) => {
+  const { username, email } = req.body;
 
+  if (!username || !email) {
+    return res.status(400).json({ error: "Username and email are required." });
+  }
+
+  try {
+    const user = await User.findOne({
+      username: { $regex: `^${username}$`, $options: "i" },
+      email: email.toLowerCase().trim()
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "No user found with that username and email." });
+    }
+
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    user.resetCode = resetCode;
+    user.resetCodeExpires = Date.now() + 15 * 60 * 1000;
+    await user.save();
+
+    await sendEmail(
+      user.email,
+      "Reset your Scene password 🎬",
+      `Here’s your password reset code: ${resetCode}`
+    );
+
+    res.status(200).json({ message: "Reset code sent to your email." });
+  } catch (err) {
+    console.error("❌ request-reset-code error:", err);
+    res.status(500).json({ error: "Something went wrong." });
+  }
+});
 
 
 // 🧠 Google OAuth
