@@ -4,6 +4,43 @@ const protect = require("../middleware/authMiddleware");
 const CustomPoster = require("../models/customPoster");
 
 
+// ✅ PATCHED POST /api/posters/batch
+router.post("/batch", protect, async (req, res) => {
+  try {
+    const userId = req.user?._id || req.body.userId; // ✅ fallback to body
+    const { movieIds } = req.body;
+
+    console.log("📥 Batch Poster Request Received:", { userId, movieIds });
+
+    if (!userId || !Array.isArray(movieIds)) {
+      return res.status(400).json({ message: "Missing or invalid data" });
+    }
+
+    const validIds = movieIds
+      .map((id) => Number(id))
+      .filter((id) => !isNaN(id));
+
+    if (!validIds.length) {
+      return res.status(400).json({ message: "No valid movieIds" });
+    }
+
+    const posters = await CustomPoster.find({
+      userId,
+      movieId: { $in: validIds },
+    });
+
+    const result = {};
+    posters.forEach((p) => {
+      result[p.movieId] = p.posterUrl;
+    });
+
+    return res.json(result);
+  } catch (err) {
+    console.error("❌ Custom poster batch error:", err);
+    res.status(500).json({ message: "Server error fetching custom posters" });
+  }
+});
+
 // ✅ POST or update a poster override for a movie (per user)
 router.post("/:movieId", protect, async (req, res) => {
   const { posterUrl } = req.body;
@@ -48,42 +85,7 @@ router.get("/user/:userId", async (req, res) => {
   }
 });
 
-// ✅ PATCHED POST /api/posters/batch
-router.post("/batch", protect, async (req, res) => {
-  try {
-    const userId = req.user?._id || req.body.userId; // ✅ fallback to body
-    const { movieIds } = req.body;
 
-    console.log("📥 Batch Poster Request Received:", { userId, movieIds });
-
-    if (!userId || !Array.isArray(movieIds)) {
-      return res.status(400).json({ message: "Missing or invalid data" });
-    }
-
-    const validIds = movieIds
-      .map((id) => Number(id))
-      .filter((id) => !isNaN(id));
-
-    if (!validIds.length) {
-      return res.status(400).json({ message: "No valid movieIds" });
-    }
-
-    const posters = await CustomPoster.find({
-      userId,
-      movieId: { $in: validIds },
-    });
-
-    const result = {};
-    posters.forEach((p) => {
-      result[p.movieId] = p.posterUrl;
-    });
-
-    return res.json(result);
-  } catch (err) {
-    console.error("❌ Custom poster batch error:", err);
-    res.status(500).json({ message: "Server error fetching custom posters" });
-  }
-});
 
 
 
