@@ -830,11 +830,11 @@ router.delete("/:logId", protect, async (req, res) => {
 router.get('/user/:userId', protect, async (req, res) => {
   try {
     const profileUserId = req.params.userId;
-    const viewerId = req.user._id.toString();
 
     const logs = await Log.find({ user: profileUserId })
       .populate('user', 'username avatar')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     const uniqueLogsMap = new Map();
     logs.forEach((log) => {
@@ -846,7 +846,21 @@ router.get('/user/:userId', protect, async (req, res) => {
 
     const uniqueLogs = Array.from(uniqueLogsMap.values());
 
-    const logsWithDetails = await Promise.all(
+    const movieIds = uniqueLogs.map((log) => {
+      return log.tmdbId || (typeof log.movie === 'object' ? log.movie?.id : log.movie);
+    }).filter(Boolean);
+
+    const posters = await CustomPoster.find({
+      userId: profileUserId,
+      movieId: { $in: movieIds },
+    });
+
+    const posterMap = {};
+    posters.forEach((p) => {
+      posterMap[p.movieId] = p.posterUrl;
+    });
+
+    const logsWithPosters = await Promise.all(
       uniqueLogs.map(async (log) => {
         const rawMovie = log.movie;
         const movieId =
@@ -859,56 +873,37 @@ router.get('/user/:userId', protect, async (req, res) => {
           return null;
         }
 
-        let posterUrl = null;
-        let movieRuntime = null;
-        let movieReleaseDate = null;
-
-        try {
-          const customPoster = await CustomPoster.findOne({
-            userId: viewerId,
-            movieId: Number(movieId),
-          });
-
-          if (customPoster) {
-            posterUrl = customPoster.posterUrl;
-          } else if (log.poster) {
-            posterUrl = log.poster.startsWith("http")
-              ? log.poster
-              : `${TMDB_IMG}${log.poster}`;
-          }
-        } catch (err) {
-          console.warn("❌ Failed to fetch custom poster:", err.message);
-        }
+        let posterUrl = posterMap[movieId] || null;
+        let runtime = null;
+        let releaseDate = null;
 
         if (!posterUrl && TMDB_API_KEY) {
           try {
             const tmdbRes = await axios.get(
               `https://api.themoviedb.org/3/movie/${movieId}?api_key=${TMDB_API_KEY}`
             );
-            const tmdbData = tmdbRes.data;
-            if (tmdbData.poster_path) {
-              posterUrl = `${TMDB_IMG}${tmdbData.poster_path}`;
-            }
-            movieRuntime = tmdbData.runtime || null;
-            movieReleaseDate = tmdbData.release_date || null;
+            const tmdb = tmdbRes.data;
+            posterUrl = tmdb.poster_path ? `${TMDB_IMG}${tmdb.poster_path}` : null;
+            runtime = tmdb.runtime || null;
+            releaseDate = tmdb.release_date || null;
           } catch (err) {
             console.warn(`⚠️ TMDB fetch failed for logId ${log._id}: ${err.message}`);
           }
         }
 
         return {
-          ...log.toObject(),
+          ...log,
           posterOverride: posterUrl,
           movie: {
             id: movieId,
-            runtime: movieRuntime,
-            release_date: movieReleaseDate,
+            runtime,
+            release_date: releaseDate,
           },
         };
       })
     );
 
-    const validLogs = logsWithDetails.filter((log) => log !== null);
+    const validLogs = logsWithPosters.filter(Boolean);
     res.json(validLogs);
   } catch (err) {
     console.error("🔥 Server crash in /api/logs/user/:userId:", err);
