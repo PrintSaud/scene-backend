@@ -78,7 +78,7 @@ router.post("/batch", async (req, res) => {
     if (!userId || !movieIds) return res.status(400).json({ message: "Missing data" });
 
     const posters = await CustomPoster.find({
-      user: userId,
+      userId: userId, // 🛠️ was `user: userId` before
       movieId: { $in: movieIds },
     });
 
@@ -93,6 +93,7 @@ router.post("/batch", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 
 module.exports = router;
