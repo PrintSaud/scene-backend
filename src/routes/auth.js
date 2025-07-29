@@ -152,7 +152,7 @@ router.post("/verify-reset-code", async (req, res) => {
 });
 
 // ✅ Reset password
-router.post("/auth/reset-password", async (req, res) => {
+router.post("/reset-password", async (req, res) => {
 
   console.log("🔁 RESET PASSWORD HIT");
   const { email, code, newPassword } = req.body;
