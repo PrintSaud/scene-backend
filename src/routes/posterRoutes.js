@@ -3,29 +3,6 @@ const router = express.Router();
 const protect = require("../middleware/authMiddleware");
 const CustomPoster = require("../models/customPoster");
 
-// ✅ GET current poster override for a single movie (per user)
-router.get("/:movieId", async (req, res) => {
-  const { movieId } = req.params;
-  const { userId } = req.query;
-
-  if (!userId || !movieId) {
-    return res.status(400).json({ message: 'userId and movieId required' });
-  }
-
-  try {
-    const poster = await CustomPoster.findOne({
-      userId: userId,
-      movieId: { $in: [Number(movieId), String(movieId)] }
-    });
-
-    res.json({
-      posterOverride: poster ? poster.posterUrl : null
-    });
-  } catch (err) {
-    console.error("❌ Failed to fetch poster override:", err);
-    res.status(500).json({ message: "Server error fetching poster override" });
-  }
-});
 
 // ✅ POST or update a poster override for a movie (per user)
 router.post("/:movieId", protect, async (req, res) => {
@@ -95,5 +72,28 @@ router.post("/batch", async (req, res) => {
 });
 
 
+// ✅ GET current poster override for a single movie (per user)
+router.get("/:movieId", async (req, res) => {
+  const { movieId } = req.params;
+  const { userId } = req.query;
+
+  if (!userId || !movieId) {
+    return res.status(400).json({ message: 'userId and movieId required' });
+  }
+
+  try {
+    const poster = await CustomPoster.findOne({
+      userId: userId,
+      movieId: { $in: [Number(movieId), String(movieId)] }
+    });
+
+    res.json({
+      posterOverride: poster ? poster.posterUrl : null
+    });
+  } catch (err) {
+    console.error("❌ Failed to fetch poster override:", err);
+    res.status(500).json({ message: "Server error fetching poster override" });
+  }
+});
 
 module.exports = router;
