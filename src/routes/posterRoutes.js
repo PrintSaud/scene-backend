@@ -50,6 +50,7 @@ router.get("/user/:userId", async (req, res) => {
 
 // ✅ PATCHED POST /api/posters/batch
 router.post("/batch", async (req, res) => {
+  console.log("🧪 POST /api/posters/batch body:", req.body); // <== ADD THIS
   try {
     const { userId, movieIds } = req.body;
 
