@@ -49,14 +49,27 @@ router.get("/user/:userId", async (req, res) => {
 });
 
 // POST /api/posters/batch
+// ✅ Robust POST /api/posters/batch
 router.post("/batch", async (req, res) => {
   try {
     const { userId, movieIds } = req.body;
-    if (!userId || !movieIds) return res.status(400).json({ message: "Missing data" });
+
+    if (!userId || !Array.isArray(movieIds)) {
+      return res.status(400).json({ message: "Missing or invalid data" });
+    }
+
+    // ✅ Filter out any invalid movie IDs
+    const validIds = movieIds
+      .map((id) => Number(id))
+      .filter((id) => !isNaN(id));
+
+    if (validIds.length === 0) {
+      return res.status(400).json({ message: "No valid movieIds" });
+    }
 
     const posters = await CustomPoster.find({
-      userId: userId, // 🛠️ was `user: userId` before
-      movieId: { $in: movieIds },
+      userId: userId,
+      movieId: { $in: validIds },
     });
 
     const result = {};
@@ -70,6 +83,7 @@ router.post("/batch", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 
 // ✅ GET current poster override for a single movie (per user)
