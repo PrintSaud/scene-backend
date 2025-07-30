@@ -667,8 +667,7 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
 });
 
 // GET /api/logs/feed — Get logs from user + following
-// GET /api/logs/feed — Get logs from user + following
-router.get('/feed', protect, async (req, res) => {
+router.get("/feed", protect, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -676,25 +675,36 @@ router.get('/feed', protect, async (req, res) => {
     const ids = [user._id, ...user.following];
 
     const logs = await Log.find({ user: { $in: ids } })
-      .populate('user', 'username avatar')
-      .populate('movie')
-      .sort({ createdAt: -1 });
+      .populate("user", "username avatar")
+      .populate("movie") // may be null if imported
+      .sort({ createdAt: -1 })
+      .limit(60);
 
     const logsWithDetails = await Promise.all(
       logs.map(async (log) => {
-        let movieId;
-
-        if (typeof log.movie === "object" && log.movie?.id) {
-          movieId = log.movie.id;
-        } else if (typeof log.movie === "string") {
-          console.warn("⚠️ Skipping log with string movie ID:", log.movie);
-          return null;
-        } else {
-          movieId = log.movie;
-        }
+        let movieId =
+          log.movie?.id ||
+          log.tmdbId ||
+          (typeof log.movie === "number" ? log.movie : null);
 
         if (!movieId || isNaN(Number(movieId))) return null;
 
+        let movieData = log.movie;
+
+        // 🔍 If no full movie data, fetch from TMDB using tmdbId
+        if (!movieData || !movieData.poster_path) {
+          try {
+            const tmdbRes = await axios.get(
+              `https://api.themoviedb.org/3/movie/${movieId}?api_key=${process.env.TMDB_API_KEY}`
+            );
+            movieData = tmdbRes.data;
+          } catch (err) {
+            console.warn("⚠️ TMDB fetch failed for movieId:", movieId);
+            return null; // skip if TMDB failed
+          }
+        }
+
+        // 🖼️ Poster logic
         let posterUrl = "/default-poster.jpg";
 
         const customPoster = await CustomPoster.findOne({
@@ -704,18 +714,14 @@ router.get('/feed', protect, async (req, res) => {
 
         if (customPoster) {
           posterUrl = customPoster.posterUrl;
-        } else if (log.movie && log.movie.poster_path) {
-          posterUrl = `${TMDB_IMG}${log.movie.poster_path}`;
-        } else if (log.poster) {
-          posterUrl =
-            typeof log.poster === "string" && log.poster.startsWith("http")
-              ? log.poster
-              : `${TMDB_IMG}${log.poster}`;
+        } else if (movieData.poster_path) {
+          posterUrl = `${TMDB_IMG}${movieData.poster_path}`;
         }
 
         return {
           ...log.toObject(),
           posterOverride: posterUrl,
+          movie: movieData, // 🟢 for frontend fallback
         };
       })
     );
