@@ -778,8 +778,6 @@ router.get('/feed/:id', protect, async (req, res) => {
   }
 });
 
-const { subDays, subHours } = require("date-fns");
-const axios = require("axios");
 
 // 🕐 Logs from past 24 hours — from user + following
 router.get("/day", protect, async (req, res) => {
