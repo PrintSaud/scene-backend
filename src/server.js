@@ -5,47 +5,43 @@ const path = require("path");
 const http = require("http");
 const { Server } = require("socket.io");
 require("dotenv").config();
-mongoose.set('debug', true);
+mongoose.set("debug", true);
 
 console.log("🧪 ENV CHECK — DB_URI:", process.env.DB_URI);
 console.log("🧪 ENV CHECK — JWT_SECRET:", process.env.JWT_SECRET);
 console.log("🧪 ENV CHECK — TMDB_KEY:", process.env.TMDB_API_KEY);
 
-
 const app = express();
 
-// 1️⃣ Middleware
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "https://scene-frontend-production.up.railway.app",
-    ],
-    credentials: true,
-    methods: ["GET", "POST", "PATCH", "PUT", "DELETE"], // ✅ added PUT
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+// 🔐 1️⃣ CORS Setup — placed as early as possible
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://scene-frontend-production.up.railway.app",
+];
 
-
-app.options("*", cors({
-  origin: [
-    "http://localhost:5173",
-    "https://scene-frontend-production.up.railway.app",
-  ],
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
-  methods: ["GET", "POST", "PATCH", "PUT", "DELETE"], // ✅ added PUT
+  methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
+// 🌐 1.5 Wildcard OPTIONS for CORS preflight
+app.options("*", (req, res) => {
+  res.sendStatus(200);
+});
 
-// 🔔 DO NOT register express.json() globally here!
-// app.use(express.json());
-
+// 📁 2️⃣ Static & Public Files
 app.use(express.static("public"));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// 2️⃣ MongoDB connection
+// 🔌 3️⃣ MongoDB connection
 const DB_URI = process.env.DB_URI;
 if (!DB_URI) {
   console.error("❌ MISSING DB_URI — check Railway Environment Variables");
@@ -57,13 +53,13 @@ mongoose
   .connect(DB_URI)
   .then(() => {
     console.log(`✅ MongoDB connected to: ${mongoose.connection.name}`);
-  })  
+  })
   .catch((err) => {
     console.error("❌ MongoDB connection error:", err);
     process.exit(1);
   });
 
-// 3️⃣ Routes — express.json() only for JSON-based routes
+// 🛣️ 4️⃣ Routes (only attach express.json() per route group)
 app.use("/api/auth", express.json(), require("./routes/auth"));
 app.use("/api/users", express.json(), require("./routes/user")); 
 app.use("/api/upload", express.json(), require("./routes/upload"));
@@ -78,34 +74,31 @@ app.use("/api/movies", express.json(), require("./routes/movieRoutes"));
 app.use("/api/scenebot", express.json(), require("./routes/sceneBot"));
 app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
 app.use("/api/movies/daily", express.json(), require("./routes/dailyMovie"));
+app.use("/api/logs", express.json(), require("./routes/Logs"));
+
 const tmdbRoutes = require("./routes/tmdbRoutes");
 app.use("/api/tmdb", tmdbRoutes);
+
 const importRoutes = require('./routes/importRoutes');
 app.use('/api/import', importRoutes);
 app.use('/api/letterboxd', importRoutes); // ✅ add this
-app.use("/api/logs", express.json(), require("./routes/Logs")); // ✅ now JSON body works
 
-
-// 4️⃣ Health check
+// 💓 5️⃣ Health check
 app.get("/", (req, res) => {
   res.send("Root route is working!");
 });
 
-// 5️⃣ Socket.IO setup
+// 🧠 6️⃣ Socket.IO
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: [
-      "http://localhost:5173",
-      "https://scene-frontend-production.up.railway.app",
-    ],
+    origin: allowedOrigins,
     credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   },
 });
 
-// 💥 Make io accessible in routes
 app.set("io", io);
 
 io.on("connection", (socket) => {
@@ -121,10 +114,8 @@ io.on("connection", (socket) => {
   });
 });
 
-
-// 6️⃣ Start server
+// 🚀 7️⃣ Start server
 const PORT = process.env.PORT || 8080;
-
 server.listen(PORT, () => {
   console.log(`🚀 Server + Socket.IO running on port ${PORT}`);
 });
