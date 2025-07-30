@@ -672,7 +672,8 @@ router.get('/feed/:userId', async (req, res) => {
     const user = await User.findById(req.params.userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const ids = [user._id, ...user.following];
+    // 🔥 FIX: ensure consistent string IDs
+    const ids = [user._id.toString(), ...user.following.map((id) => id.toString())];
 
     const logs = await Log.find({ user: { $in: ids } })
       .populate('user', 'username avatar')
@@ -683,7 +684,6 @@ router.get('/feed/:userId', async (req, res) => {
       logs.map(async (log) => {
         let movieId;
 
-        // ✅ Guard: properly extract numeric TMDB movie ID
         if (typeof log.movie === "object" && log.movie?.id) {
           movieId = log.movie.id;
         } else if (typeof log.movie === "string") {
@@ -694,13 +694,11 @@ router.get('/feed/:userId', async (req, res) => {
         }
 
         if (!movieId || isNaN(Number(movieId))) {
-        //  console.warn("⚠️ Skipping log with invalid movieId:", log._id);
           return null;
         }
 
         let posterUrl = "/default-poster.jpg";
 
-        // ✅ Lookup custom poster
         const customPoster = await CustomPoster.findOne({
           userId: log.user._id,
           movieId: Number(movieId),
@@ -724,12 +722,13 @@ router.get('/feed/:userId', async (req, res) => {
       })
     );
 
-    res.json(logsWithDetails.filter(Boolean)); // ✅ Remove nulls
+    res.json(logsWithDetails.filter(Boolean));
   } catch (err) {
     console.error("🔥 Error fetching feed:", err);
     res.status(500).json({ message: "Failed to fetch feed" });
   }
 });
+
 
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
