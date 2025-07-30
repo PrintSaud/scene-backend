@@ -10,6 +10,11 @@ const userLangPrefs = {}; // 🧠 In-memory language memory per user
 // 🎬 Freeform Film Expert Mode
 router.post("/", protect, async (req, res) => {
   const { message, lang } = req.body;
+  console.log("📨 Incoming SceneBot Request:");
+console.log("👉 message =", message, "Type:", typeof message);
+console.log("👉 lang =", lang, "Type:", typeof lang);
+console.log("👤 From user =", user.username || user._id);
+
   const user = req.user;
   const today = dayjs().format("YYYY-MM-DD");
 
