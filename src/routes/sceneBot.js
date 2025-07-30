@@ -10,12 +10,33 @@ const userLangPrefs = {}; // 🧠 In-memory language memory per user
 // 🎬 Freeform Film Expert Mode
 router.post("/", protect, async (req, res) => {
   const { message, lang } = req.body;
-  console.log("📨 Incoming SceneBot Request:");
-console.log("👉 message =", message, "Type:", typeof message);
-console.log("👉 lang =", lang, "Type:", typeof lang);
 
-const user = req.user; // ✅ MUST come before using 'user'
-console.log("👤 From user =", user.username || user._id);
+  console.log("🧪 RAW req.body =", req.body);
+  console.log("📨 Incoming SceneBot Request:");
+
+  // ✅ Check if message is a plain string
+  if (typeof message !== "string") {
+    console.error("🛑 SERVER BLOCK: message is NOT a string — Actual type:", typeof message);
+    console.trace(); // 🔍 Where the request originated from (middleware, etc.)
+    return res.status(400).json({ message: "❌ message must be a plain string" });
+  }
+
+  // ✅ Try parsing to detect if it's a stringified object
+  try {
+    const maybeObject = JSON.parse(message);
+    if (typeof maybeObject === "object") {
+      console.warn("🚨 message is a STRINGIFIED OBJECT (e.g., [object Object]):", maybeObject);
+      return res.status(400).json({ message: "❌ message cannot be a stringified object" });
+    }
+  } catch (e) {
+    console.log("✅ message is a clean string. Safe to continue.");
+  }
+
+  console.log("👉 message =", message, "Type:", typeof message);
+  console.log("👉 lang =", lang, "Type:", typeof lang);
+
+  const user = req.user;
+  console.log("👤 From user =", user.username || user._id);
 
   const today = dayjs().format("YYYY-MM-DD");
 
@@ -24,42 +45,31 @@ console.log("👤 From user =", user.username || user._id);
   }
 
   try {
-    // 🧮 Usage tracking
     let usage = await SceneBotUsage.findOne({ userId: user._id, date: today });
     if (!usage) {
       usage = await SceneBotUsage.create({ userId: user._id, date: today, count: 0 });
     }
 
-    // 🔤 Manual language override
+    // Language overrides
     const lower = message.toLowerCase();
-    if (lower.includes("reply in english")) {
-      userLangPrefs[user._id] = "english";
-    } else if (lower.includes("reply in arabic")) {
-      userLangPrefs[user._id] = "arabic";
-    } else if (lower.includes("reply in french")) {
-      userLangPrefs[user._id] = "french";
-    } else if (lower.includes("reset language")) {
-      delete userLangPrefs[user._id];
-    }
+    if (lower.includes("reply in english")) userLangPrefs[user._id] = "english";
+    else if (lower.includes("reply in arabic")) userLangPrefs[user._id] = "arabic";
+    else if (lower.includes("reply in french")) userLangPrefs[user._id] = "french";
+    else if (lower.includes("reset language")) delete userLangPrefs[user._id];
 
-    // 📌 Final language preference
     const langPref = userLangPrefs[user._id] || lang || "english";
 
-    // 🎨 Assistant intro to steer tone
     const introMap = {
       english: "Sure! Let’s dive into the world of movies 🍿🎬",
       arabic: "أكيد! لنغوص في عالم الأفلام 🍿🎬",
       french: "Bien sûr ! Plongeons dans le monde du cinéma 🍿🎬",
     };
-
     const assistantIntro = introMap[langPref] || introMap.english;
 
-    // 🧠 System instructions
     const systemPrompt = `You are SceneBot — a smart, casual, and fun film expert on a movie social platform. 
 Always respond in fluent ${langPref}. Do NOT mention your training data, OpenAI, capabilities, or limitations. 
 Only respond to movie-related questions, suggestions, trivia, or ideas. Your tone should be creative, friendly, and conversational.`;
 
-    // 🛡️ Final prompt structure with hard-block on GPT defaulting to training facts
     const rewrittenMessage = `${message}
 
 🚫 NEVER say anything about your training data, capabilities, or limitations.
@@ -68,7 +78,6 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
 🎬 Respond with a direct, helpful, or creative film-related answer — like a real person would.
 🧠 IMPORTANT: Avoid robotic answers or generic disclaimers. Be fun, smart, and purely about cinema.`;
 
-    // 🧠 GPT call
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -87,19 +96,18 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
     console.log("🧠 Raw GPT Reply:", reply);
     console.log("📦 Type of reply:", typeof reply);
 
-    // ✅ Fallback enforcement
     if (typeof reply !== "string") {
       reply = typeof reply === "object" ? JSON.stringify(reply) : String(reply);
     }
 
     console.log("✅ Final reply to client:", reply);
-
     res.json({ reply });
   } catch (err) {
     console.error("❌ SceneBot error:", err);
     res.status(500).json({ message: "SceneBot is currently unavailable. Please try again later." });
   }
 });
+
 
 // 🌐 Translate Fun Prompt
 router.post("/translate", protect, async (req, res) => {
