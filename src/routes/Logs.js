@@ -19,6 +19,53 @@ const expressJson = express.json();  // ⭐️ add this line
 const Movie = require("../models/movieModel");
 const { subDays, subHours } = require("date-fns");
 
+async function formatLogsWithPoster(logs, viewerId) {
+  return await Promise.all(
+    logs.map(async (log) => {
+      let movieId =
+        log.movie?.id ||
+        log.tmdbId ||
+        (typeof log.movie === "number" ? log.movie : null);
+
+      if (!movieId || isNaN(Number(movieId))) return null;
+
+      let movieData = log.movie;
+
+      // 🧠 If no full data, try TMDB
+      if (!movieData || !movieData.poster_path) {
+        try {
+          const tmdbRes = await axios.get(
+            `https://api.themoviedb.org/3/movie/${movieId}?api_key=${process.env.TMDB_API_KEY}`
+          );
+          movieData = tmdbRes.data;
+        } catch (err) {
+          console.warn("⚠️ TMDB fetch failed for movieId:", movieId);
+          return null;
+        }
+      }
+
+      // 🖼️ Poster Logic
+      let posterUrl = "/default-poster.jpg";
+      const customPoster = await CustomPoster.findOne({
+        userId: viewerId,
+        movieId: Number(movieId),
+      });
+
+      if (customPoster) {
+        posterUrl = customPoster.posterUrl;
+      } else if (movieData.poster_path) {
+        posterUrl = `${TMDB_IMG}${movieData.poster_path}`;
+      }
+
+      return {
+        ...log.toObject(),
+        posterOverride: posterUrl,
+        movie: movieData,
+      };
+    })
+  ).then((logs) => logs.filter(Boolean));
+}
+
 
 router.post('/:logId/like', protect, async (req, res) => {
   try {
@@ -731,50 +778,84 @@ router.get('/feed/:id', protect, async (req, res) => {
   }
 });
 
-// 🕐 Logs from past 24 hours
+const { subDays, subHours } = require("date-fns");
+const axios = require("axios");
+
+// 🕐 Logs from past 24 hours — from user + following
 router.get("/day", protect, async (req, res) => {
   try {
     const since = subHours(new Date(), 24);
+
+    const user = await User.findById(req.user._id);
+    const ids = [user._id, ...user.following];
+
     const logs = await Log.find({
-      user: req.user._id,
+      user: { $in: ids },
       createdAt: { $gte: since },
-    }).sort({ createdAt: -1 });
-    res.json(logs);
+    })
+      .populate("user", "username avatar")
+      .populate("movie")
+      .sort({ createdAt: -1 })
+      .limit(60);
+
+    const formatted = await formatLogsWithPoster(logs, req.user._id);
+    res.json(formatted);
   } catch (err) {
     console.error("❌ /day error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// 📅 Logs from past 7 days
+// 📅 Logs from past 7 days — from user + following
 router.get("/week", protect, async (req, res) => {
   try {
     const since = subDays(new Date(), 7);
+
+    const user = await User.findById(req.user._id);
+    const ids = [user._id, ...user.following];
+
     const logs = await Log.find({
-      user: req.user._id,
+      user: { $in: ids },
       createdAt: { $gte: since },
-    }).sort({ createdAt: -1 });
-    res.json(logs);
+    })
+      .populate("user", "username avatar")
+      .populate("movie")
+      .sort({ createdAt: -1 })
+      .limit(80);
+
+    const formatted = await formatLogsWithPoster(logs, req.user._id);
+    res.json(formatted);
   } catch (err) {
     console.error("❌ /week error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// 📆 Logs from past 30 days
+// 📆 Logs from past 30 days — from user + following
 router.get("/month", protect, async (req, res) => {
   try {
     const since = subDays(new Date(), 30);
+
+    const user = await User.findById(req.user._id);
+    const ids = [user._id, ...user.following];
+
     const logs = await Log.find({
-      user: req.user._id,
+      user: { $in: ids },
       createdAt: { $gte: since },
-    }).sort({ createdAt: -1 });
-    res.json(logs);
+    })
+      .populate("user", "username avatar")
+      .populate("movie")
+      .sort({ createdAt: -1 })
+      .limit(100);
+
+    const formatted = await formatLogsWithPoster(logs, req.user._id);
+    res.json(formatted);
   } catch (err) {
     console.error("❌ /month error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 
 
