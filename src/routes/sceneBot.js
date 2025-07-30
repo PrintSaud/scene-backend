@@ -77,15 +77,25 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
     usage.count += 1;
     await usage.save();
 
-    const reply = completion.choices?.[0]?.message?.content;
-    res.json({ reply: typeof reply === "string" ? reply : String(reply) });    
+    let reply = completion.choices?.[0]?.message?.content;
+    console.log("🧠 Raw GPT Reply:", reply);
+    console.log("📦 Type of reply:", typeof reply);
+
+    // ✅ Fallback enforcement
+    if (typeof reply !== "string") {
+      reply = typeof reply === "object" ? JSON.stringify(reply) : String(reply);
+    }
+
+    console.log("✅ Final reply to client:", reply);
+
+    res.json({ reply });
   } catch (err) {
-    console.error("SceneBot error:", err);
+    console.error("❌ SceneBot error:", err);
     res.status(500).json({ message: "SceneBot is currently unavailable. Please try again later." });
   }
 });
 
-// 🌐 Translate Fun Prompt (for 🎲)
+// 🌐 Translate Fun Prompt
 router.post("/translate", protect, async (req, res) => {
   const { text, target } = req.body;
 
@@ -107,7 +117,7 @@ router.post("/translate", protect, async (req, res) => {
     const translated = completion.choices[0].message.content;
     res.json({ translated });
   } catch (err) {
-    console.error("Translation error:", err);
+    console.error("❌ Translation error:", err);
     res.status(500).json({ message: "Translation failed." });
   }
 });
