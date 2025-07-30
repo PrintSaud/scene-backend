@@ -667,9 +667,10 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
 });
 
 // GET /api/logs/feed — Get logs from user + following
-router.get("/feed", protect, async (req, res) => {
+router.get('/feed/:id', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.params.id);
+
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const ids = [user._id, ...user.following];
