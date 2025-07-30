@@ -13,9 +13,10 @@ router.post("/", protect, async (req, res) => {
   console.log("📨 Incoming SceneBot Request:");
 console.log("👉 message =", message, "Type:", typeof message);
 console.log("👉 lang =", lang, "Type:", typeof lang);
+
+const user = req.user; // ✅ MUST come before using 'user'
 console.log("👤 From user =", user.username || user._id);
 
-  const user = req.user;
   const today = dayjs().format("YYYY-MM-DD");
 
   if (!message || message.trim() === "") {
