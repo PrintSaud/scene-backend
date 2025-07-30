@@ -17,10 +17,7 @@ const DEFAULT_AVATAR = "/default-avatar.jpg";
 const Notification = require('../models/notification');
 const expressJson = express.json();  // ⭐️ add this line
 const Movie = require("../models/movieModel");
-
-
-
-
+const { subDays, subHours } = require("date-fns");
 
 
 router.post('/:logId/like', protect, async (req, res) => {
@@ -733,6 +730,53 @@ router.get('/feed/:id', protect, async (req, res) => {
     res.status(500).json({ message: "Failed to fetch feed" });
   }
 });
+
+// 🕐 Logs from past 24 hours
+router.get("/day", protect, async (req, res) => {
+  try {
+    const since = subHours(new Date(), 24);
+    const logs = await Log.find({
+      user: req.user._id,
+      createdAt: { $gte: since },
+    }).sort({ createdAt: -1 });
+    res.json(logs);
+  } catch (err) {
+    console.error("❌ /day error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// 📅 Logs from past 7 days
+router.get("/week", protect, async (req, res) => {
+  try {
+    const since = subDays(new Date(), 7);
+    const logs = await Log.find({
+      user: req.user._id,
+      createdAt: { $gte: since },
+    }).sort({ createdAt: -1 });
+    res.json(logs);
+  } catch (err) {
+    console.error("❌ /week error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// 📆 Logs from past 30 days
+router.get("/month", protect, async (req, res) => {
+  try {
+    const since = subDays(new Date(), 30);
+    const logs = await Log.find({
+      user: req.user._id,
+      createdAt: { $gte: since },
+    }).sort({ createdAt: -1 });
+    res.json(logs);
+  } catch (err) {
+    console.error("❌ /month error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
 
 
 
