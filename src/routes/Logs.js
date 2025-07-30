@@ -667,13 +667,13 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
 });
 
 // GET /api/logs/feed — Get logs from user + following
-router.get('/feed/:userId', async (req, res) => {
+// GET /api/logs/feed — Get logs from user + following
+router.get('/feed', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId);
+    const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // 🔥 FIX: ensure consistent string IDs
-    const ids = [user._id.toString(), ...user.following.map((id) => id.toString())];
+    const ids = [user._id, ...user.following];
 
     const logs = await Log.find({ user: { $in: ids } })
       .populate('user', 'username avatar')
@@ -693,9 +693,7 @@ router.get('/feed/:userId', async (req, res) => {
           movieId = log.movie;
         }
 
-        if (!movieId || isNaN(Number(movieId))) {
-          return null;
-        }
+        if (!movieId || isNaN(Number(movieId))) return null;
 
         let posterUrl = "/default-poster.jpg";
 
@@ -728,6 +726,7 @@ router.get('/feed/:userId', async (req, res) => {
     res.status(500).json({ message: "Failed to fetch feed" });
   }
 });
+
 
 
 
