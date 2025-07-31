@@ -804,7 +804,8 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     })
       .sort({ "likes.length": -1 }) // Most liked first
       .limit(returnAll ? 50 : 3)
-      .populate("user", "username avatar"); // Just grab username + avatar
+      .populate("user", "username avatar")
+      .populate("replies.user", "username avatar"); // ✅ Add this
 
     const formatted = logs.map((log) => ({
       _id: log._id,
@@ -820,6 +821,22 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       gif: log.gif,
       image: log.image,
       likes: log.likes || [],
+      replies: log.replies?.map((reply) => ({
+        _id: reply._id,
+        text: reply.text,
+        gif: reply.gif,
+        image: reply.image,
+        createdAt: reply.createdAt,
+        likes: reply.likes || [],
+        rating: reply.rating || 0,
+        user: reply.user
+          ? {
+              _id: reply.user._id,
+              username: reply.user.username,
+              avatar: reply.user.avatar || DEFAULT_AVATAR,
+            }
+          : null,
+      })),
     }));
 
     res.json(formatted);
@@ -828,6 +845,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 
@@ -1060,19 +1078,21 @@ router.post("/:id/share", protect, async (req, res) => {
   }
 });
 
-router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
+router.post("/:logId/replies/:replyId/like", protect, async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId);
-    if (!log) return res.status(404).json({ message: 'Log not found' });
+    if (!log) return res.status(404).json({ message: "Log not found" });
 
     const reply = log.replies.id(req.params.replyId);
-    if (!reply) return res.status(404).json({ message: 'Reply not found' });
+    if (!reply) return res.status(404).json({ message: "Reply not found" });
+
+    if (!Array.isArray(reply.likes)) reply.likes = [];
 
     const userId = req.user._id;
-    const liked = reply.likes.includes(userId);
+    const liked = reply.likes.some((id) => String(id) === String(userId));
 
     if (liked) {
-      reply.likes.pull(userId);
+      reply.likes = reply.likes.filter((id) => String(id) !== String(userId));
     } else {
       reply.likes.push(userId);
 
@@ -1080,16 +1100,15 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
         const fromUser = await User.findById(userId);
 
         const notif = await Notification.create({
-          type: "reaction",  // ✅ Match frontend expectation exactly
-          message: "liked your reply",  // ✅ Clean consistent message
+          type: "reaction",
+          message: "liked your reply",
           from: userId,
           to: reply.user,
-          relatedId: log._id, // ✅ For frontend routing: /review/:relatedId
+          relatedId: log._id,
           read: false,
           createdAt: new Date(),
         });
 
-        // 🔔 Emit real-time notification
         const io = req.app.get("io");
         io.to(reply.user.toString()).emit("notification", {
           ...notif._doc,
@@ -1103,12 +1122,17 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
     }
 
     await log.save();
-    res.json({ liked: !liked });
+
+    res.json({
+      liked: !liked,
+      likesCount: reply.likes.length,
+    });
   } catch (err) {
     console.error("❌ Failed to like/unlike reply:", err);
     res.status(500).json({ message: "Failed to like/unlike reply", error: err.message });
   }
 });
+
 
 router.get('/user/:userId/movie/:movieId', async (req, res) => {
   try {
