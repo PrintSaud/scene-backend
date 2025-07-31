@@ -18,6 +18,7 @@ const Notification = require('../models/notification');
 const expressJson = express.json();  // ⭐️ add this line
 const Movie = require("../models/movieModel");
 const { subDays, subHours } = require("date-fns");
+const mongoose = require("mongoose");
 
 async function formatLogsWithPoster(logs, viewerId) {
   return await Promise.all(
