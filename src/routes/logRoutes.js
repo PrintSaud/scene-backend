@@ -790,12 +790,12 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       review: { $exists: true, $ne: "" },
     })
       .sort({ "likes.length": -1 })
-      .limit(10) // 🔁 we fetch a few extra in case some are blank
+      .limit(10) // fetch extras just in case
       .populate("user", "username avatar");
 
     const formatted = logs
-      .filter((log) => log.review && log.review.trim().length > 0) // ✅ SKIP if review is empty or just spaces
-      .slice(0, 3) // ✅ then cut back to 3 max (in case some were filtered out)
+      .filter((log) => log.review && log.review.trim().length > 0)
+      .slice(0, 3)
       .map((log) => ({
         _id: log._id,
         username: log.user.username,
@@ -815,6 +815,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 
