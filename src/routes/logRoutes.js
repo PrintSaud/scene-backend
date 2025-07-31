@@ -368,7 +368,7 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
 
     // ✅ FIX: Ensure user is a real ObjectId
     const newReply = {
-      user: mongoose.Types.ObjectId(req.user._id), // 💥 this is key!
+      user: new mongoose.Types.ObjectId(req.user._id),
       text: text || "",
       gif: gif || "",
       image: uploadedImage || "",
