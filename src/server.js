@@ -17,7 +17,10 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:5173",
   "https://scene-frontend-production.up.railway.app",
+  "https://scenesa.com", // ✅ Add this
+  "https://www.scenesa.com", // ✅ Optional
 ];
+
 
 app.use(cors({
   origin: function (origin, callback) {
