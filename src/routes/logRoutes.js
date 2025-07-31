@@ -336,6 +336,10 @@ router.get('/:logId', async (req, res) => {
 
 
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
+  console.log("📨 Incoming Reply to Log ID:", req.params.id);
+  console.log("📝 Body:", req.body);
+  console.log("🖼️ File:", req.file);
+
   const { text, gif, externalImage, parentComment } = req.body;
 
   try {
@@ -343,9 +347,12 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     if (!log) return res.status(404).json({ message: 'Log not found' });
 
     let uploadedImage = null;
-    if (req.file) {
+
+    if (req.file?.buffer) {
+      console.log("🌤 Uploading local image to Cloudinary...");
       uploadedImage = await uploadToCloudinary(req.file.buffer, "scene/replies");
     } else if (externalImage) {
+      console.log("🌐 Using external image URL...");
       uploadedImage = externalImage;
     }
 
@@ -419,15 +426,16 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
       username: replyUser.username,
       avatar: replyUser.avatar,
       parentComment: latestReply.parentComment || null,
-      likes: [], // NEW
-      logId: log._id, // NEW
+      likes: [],
+      logId: log._id,
     });
     
   } catch (err) {
     console.error('🔥 Failed to post reply:', err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: err.message || "Internal server error" });
   }
 });
+
 
 // ✅ Review Like → Notify review owner
 router.post('/:logId/like', protect, async (req, res) => {
