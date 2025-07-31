@@ -845,7 +845,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       image: log.image,
       likes: log.likes || [],
       replies: (log.replies || []).map((reply) => {
-        const u = userMap[reply.user] || {};
+        const u = userMap[reply.user];
         return {
           _id: reply._id,
           text: reply.text,
@@ -853,11 +853,17 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
           image: reply.image,
           createdAt: reply.createdAt,
           likes: reply.likes || [],
-          userId: reply.user,
-          username: u.username || "Unknown",
-          avatar: u.avatar || "/default-avatar.jpg",
+          user: u
+            ? {
+                _id: u._id,
+                username: u.username,
+                avatar: u.avatar,
+              }
+            : null,
+          parentComment: reply.parentComment || null,
         };
       }),
+      
     }));
 
     res.json(formatted);
