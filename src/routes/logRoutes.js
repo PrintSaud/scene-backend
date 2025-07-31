@@ -814,12 +814,11 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       tmdbId: movieId,
       review: { $exists: true, $ne: "" },
     })
-      .sort({ "likes.length": -1 }) // Most liked first
+      .sort({ "likes.length": -1 })
       .limit(returnAll ? 50 : 3)
       .populate("user", "username avatar")
       .lean({ virtuals: true });
 
-    // 🧠 Manually populate user data inside replies
     const userIdsToFetch = new Set();
     logs.forEach((log) => {
       (log.replies || []).forEach((r) => {
@@ -836,7 +835,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       user: {
         _id: log.user._id,
         username: log.user.username,
-        avatar: log.user.avatar || DEFAULT_AVATAR,
+        avatar: log.user.avatar,
       },
       review: log.review,
       rating: log.rating,
@@ -846,7 +845,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       image: log.image,
       likes: log.likes || [],
       replies: (log.replies || []).map((reply) => {
-        const user = userMap[reply.user] || {};
+        const u = userMap[reply.user] || {};
         return {
           _id: reply._id,
           text: reply.text,
@@ -854,10 +853,9 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
           image: reply.image,
           createdAt: reply.createdAt,
           likes: reply.likes || [],
-          rating: reply.rating || 0,
           userId: reply.user,
-          username: user.username || "Unknown",
-          avatar: user.avatar || DEFAULT_AVATAR,
+          username: u.username || "Unknown",
+          avatar: u.avatar || "/default-avatar.jpg",
         };
       }),
     }));
@@ -868,6 +866,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 
