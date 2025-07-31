@@ -341,6 +341,13 @@ router.get('/:logId', async (req, res) => {
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
   const { text, gif, externalImage, parentComment } = req.body;
 
+  console.log("📥 Incoming reply:");
+  console.log("text:", text);
+  console.log("gif:", gif);
+  console.log("externalImage:", externalImage);
+  console.log("parentComment:", parentComment);
+  console.log("req.user:", req.user);
+
   try {
     const log = await Log.findById(req.params.id);
     if (!log) return res.status(404).json({ message: 'Log not found' });
