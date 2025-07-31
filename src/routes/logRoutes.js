@@ -338,7 +338,6 @@ router.get('/:logId', async (req, res) => {
 
 
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
-
   const { text, gif, externalImage, parentComment } = req.body;
 
   try {
@@ -359,8 +358,9 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
       return res.status(400).json({ message: 'Reply must include text, image, or gif.' });
     }
 
+    // ✅ FIX: Ensure user is a real ObjectId
     const newReply = {
-      user: req.user.id,
+      user: mongoose.Types.ObjectId(req.user._id), // 💥 this is key!
       text: text || "",
       gif: gif || "",
       image: uploadedImage || "",
@@ -370,10 +370,14 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     log.replies.push(newReply);
     await log.save();
 
+    // ✅ FIX: Populate reply.user now
+    await log.populate("replies.user", "username avatar");
+
+    const latestReply = log.replies[log.replies.length - 1];
     const io = req.app.get("io");
     const fromUser = await User.findById(req.user._id).select("username avatar");
 
-    // 🔔 Notify log owner if direct reply
+    // 🔔 Notify log owner
     if (!parentComment && String(log.user) !== String(req.user._id)) {
       const notif = await Notification.create({
         type: 'reply',
@@ -391,7 +395,7 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
       });
     }
 
-    // 🔔 Notify parent comment owner if nested reply
+    // 🔔 Notify parent comment owner
     if (parentComment) {
       const parentReply = log.replies.id(parentComment);
       if (parentReply && String(parentReply.user) !== String(req.user._id)) {
@@ -412,28 +416,29 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
       }
     }
 
-    const latestReply = log.replies[log.replies.length - 1];
-    const replyUser = await User.findById(latestReply.user).select('username avatar');
-
+    // ✅ Return clean reply object with populated user
     res.status(201).json({
       _id: latestReply._id,
       text: latestReply.text,
       gif: latestReply.gif,
       image: latestReply.image,
       createdAt: latestReply.createdAt,
-      userId: replyUser._id,
-      username: replyUser.username,
-      avatar: replyUser.avatar,
+      user: {
+        _id: latestReply.user._id,
+        username: latestReply.user.username,
+        avatar: latestReply.user.avatar || DEFAULT_AVATAR,
+      },
       parentComment: latestReply.parentComment || null,
       likes: [],
       logId: log._id,
     });
-    
+
   } catch (err) {
     console.error('🔥 Failed to post reply:', err);
     res.status(500).json({ message: err.message || "Internal server error" });
   }
 });
+
 
 
 // ✅ Review Like → Notify review owner
