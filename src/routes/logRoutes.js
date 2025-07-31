@@ -805,7 +805,6 @@ router.get("/movie/:tmdbId/friends", protect, async (req, res) => {
 });
 
 // 📌 Get top 3 liked reviews for a specific movie
-// 🧠 GET popular reviews (limited or all)
 router.get("/movie/:id/popular", protect, async (req, res) => {
   try {
     const movieId = parseInt(req.params.id);
@@ -843,7 +842,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
         createdAt: reply.createdAt,
         likes: reply.likes || [],
         rating: reply.rating || 0,
-        userId: reply.user?._id || null,
+        userId: reply.user?._id,
         username: reply.user?.username || "Unknown",
         avatar: reply.user?.avatar || DEFAULT_AVATAR,
       })),
@@ -855,6 +854,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
