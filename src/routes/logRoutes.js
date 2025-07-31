@@ -818,9 +818,8 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       .sort({ "likes.length": -1 }) // Most liked first
       .limit(returnAll ? 50 : 3)
       .populate("user", "username avatar")
-.populate("replies.user", "username avatar")
-.lean({ virtuals: true });
-
+      .populate("replies.user", "username avatar")
+      .lean({ virtuals: true });
 
     const formatted = logs.map((log) => ({
       _id: log._id,
@@ -836,7 +835,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       gif: log.gif,
       image: log.image,
       likes: log.likes || [],
-      replies: log.replies?.map((reply) => ({
+      replies: (log.replies || []).map((reply) => ({
         _id: reply._id,
         text: reply.text,
         gif: reply.gif,
@@ -844,13 +843,9 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
         createdAt: reply.createdAt,
         likes: reply.likes || [],
         rating: reply.rating || 0,
-        user: reply.user
-          ? {
-              _id: reply.user._id,
-              username: reply.user.username,
-              avatar: reply.user.avatar || DEFAULT_AVATAR,
-            }
-          : null,
+        userId: reply.user?._id || null,
+        username: reply.user?.username || "Unknown",
+        avatar: reply.user?.avatar || DEFAULT_AVATAR,
       })),
     }));
 
@@ -860,6 +855,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
 router.patch('/:logId/backdrop', expressJson, protect, async (req, res) => {
