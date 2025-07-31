@@ -785,29 +785,29 @@ router.get("/movie/:tmdbId/friends", protect, async (req, res) => {
 router.get("/movie/:id/popular", protect, async (req, res) => {
   try {
     const movieId = parseInt(req.params.id);
-    const logs = await Log.find({
-      tmdbId: movieId,
-      review: { $exists: true, $ne: "" },
+    const returnAll = req.query.all === "true"; // 🔍 check for ?all=true
+
+    const logs = await Log.find({ 
+      tmdbId: movieId, 
+      review: { $exists: true, $ne: "" } 
     })
-      .sort({ "likes.length": -1 })
-      .limit(10) // fetch extras just in case
+      .sort({ "likes.length": -1 }) // most liked first
+      .limit(returnAll ? 50 : 3)     // 🔁 limit depends on query
       .populate("user", "username avatar");
 
-    const formatted = logs
-      .filter((log) => log.review && log.review.trim().length > 0)
-      .slice(0, 3)
-      .map((log) => ({
-        _id: log._id,
-        username: log.user.username,
-        avatar: log.user.avatar || DEFAULT_AVATAR,
-        review: log.review,
-        rating: log.rating,
-        rewatchCount: log.rewatchCount || 0,
-        createdAt: log.createdAt,
-        gif: log.gif,
-        image: log.image,
-        likes: log.likes || [],
-      }));
+    const formatted = logs.map(log => ({
+      _id: log._id,
+      userId: log.user._id,
+      username: log.user.username,
+      avatar: log.user.avatar || DEFAULT_AVATAR,
+      review: log.review,
+      rating: log.rating,
+      rewatchCount: log.rewatchCount || 0,
+      createdAt: log.createdAt,
+      gif: log.gif,
+      image: log.image,
+      likes: log.likes || [],
+    }));
 
     res.json(formatted);
   } catch (err) {
@@ -815,6 +815,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 
