@@ -336,9 +336,6 @@ router.get('/:logId', async (req, res) => {
 
 
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
-  console.log("📨 Incoming Reply to Log ID:", req.params.id);
-  console.log("📝 Body:", req.body);
-  console.log("🖼️ File:", req.file);
 
   const { text, gif, externalImage, parentComment } = req.body;
 
