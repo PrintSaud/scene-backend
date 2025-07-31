@@ -109,8 +109,6 @@ router.post('/:logId/like', protect, async (req, res) => {
   }
 });
 
-
-
 router.get('/proxy/tmdb/images/:movieId', async (req, res) => {
   const movieId = req.params.movieId;
 
@@ -142,7 +140,6 @@ router.get('/proxy/tmdb', async (req, res) => {
     res.status(500).send("Proxy failed.");
   }
 });
-
 
 // 🔥 Add this to logs.js:
 router.get('/:logId/replies', async (req, res) => {
@@ -213,8 +210,6 @@ router.get("/debug", protect, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-
 
 router.get('/:logId', async (req, res) => {
   try {
@@ -431,9 +426,6 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
   }
 });
 
-
-
-
 // ✅ Review Like → Notify review owner
 router.post('/:logId/like', protect, async (req, res) => {
   try {
@@ -482,7 +474,6 @@ router.post('/:logId/like', protect, async (req, res) => {
     res.status(500).json({ message: "Failed to like/unlike review", error: err.message });
   }
 });
-
 
 // ✅ Reply Like → Notify reply owner
 router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
@@ -535,8 +526,6 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
     res.status(500).json({ message: "Failed to like/unlike reply", error: err.message });
   }
 });
-
-
 
 // Popular Logs
 router.get('/movie/:id/popular', protect, async (req, res) => {
@@ -644,17 +633,12 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       importedFrom: "manual",
     });
     
-    
-
     res.status(201).json({ message: "✅ Log saved successfully!", log: newLog });
   } catch (err) {
     console.error("❌ Failed to save full log:", err);
     res.status(500).json({ message: "Failed to save full log", error: err.message });
   }
 });
-
-
-
 
 // PATCH /api/logs/:logId → Edit an existing log safely
 router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
@@ -797,90 +781,6 @@ router.get("/movie/:tmdbId/friends", protect, async (req, res) => {
   res.json(logs);
 });
 
-
-
-
-// 🕐 Logs from past 24 hours — from user + following
-router.get("/day", protect, async (req, res) => {
-  try {
-    const since = subHours(new Date(), 24);
-
-    const user = await User.findById(req.user._id);
-    const ids = [user._id, ...user.following];
-
-    const logs = await Log.find({
-      user: { $in: ids },
-      createdAt: { $gte: since },
-    })
-      .populate("user", "username avatar")
-      .populate("movie")
-      .sort({ createdAt: -1 })
-      .limit(60);
-
-    const formatted = await formatLogsWithPoster(logs, req.user._id);
-    res.json(formatted);
-  } catch (err) {
-    console.error("❌ /day error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// 📅 Logs from past 7 days — from user + following
-router.get("/week", protect, async (req, res) => {
-  try {
-    const since = subDays(new Date(), 7);
-
-    const user = await User.findById(req.user._id);
-    const ids = [user._id, ...user.following];
-
-    const logs = await Log.find({
-      user: { $in: ids },
-      createdAt: { $gte: since },
-    })
-      .populate("user", "username avatar")
-      .populate("movie")
-      .sort({ createdAt: -1 })
-      .limit(80);
-
-    const formatted = await formatLogsWithPoster(logs, req.user._id);
-    res.json(formatted);
-  } catch (err) {
-    console.error("❌ /week error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// 📆 Logs from past 30 days — from user + following
-router.get("/month", protect, async (req, res) => {
-  try {
-    const since = subDays(new Date(), 30);
-
-    const user = await User.findById(req.user._id);
-    const ids = [user._id, ...user.following];
-
-    const logs = await Log.find({
-      user: { $in: ids },
-      createdAt: { $gte: since },
-    })
-      .populate("user", "username avatar")
-      .populate("movie")
-      .sort({ createdAt: -1 })
-      .limit(100);
-
-    const formatted = await formatLogsWithPoster(logs, req.user._id);
-    res.json(formatted);
-  } catch (err) {
-    console.error("❌ /month error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-
-
-
-
-
-
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
 router.patch('/:logId/backdrop', expressJson, protect, async (req, res) => {
   const { backdrop } = req.body || {};  // Fallback safety too
@@ -901,8 +801,6 @@ router.patch('/:logId/backdrop', expressJson, protect, async (req, res) => {
     res.status(500).json({ message: "Failed to update backdrop" });
   }
 });
-
-
 
 router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
   try {
@@ -945,7 +843,6 @@ router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-
 
 router.delete("/:logId", protect, async (req, res) => {
   try {
@@ -1110,9 +1007,6 @@ router.post("/:id/share", protect, async (req, res) => {
   }
 });
 
-
-
-
 router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId);
@@ -1163,7 +1057,6 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
   }
 });
 
-
 router.get('/user/:userId/movie/:movieId', async (req, res) => {
   try {
     const userId = req.params.userId;
@@ -1183,8 +1076,6 @@ router.get('/user/:userId/movie/:movieId', async (req, res) => {
     res.status(500).json({ message: "Failed to fetch logs for user/movie" });
   }
 });
-
-
 
 // ✅ TEMP TEST ROUTE — check user field type
 router.get("/debug/logs/:id", async (req, res) => {
@@ -1237,8 +1128,5 @@ router.get('/filter/:filterType', protect, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-
-
-
 
 module.exports = router;
