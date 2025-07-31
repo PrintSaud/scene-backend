@@ -845,7 +845,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       image: log.image,
       likes: log.likes || [],
       replies: (log.replies || []).map((reply) => {
-        const u = userMap[reply.user];
+        const u = userMap[String(reply.user)] || {};
         return {
           _id: reply._id,
           text: reply.text,
