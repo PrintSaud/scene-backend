@@ -779,29 +779,24 @@ router.get('/feed/:id', protect, async (req, res) => {
 });
 
 // Get logs from followings for a specific movie
-router.get("/movie/:id/friends", protect, async (req, res) => {
-  try {
-    const movieId = parseInt(req.params.id);
-    const userId = req.user._id;
+router.get("/movie/:tmdbId/friends", protect, async (req, res) => {
+  const userId = req.user._id;
+  const { tmdbId } = req.params;
 
-    // 1. Get the current user with their followings
-    const user = await User.findById(userId);
-    const followings = user.following || [];
+  const user = await User.findById(userId);
+  const followingIds = user.following;
 
-    // 2. Fetch logs where user is in your followings AND matches movieId
-    const logs = await Log.find({
-      user: { $in: followings },
-      tmdbId: movieId,
-    })
-      .sort({ createdAt: -1 }) // optional: most recent first
-      .populate("user", "username avatar");
+  const logs = await Log.find({
+    user: { $in: followingIds },
+    tmdbId: parseInt(tmdbId),
+  })
+    .sort({ createdAt: -1 })
+    .limit(20)
+    .populate("user", "username avatar");
 
-    res.json(logs);
-  } catch (err) {
-    console.error("❌ Error fetching friend logs:", err);
-    res.status(500).json({ message: "Server error" });
-  }
+  res.json(logs);
 });
+
 
 
 
