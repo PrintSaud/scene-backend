@@ -419,7 +419,10 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
       username: replyUser.username,
       avatar: replyUser.avatar,
       parentComment: latestReply.parentComment || null,
+      likes: [], // NEW
+      logId: log._id, // NEW
     });
+    
   } catch (err) {
     console.error('🔥 Failed to post reply:', err);
     res.status(500).json({ message: err.message });
