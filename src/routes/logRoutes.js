@@ -781,6 +781,29 @@ router.get("/movie/:tmdbId/friends", protect, async (req, res) => {
   res.json(logs);
 });
 
+router.get("/movie/:id/popular", protect, async (req, res) => {
+  const { id } = req.params; // TMDB ID
+
+  try {
+    const logs = await Log.find({
+      tmdbId: id,
+      review: { $exists: true, $ne: "" },
+    })
+      .populate("user", "username avatar")
+      .sort({ likes: -1 }) // Sort by likes length
+      .lean();
+
+    // Sort manually by number of likes (if 'likes' is array)
+    const sorted = logs.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
+
+    return res.json(sorted);
+  } catch (err) {
+    console.error("❌ Failed to fetch popular reviews:", err.message);
+    res.status(500).json({ message: "Server error while fetching reviews" });
+  }
+});
+
+
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
 router.patch('/:logId/backdrop', expressJson, protect, async (req, res) => {
   const { backdrop } = req.body || {};  // Fallback safety too
