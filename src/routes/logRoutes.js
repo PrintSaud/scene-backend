@@ -141,7 +141,7 @@ router.get('/proxy/tmdb', async (req, res) => {
   }
 });
 
-// 🔥 Add this to logs.js:
+// logs.js
 router.get('/:logId/replies', async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId);
@@ -149,16 +149,17 @@ router.get('/:logId/replies', async (req, res) => {
 
     const replies = await Promise.all(
       (log.replies || []).map(async (r) => {
-        let replyUser = await User.findById(r.user).select('username avatar');
-        let ratingForThisMovie = null;
+        const replyUser = await User.findById(r.user).select('username avatar');
 
+        // Fetch that user's rating for this movie (if any)
+        let rating = null;
         if (replyUser) {
           const userLog = await Log.findOne({
             user: replyUser._id,
             movie: log.movie
           });
           if (userLog) {
-            ratingForThisMovie = userLog.rating || null;
+            rating = userLog.rating || null;
           }
         }
 
@@ -172,18 +173,19 @@ router.get('/:logId/replies', async (req, res) => {
           avatar: replyUser?.avatar || DEFAULT_AVATAR,
           userId: replyUser?._id || null,
           likes: Array.isArray(r.likes) ? r.likes : [],
-          ratingForThisMovie,
-          parentComment: r.parentComment || null // ✅ ADD THIS LINE!
+          rating: rating, // ✅ Final field name for frontend
+          parentComment: r.parentComment || null
         };
       })
     );
 
     res.json(replies);
   } catch (err) {
-    console.error('🔥 Error fetching lightweight replies:', err);
+    console.error('🔥 Error fetching replies:', err);
     res.status(500).json({ message: "Failed to fetch replies" });
   }
 });
+
 
 // ✅ Add this FIRST — before router.get("/:logId")
 router.get("/debug", protect, async (req, res) => {
