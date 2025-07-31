@@ -781,27 +781,35 @@ router.get("/movie/:tmdbId/friends", protect, async (req, res) => {
   res.json(logs);
 });
 
+// 📌 Get top 3 liked reviews for a specific movie
 router.get("/movie/:id/popular", protect, async (req, res) => {
-  const { id } = req.params; // TMDB ID
-
   try {
-    const logs = await Log.find({
-      tmdbId: id,
-      review: { $exists: true, $ne: "" },
-    })
-      .populate("user", "username avatar")
-      .sort({ likes: -1 }) // Sort by likes length
-      .lean();
+    const movieId = parseInt(req.params.id);
+    const logs = await Log.find({ tmdbId: movieId, review: { $exists: true, $ne: "" } })
+      .sort({ "likes.length": -1 })
+      .limit(3)
+      .populate("user", "username avatar");
 
-    // Sort manually by number of likes (if 'likes' is array)
-    const sorted = logs.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
+    const formatted = logs.map(log => ({
+      _id: log._id,
+      username: log.user.username,
+      avatar: log.user.avatar || DEFAULT_AVATAR,
+      review: log.review,
+      rating: log.rating,
+      rewatchCount: log.rewatchCount || 0,
+      createdAt: log.createdAt,
+      gif: log.gif,
+      image: log.image,
+      likes: log.likes || [],
+    }));
 
-    return res.json(sorted);
+    res.json(formatted);
   } catch (err) {
-    console.error("❌ Failed to fetch popular reviews:", err.message);
+    console.error("❌ Failed to fetch popular reviews", err);
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
