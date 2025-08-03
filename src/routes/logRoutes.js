@@ -643,13 +643,8 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
     const hasGif = gif && gif.trim().length > 0;
     const hasImage = !!uploadedImage;
 
-    const combinedReview = hasText
-      ? review.trim()
-      : hasGif
-      ? "[GIF ONLY]"
-      : hasImage
-      ? "[IMAGE ONLY]"
-      : "";
+    const combinedReview = review && review.trim() ? review.trim() : "";
+
 
     // ✅ Step 3: Create Log
     const newLog = await Log.create({
