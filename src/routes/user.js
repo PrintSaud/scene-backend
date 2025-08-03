@@ -11,6 +11,41 @@ const Notification = require('../models/notification');  // 🔔 Add this line!
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() }); // ✅ in-memory upload
 
+// ✅ Save recent GIF
+router.post("/gif/recent", async (req, res) => {
+  const { userId, gifUrl } = req.body;
+
+  try {
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, error: "User not found" });
+
+    // Add gif to top, remove duplicates
+    user.recentGifs = [gifUrl, ...user.recentGifs.filter((g) => g !== gifUrl)];
+
+    // Keep only last 20
+    if (user.recentGifs.length > 20) {
+      user.recentGifs = user.recentGifs.slice(0, 20);
+    }
+
+    await user.save();
+    res.status(200).json({ success: true, recentGifs: user.recentGifs });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ✅ Get recent GIFs
+router.get("/:id/recent-gifs", async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    res.status(200).json({ recentGifs: user.recentGifs || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // get all users
 router.get('/', async (req, res) => {
   try {
@@ -392,43 +427,6 @@ router.post('/:id/notify/share', async (req, res) => {
 
 
 
-
-
-
-// ✅ Save recent GIF
-router.post("/gif/recent", async (req, res) => {
-  const { userId, gifUrl } = req.body;
-
-  try {
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ success: false, error: "User not found" });
-
-    // Add gif to top, remove duplicates
-    user.recentGifs = [gifUrl, ...user.recentGifs.filter((g) => g !== gifUrl)];
-
-    // Keep only last 20
-    if (user.recentGifs.length > 20) {
-      user.recentGifs = user.recentGifs.slice(0, 20);
-    }
-
-    await user.save();
-    res.status(200).json({ success: true, recentGifs: user.recentGifs });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ✅ Get recent GIFs
-router.get("/:id/recent-gifs", async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    res.status(200).json({ recentGifs: user.recentGifs || [] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 router.get('/:userId/watchlist', async (req, res) => {
   const { userId } = req.params;
