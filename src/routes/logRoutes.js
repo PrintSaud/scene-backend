@@ -596,8 +596,9 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       watchedAt,
       title,
       poster,
-      backdrop,
+      backdrop, // ✅ ADD THIS LINE
     } = req.body;
+    
 
     const uploadedImage = req.file
       ? await uploadToCloudinary(req.file.buffer, "scene/logs")
@@ -638,24 +639,13 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       return res.status(500).json({ message: "Movie document invalid or missing _id" });
     }
 
-    // ✅ Review Fallback Logic
-    const hasText = review && review.trim().length > 0;
-    const hasGif = gif && gif.trim().length > 0;
-    const hasImage = !!uploadedImage;
-
-    const combinedReview = hasText
-      ? review.trim()
-      : hasGif
-      ? ""
-      : hasImage
-      ? ""
-      : "";
+    const combinedReview = review && review.trim() ? review.trim() : gif || image ? " " : "";
 
     // ✅ Step 3: Create Log
     const newLog = await Log.create({
       user: req.user._id,
       tmdbId: movie.tmdbId,
-      review: combinedReview,
+      review: combinedReview, // 👈 Important fix
       rating: parseFloat(rating) || 0,
       rewatch: rewatch === "true" || false,
       rewatchCount: parseInt(rewatchCount) || 0,
@@ -667,14 +657,14 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       backdrop: backdrop || movie.backdrop_path || "",
       importedFrom: "manual",
     });
-
+    
+    
     res.status(201).json({ message: "✅ Log saved successfully!", log: newLog });
   } catch (err) {
     console.error("❌ Failed to save full log:", err);
     res.status(500).json({ message: "Failed to save full log", error: err.message });
   }
 });
-
 
 // PATCH /api/logs/:logId → Edit an existing log safely
 router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
