@@ -639,7 +639,13 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       return res.status(500).json({ message: "Movie document invalid or missing _id" });
     }
 
-    const combinedReview = review && review.trim() ? review.trim() : gif || image ? " " : "";
+    const combinedReview =
+    review && review.trim()
+      ? review.trim()
+      : gif || uploadedImage
+      ? "__media__"
+      : "";
+  
 
     // ✅ Step 3: Create Log
     const newLog = await Log.create({
