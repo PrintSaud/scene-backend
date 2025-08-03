@@ -11,52 +11,51 @@ async function getDailyMovie() {
   const now = Date.now();
   const oneDay = 24 * 60 * 60 * 1000;
 
-  // ✅ If cached and not expired, return it
   if (cachedMovie && lastFetched && now - lastFetched < oneDay) {
     return cachedMovie;
   }
 
   try {
-    // 🔥 1. Fetch trending
-    const res = await axios.get(
-      `https://api.themoviedb.org/3/trending/movie/day?api_key=${TMDB_KEY}`
-    );
+    // 🎯 Step 1: Build discover query
+    const discoverParams = {
+      api_key: TMDB_KEY,
+      sort_by: "popularity.desc", // Or "vote_average.desc"
+      vote_average_gte: 7.5,
+      vote_count_gte: 500,
+      language: "en-US",
+      page: Math.floor(Math.random() * 20) + 1, // Randomize page (1–20)
+    };
 
-    const trending = res.data.results;
+    const query = Object.entries(discoverParams)
+      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+      .join("&");
 
-    // 🔍 2. Filter: Rating ≥ 7.5 and votes ≥ 300
-    const filtered = trending.filter(
-      (m) => m.vote_average >= 7.5 && m.vote_count >= 3000
-    );
+    const url = `https://api.themoviedb.org/3/discover/movie?${query}`;
 
-    // 🔒 3. Check for already shown ones
+    // 📡 Step 2: Fetch movies
+    const res = await axios.get(url);
+    const allResults = res.data.results;
+
+    // 💾 Step 3: Exclude already shown
     const shown = await ShownDailyMovie.find().select("tmdbId");
     const shownIds = new Set(shown.map((s) => s.tmdbId));
-
-    const unseen = filtered.filter((m) => !shownIds.has(m.id));
+    const unseen = allResults.filter((m) => !shownIds.has(m.id));
 
     if (unseen.length === 0) {
-      console.warn("⚠️ No unseen movies left in filtered list. Returning random from all.");
-      cachedMovie = filtered[0]; // fallback
-      lastFetched = now;
-      return cachedMovie;
+      console.warn("⚠️ No unseen movies left in this page. Picking first from full list.");
+      cachedMovie = allResults[0]; // fallback
+    } else {
+      cachedMovie = unseen[Math.floor(Math.random() * unseen.length)];
+      await ShownDailyMovie.create({ tmdbId: cachedMovie.id });
     }
 
-    // 🎯 4. Pick one randomly
-    const random = unseen[Math.floor(Math.random() * unseen.length)];
-
-    // 💾 5. Save to DB
-    await ShownDailyMovie.create({ tmdbId: random.id });
-
-    // ✅ 6. Cache it
-    cachedMovie = random;
     lastFetched = now;
-
-    return random;
+    return cachedMovie;
   } catch (err) {
     console.error("❌ Failed to fetch daily movie:", err.message);
     return null;
   }
 }
+
 
 module.exports = getDailyMovie;

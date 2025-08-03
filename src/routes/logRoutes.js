@@ -643,7 +643,7 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
     const newLog = await Log.create({
       user: req.user._id,
       tmdbId: movie.tmdbId,
-      review: review || "",
+      review: combinedReview, // 👈 Important fix
       rating: parseFloat(rating) || 0,
       rewatch: rewatch === "true" || false,
       rewatchCount: parseInt(rewatchCount) || 0,
@@ -652,9 +652,10 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       watchedAt: watchedAt ? new Date(watchedAt) : Date.now(),
       title: title || movie.title || "",
       poster: posterValue || movie.posterPath || "",
-      backdrop: backdrop || movie.backdrop_path || "", // ✅ ADD THIS
+      backdrop: backdrop || movie.backdrop_path || "",
       importedFrom: "manual",
     });
+    
     
     res.status(201).json({ message: "✅ Log saved successfully!", log: newLog });
   } catch (err) {
