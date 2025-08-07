@@ -930,6 +930,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
         // 💾 Save any fixes (like string → ObjectId conversion)
         if (updated) {
           try {
+            log.markModified("replies"); // ✅ CRITICAL LINE
             await log.save();
             console.log("💾 Saved fixed replies for log:", log._id.toString());
           } catch (err) {
@@ -962,6 +963,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
