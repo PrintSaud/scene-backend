@@ -276,10 +276,17 @@ router.get('/:logId', async (req, res) => {
         let ratingForThisMovie = null;
 
         if (r.user) {
-          replyUser = await User.findById(r.user).select('username avatar');
+          // ✅ Check if already populated
+          if (typeof r.user === "object" && r.user.username) {
+            replyUser = r.user;
+          } else {
+            replyUser = await User.findById(r.user).select('username avatar');
+          }
+        
           const userLog = await Log.findOne({ user: replyUser?._id, tmdbId });
           if (userLog) ratingForThisMovie = userLog.rating || null;
         }
+        
 
         return {
           _id: r._id,
