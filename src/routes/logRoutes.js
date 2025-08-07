@@ -836,17 +836,27 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
 
     const formatted = await Promise.all(
       logs.map(async (log) => {
-        const replies = await Promise.all(
+        let replies = await Promise.all(
           (log.replies || []).map(async (r) => {
             try {
               let replyUser = null;
-        
-              if (typeof r.user === "object" && r.user?.username) {
-                replyUser = r.user; // already populated
-              } else if (typeof r.user === "string") {
-                replyUser = await User.findById(r.user).select("username avatar");
+
+              // ✅ Fix string IDs in memory and in DB
+              if (typeof r.user === "string") {
+                try {
+                  const objectId = mongoose.Types.ObjectId(r.user);
+                  replyUser = await User.findById(objectId).select("username avatar");
+
+                  // Live fix: replace string user with ObjectId in DB
+                  r.user = objectId;
+                  await log.save(); // save once per modified reply
+                } catch (err) {
+                  console.warn("❌ Invalid userId format:", r.user);
+                }
+              } else if (typeof r.user === "object" && r.user?.username) {
+                replyUser = r.user;
               }
-        
+
               return {
                 _id: r._id,
                 text: r.text || "",
@@ -886,7 +896,6 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
             }
           })
         );
-        
 
         return {
           _id: log._id,
@@ -913,6 +922,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 
