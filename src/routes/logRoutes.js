@@ -851,8 +851,6 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     const movieId = parseInt(req.params.id);
     const returnAll = req.query.all === "true";
 
-    console.log("🎬 Getting reviews for movieId:", movieId, "returnAll:", returnAll);
-
     const logs = await Log.find({
       tmdbId: movieId,
       review: { $exists: true, $ne: "" },
@@ -861,51 +859,42 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       .sort({ "likes.length": -1 })
       .limit(returnAll ? 50 : 3);
 
-    console.log(`✅ Found ${logs.length} logs with reviews`);
-
-    // 🔐 Safe User Fetch
     const getSafeUser = async (rawUser) => {
-      try {
-        if (!rawUser) {
-          console.log("❗ getSafeUser called with null");
-          return null;
-        }
+      if (!rawUser) return null;
 
+      try {
         if (typeof rawUser === "string") {
           const user = await User.findById(rawUser).select("username avatar");
-          console.log("📛 getSafeUser [string]:", rawUser, "→", user?.username);
+          console.log("🔍 Resolved string user:", user);
           return user || null;
         }
 
         if (typeof rawUser === "object") {
           if (rawUser.username && rawUser.avatar) {
-            console.log("✅ getSafeUser [object ready]:", rawUser.username);
+            console.log("✅ Already valid user object:", rawUser);
             return rawUser;
           }
 
           if (rawUser._id) {
             const user = await User.findById(rawUser._id).select("username avatar");
-            console.log("📛 getSafeUser [object _id]:", rawUser._id, "→", user?.username);
+            console.log("🔁 Resolved object user:", user);
             return user || null;
           }
         }
       } catch (err) {
-        console.error("❌ Error in getSafeUser:", err);
+        console.error("❌ Error resolving user:", err);
         return null;
       }
 
-      console.log("⚠️ Unknown rawUser format:", rawUser);
       return null;
     };
 
-    // 🧵 Normalize Replies Recursively
     const normalizeReplies = async (replies = []) => {
       return await Promise.all(
         replies.map(async (r) => {
-          console.log("🧪 Normalizing reply ID:", r._id);
+          console.log("🧪 MAIN REPLY OBJECT:", r);
 
           const replyUser = await getSafeUser(r.user);
-          const children = await normalizeReplies(r.children || []);
 
           const safeUser = replyUser
             ? {
@@ -919,7 +908,13 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
                 avatar: "/default-avatar.jpg",
               };
 
-          console.log("🧵 Normalized Reply User:", safeUser);
+          const children = await normalizeReplies(r.children || []);
+
+          console.log("🧪 REPLY USER FIELDS:", {
+            replyUserId: safeUser._id,
+            replyUsername: safeUser.username,
+            replyAvatar: safeUser.avatar,
+          });
 
           return {
             _id: r._id,
@@ -930,7 +925,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
             likes: Array.isArray(r.likes) ? r.likes : [],
             parentComment: r.parentComment || null,
             children,
-            user: safeUser, // ✅ actual user object
+            user: safeUser,
             username: safeUser.username,
             avatar: safeUser.avatar,
             userId: safeUser._id,
@@ -939,13 +934,9 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       );
     };
 
-    // 🧠 Format each log
     const formatted = await Promise.all(
       logs.map(async (log) => {
-        console.log("📌 Formatting log by:", log.user?.username, "Log ID:", log._id);
-
         const replies = await normalizeReplies(log.replies || []);
-
         return {
           _id: log._id,
           user: {
@@ -965,13 +956,13 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       })
     );
 
-    console.log("✅ Sending formatted logs with replies");
     res.json(formatted);
   } catch (err) {
     console.error("❌ Failed to fetch reviews:", err);
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 
