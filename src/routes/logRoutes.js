@@ -849,9 +849,14 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       tmdbId: movieId,
       review: { $exists: true, $ne: "" },
     })
+      .populate("user", "username avatar")
+      .populate({
+        path: "replies.user",
+        select: "username avatar"
+      })
       .sort({ "likes.length": -1 })
-      .limit(returnAll ? 50 : 3)
-      .populate("user", "username avatar");
+      .limit(returnAll ? 50 : 3);
+    
 
     const formatted = await Promise.all(
       logs.map(async (log) => {
