@@ -854,34 +854,47 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
 
     const formatted = await Promise.all(
       logs.map(async (log) => {
-        let updated = false; // 🛠️ Track if we fix any replies
+        let updated = false;
 
         const replies = await Promise.all(
           (log.replies || []).map(async (r) => {
-            try {
-              let replyUser = null;
+            let replyUser = null;
 
+            try {
+              // 💾 Fix string ID → ObjectId
               if (typeof r.user === "string") {
                 try {
                   const objectId = mongoose.Types.ObjectId(r.user);
                   replyUser = await User.findById(objectId).select("username avatar");
 
-                  // 💾 Fix it in DB if valid
-                  r.user = objectId;
-                  updated = true;
-
-                  console.log("🔧 Fixed reply.user string to ObjectId in log:", log._id.toString());
-                  console.log("🧠 Reply User Fetched (from ID):", replyUser);
+                  if (replyUser) {
+                    r.user = objectId;
+                    updated = true;
+                    console.log("🔧 Fixed reply.user to ObjectId in log:", log._id.toString());
+                  }
                 } catch (err) {
-                  console.warn("❌ Invalid reply.user format:", r.user);
+                  console.warn("❌ Invalid string user:", r.user);
                 }
-              } else if (typeof r.user === "object" && r.user?.username) {
-                replyUser = r.user;
-              } else if (r.user?._id) {
+              }
+
+              // ✅ Proper ObjectId case
+              else if (typeof r.user === "object" && r.user?._id) {
                 replyUser = await User.findById(r.user._id).select("username avatar");
               }
 
-              // 🌍 Final reply formatting
+              // Fallback user object
+              const userObj = replyUser
+                ? {
+                    _id: replyUser._id,
+                    username: replyUser.username,
+                    avatar: replyUser.avatar,
+                  }
+                : {
+                    _id: r.user || null,
+                    username: "Deleted User",
+                    avatar: "/default-avatar.jpg",
+                  };
+
               return {
                 _id: r._id,
                 text: r.text || "",
@@ -890,20 +903,11 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
                 createdAt: r.createdAt,
                 likes: Array.isArray(r.likes) ? r.likes : [],
                 parentComment: r.parentComment || null,
-                user: replyUser
-                  ? {
-                      _id: replyUser._id,
-                      username: replyUser.username,
-                      avatar: replyUser.avatar,
-                    }
-                  : {
-                      _id: r.user || null,
-                      username: "Deleted User",
-                      avatar: "/default-avatar.jpg",
-                    },
+                user: userObj,
               };
             } catch (err) {
-              console.warn("⚠️ Error building reply for log:", log._id.toString(), err.message);
+              console.warn("⚠️ Error mapping reply in log:", log._id.toString(), err.message);
+
               return {
                 _id: r._id,
                 text: r.text || "",
@@ -922,11 +926,10 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
           })
         );
 
-        // 💾 Save fixed replies once per log if needed
         if (updated) {
           try {
             await log.save();
-            console.log("💾 Saved fixed replies in log:", log._id.toString());
+            console.log("💾 Saved fixed replies for log:", log._id.toString());
           } catch (err) {
             console.error("❌ Failed to save updated log:", log._id.toString(), err.message);
           }
@@ -957,15 +960,6 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
-
-
-
-
-
-
-
-
-
 
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
