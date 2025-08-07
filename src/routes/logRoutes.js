@@ -825,10 +825,14 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     })
       .sort({ "likes.length": -1 })
       .limit(returnAll ? 50 : 3)
-      .populate("user", "username avatar")
-      .populate("replies.user", "username avatar"); // ✅ keep populate
-    // 👇 DO NOT use .lean() at all for now
-    
+      .populate("user", "username avatar");
+
+    // 🔥 Populate replies.user manually
+    for (const log of logs) {
+      for (const reply of log.replies || []) {
+        await reply.populate("user", "username avatar");
+      }
+    }
 
     const formatted = logs.map((log) => ({
       _id: log._id,
@@ -859,7 +863,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
             }
           : null,
         parentComment: reply.parentComment || null,
-      })),      
+      })),
     }));
 
     res.json(formatted);
@@ -868,6 +872,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 
