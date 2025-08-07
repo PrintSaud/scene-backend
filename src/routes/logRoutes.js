@@ -859,6 +859,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
 
         const replies = await Promise.all(
           (log.replies || []).map(async (r) => {
+            console.log("🧪 Original reply.user type:", typeof r.user, r.user);
             let replyUser = null;
 
             try {
