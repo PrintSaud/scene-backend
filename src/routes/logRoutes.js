@@ -825,19 +825,10 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     })
       .sort({ "likes.length": -1 })
       .limit(returnAll ? 50 : 3)
-      .populate("user", "username avatar")
+      .populate("user", "username avatar") // ✅ Log owner
+      .populate("replies.user", "username avatar") // ✅ ADD THIS LINE
       .lean({ virtuals: true });
-
-    const userIdsToFetch = new Set();
-    logs.forEach((log) => {
-      (log.replies || []).forEach((r) => {
-        if (r.user) userIdsToFetch.add(String(r.user));
-      });
-    });
-
-    const users = await User.find({ _id: { $in: Array.from(userIdsToFetch) } }).select("username avatar");
-    const userMap = {};
-    users.forEach((u) => (userMap[u._id] = u));
+  
 
     const formatted = logs.map((log) => ({
       _id: log._id,
@@ -853,26 +844,22 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       gif: log.gif,
       image: log.image,
       likes: log.likes || [],
-      replies: (log.replies || []).map((reply) => {
-        const u = userMap[String(reply.user)] || {};
-        return {
-          _id: reply._id,
-          text: reply.text,
-          gif: reply.gif,
-          image: reply.image,
-          createdAt: reply.createdAt,
-          likes: reply.likes || [],
-          user: u
-            ? {
-                _id: u._id,
-                username: u.username,
-                avatar: u.avatar,
-              }
-            : null,
-          parentComment: reply.parentComment || null,
-        };
-      }),
-      
+      replies: (log.replies || []).map((reply) => ({
+        _id: reply._id,
+        text: reply.text,
+        gif: reply.gif,
+        image: reply.image,
+        createdAt: reply.createdAt,
+        likes: reply.likes || [],
+        user: reply.user
+          ? {
+              _id: reply.user._id,
+              username: reply.user.username,
+              avatar: reply.user.avatar,
+            }
+          : null,
+        parentComment: reply.parentComment || null,
+      })),      
     }));
 
     res.json(formatted);
