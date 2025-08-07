@@ -859,31 +859,30 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       .sort({ "likes.length": -1 })
       .limit(returnAll ? 50 : 3);
 
-    // 🔧 Helper to resolve any user ID or object
-    const resolveUser = async (rawUser) => {
+    const getSafeUser = async (rawUser) => {
       try {
         if (!rawUser) return null;
-
         if (typeof rawUser === "string") {
-          return await User.findById(rawUser).select("username avatar");
+          const user = await User.findById(rawUser).select("username avatar");
+          return user || null;
         }
-
         if (typeof rawUser === "object") {
           if (rawUser.username && rawUser.avatar) return rawUser;
-          if (rawUser._id) return await User.findById(rawUser._id).select("username avatar");
+          if (rawUser._id) {
+            const user = await User.findById(rawUser._id).select("username avatar");
+            return user || null;
+          }
         }
-      } catch {
+      } catch (err) {
         return null;
       }
-
       return null;
     };
 
-    // 🧠 Recursive reply normalizer
     const normalizeReplies = async (replies = []) => {
       return await Promise.all(
         replies.map(async (r) => {
-          const replyUser = await resolveUser(r.user);
+          const replyUser = await getSafeUser(r.user);
           const children = await normalizeReplies(r.children || []);
 
           const safeUser = replyUser
@@ -918,8 +917,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
 
     const formatted = await Promise.all(
       logs.map(async (log) => {
-        const replies = await normalizeReplies(log.toObject().replies); // ✅ Critical fix!
-
+        const replies = await normalizeReplies(log.replies || []);
         return {
           _id: log._id,
           user: {
@@ -945,11 +943,6 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
-
-
-
-
-
 
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
