@@ -885,17 +885,18 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
               }
 
               // 🛡️ Safe fallback
-              const userObj = replyUser
-                ? {
-                    _id: replyUser._id,
-                    username: replyUser.username,
-                    avatar: replyUser.avatar,
-                  }
-                : {
-                    _id: r.user || null,
-                    username: "Deleted User",
-                    avatar: "/default-avatar.jpg",
-                  };
+              const userObj = replyUser && replyUser.username
+  ? {
+      _id: replyUser._id,
+      username: replyUser.username,
+      avatar: replyUser.avatar,
+    }
+  : {
+      _id: null,
+      username: "Unknown",
+      avatar: "/default-avatar.jpg",
+    };
+
 
               return {
                 _id: r._id,
