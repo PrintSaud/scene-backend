@@ -96,25 +96,31 @@ app.get("/", (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Socket.IO: Not allowed by CORS"));
+      }
+    },
     credentials: true,
-    methods: ["GET", "POST", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
   },
 });
+
 
 app.set("io", io);
 
 io.on("connection", (socket) => {
-  console.log("⚡ New client connected:", socket.id);
+  io.engine.on("connection_error", (err) => {
+    console.error("🚨 Socket.IO CORS connection error:", err.message);
+  });
+  
 
   socket.on("join", (userId) => {
     socket.join(userId);
-    console.log(`🟢 User ${userId} joined room`);
   });
 
   socket.on("disconnect", () => {
-    console.log("❌ Client disconnected:", socket.id);
   });
 });
 
