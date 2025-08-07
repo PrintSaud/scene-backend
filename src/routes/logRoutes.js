@@ -827,12 +827,12 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       .limit(returnAll ? 50 : 3)
       .populate("user", "username avatar");
 
-    // 🔥 Populate replies.user manually (nested)
+    // ✅ Proper nested population
     for (const log of logs) {
-      for (const reply of log.replies || []) {
-        if (reply.user && typeof reply.user === "object" && reply.user.username) continue;
-        await reply.populate("user", "username avatar");
-      }
+      await log.populate({
+        path: "replies.user",
+        select: "username avatar",
+      });
     }
 
     const formatted = logs.map((log) => ({
@@ -882,6 +882,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 
