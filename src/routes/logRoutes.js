@@ -859,80 +859,66 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       .sort({ "likes.length": -1 })
       .limit(returnAll ? 50 : 3);
 
+    // 🔧 Helper to resolve any user ID or object
+    const resolveUser = async (rawUser) => {
+      try {
+        if (!rawUser) return null;
+
+        if (typeof rawUser === "string") {
+          return await User.findById(rawUser).select("username avatar");
+        }
+
+        if (typeof rawUser === "object") {
+          if (rawUser.username && rawUser.avatar) return rawUser;
+          if (rawUser._id) return await User.findById(rawUser._id).select("username avatar");
+        }
+      } catch {
+        return null;
+      }
+
+      return null;
+    };
+
+    // 🧠 Recursive reply normalizer
+    const normalizeReplies = async (replies = []) => {
+      return await Promise.all(
+        replies.map(async (r) => {
+          const replyUser = await resolveUser(r.user);
+          const children = await normalizeReplies(r.children || []);
+
+          const safeUser = replyUser
+            ? {
+                _id: replyUser._id,
+                username: replyUser.username,
+                avatar: replyUser.avatar,
+              }
+            : {
+                _id: null,
+                username: "Deleted User",
+                avatar: "/default-avatar.jpg",
+              };
+
+          return {
+            _id: r._id,
+            text: r.text || "",
+            gif: r.gif || "",
+            image: r.image || "",
+            createdAt: r.createdAt,
+            likes: Array.isArray(r.likes) ? r.likes : [],
+            parentComment: r.parentComment || null,
+            children,
+            user: safeUser,
+            username: safeUser.username,
+            avatar: safeUser.avatar,
+            userId: safeUser._id,
+          };
+        })
+      );
+    };
+
     const formatted = await Promise.all(
       logs.map(async (log) => {
-        let updated = false;
-
-        // 👇 Helper to resolve a reply user
-        const resolveUser = async (user) => {
-          try {
-            if (typeof user === "string") {
-              const objectId = mongoose.Types.ObjectId(user);
-              const found = await User.findById(objectId).select("username avatar");
-              if (found) return found;
-            } else if (typeof user === "object") {
-              if (user?.username && user?.avatar) return user;
-              if (user?._id) return await User.findById(user._id).select("username avatar");
-            }
-          } catch (err) {
-            console.warn("⚠️ resolveUser failed:", user);
-          }
-          return null;
-        };
-
-        // 👇 Normalize replies
-        const normalizeReplies = async (replies = []) => {
-          return await Promise.all(
-            replies.map(async (r) => {
-              const replyUser = await resolveUser(r.user);
-              if (replyUser && typeof r.user === "string") {
-                r.user = replyUser._id;
-                updated = true;
-              }
-
-              const children = await normalizeReplies(r.children || []); // 🌟 Handle nested
-
-              const userObj = replyUser
-                ? {
-                    _id: replyUser._id,
-                    username: replyUser.username,
-                    avatar: replyUser.avatar,
-                  }
-                : {
-                    _id: null,
-                    username: "Unknown",
-                    avatar: "/default-avatar.jpg",
-                  };
-
-              return {
-                _id: r._id,
-                text: r.text || "",
-                gif: r.gif || "",
-                image: r.image || "",
-                createdAt: r.createdAt,
-                likes: Array.isArray(r.likes) ? r.likes : [],
-                parentComment: r.parentComment || null,
-                children,
-                user: userObj,
-                username: userObj.username,
-                avatar: userObj.avatar,
-                userId: userObj._id,
-              };
-            })
-          );
-        };
-
-        const replies = await normalizeReplies(log.replies);
-
-        if (updated) {
-          try {
-            log.markModified("replies");
-            await log.save();
-            console.log("💾 Saved updated replies for:", log._id.toString());
-          } catch (err) {
-            console.error("❌ Save error:", log._id.toString(), err.message);
-          }
-        }
+        const replies = await normalizeReplies(log.toObject().replies); // ✅ Critical fix!
 
         return {
           _id: log._id,
@@ -955,10 +941,12 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
 
     res.json(formatted);
   } catch (err) {
-    console.error("❌ Failed to fetch popular reviews:", err);
+    console.error("❌ Failed to fetch reviews:", err);
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
+
 
 
 
