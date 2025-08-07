@@ -825,10 +825,10 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     })
       .sort({ "likes.length": -1 })
       .limit(returnAll ? 50 : 3)
-      .populate("user", "username avatar") // ✅ Log owner
-      .populate("replies.user", "username avatar") // ✅ ADD THIS LINE
-      .lean({ virtuals: true });
-  
+      .populate("user", "username avatar")
+      .populate("replies.user", "username avatar"); // ✅ keep populate
+    // 👇 DO NOT use .lean() at all for now
+    
 
     const formatted = logs.map((log) => ({
       _id: log._id,
