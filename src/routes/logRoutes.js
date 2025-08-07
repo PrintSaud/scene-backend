@@ -148,20 +148,37 @@ router.get('/:logId/replies', async (req, res) => {
     const log = await Log.findById(req.params.logId);
     if (!log) return res.status(404).json({ message: 'Log not found' });
 
+    let updated = false;
+
     const replies = await Promise.all(
       (log.replies || []).map(async (r) => {
-        const replyUser = await User.findById(r.user).select('username avatar');
-
-        // Fetch that user's rating for this movie (if any)
+        let replyUser = null;
         let rating = null;
-        if (replyUser) {
-          const userLog = await Log.findOne({
-            user: replyUser._id,
-            movie: log.movie
-          });
-          if (userLog) {
-            rating = userLog.rating || null;
+
+        try {
+          // 🛠️ Fix string-based user
+          if (typeof r.user === "string") {
+            const objectId = mongoose.Types.ObjectId(r.user);
+            replyUser = await User.findById(objectId).select("username avatar");
+            r.user = objectId;
+            updated = true;
+            console.log("🔧 Fixed reply.user in log:", log._id.toString());
+          } else {
+            replyUser = await User.findById(r.user).select("username avatar");
           }
+
+          // 🎬 Fetch rating if user exists
+          if (replyUser) {
+            const userLog = await Log.findOne({
+              user: replyUser._id,
+              movie: log.movie
+            });
+            if (userLog) {
+              rating = userLog.rating || null;
+            }
+          }
+        } catch (err) {
+          console.warn("⚠️ Failed to fetch reply user or rating:", err.message);
         }
 
         return {
@@ -170,15 +187,20 @@ router.get('/:logId/replies', async (req, res) => {
           gif: r.gif || "",
           image: r.image || "",
           createdAt: r.createdAt,
-          username: replyUser?.username || "unknown",
+          username: replyUser?.username || "Deleted User",
           avatar: replyUser?.avatar || DEFAULT_AVATAR,
           userId: replyUser?._id || null,
           likes: Array.isArray(r.likes) ? r.likes : [],
-          rating: rating, // ✅ Final field name for frontend
+          rating,
           parentComment: r.parentComment || null
         };
       })
     );
+
+    if (updated) {
+      await log.save();
+      console.log("💾 Saved updated replies in log:", log._id.toString());
+    }
 
     res.json(replies);
   } catch (err) {
@@ -188,11 +210,11 @@ router.get('/:logId/replies', async (req, res) => {
 });
 
 
+
 // ✅ Add this FIRST — before router.get("/:logId")
 router.get("/debug", protect, async (req, res) => {
   try {
     const logs = await Log.find({ user: req.user._id });
-    console.log("📦 Total logs:", logs.length);
 
     logs.forEach((log, i) => {
       const movieField = log.movie;
@@ -216,22 +238,17 @@ router.get("/debug", protect, async (req, res) => {
 
 router.get('/:logId', async (req, res) => {
   try {
-    const log = await Log.findById(req.params.logId)
-      .populate('user', 'username avatar');
-
+    const log = await Log.findById(req.params.logId).populate('user', 'username avatar');
     if (!log) return res.status(404).json({ message: 'Log not found' });
 
     let backdrop_path = null;
     let movieTitle = "Untitled";
     let tmdbPosterPath = null;
-
-    // ✅ Correct way: always use tmdbId (not log.movie)
     const tmdbId = log.tmdbId;
 
     if (tmdbId && TMDB_API_KEY) {
       try {
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}`);
-        console.log("🎬 TMDB movie response:", tmdbRes.data);
         backdrop_path = tmdbRes.data.backdrop_path;
         movieTitle = tmdbRes.data.title;
         tmdbPosterPath = tmdbRes.data.poster_path;
@@ -239,21 +256,15 @@ router.get('/:logId', async (req, res) => {
         if (!backdrop_path) {
           const fallbackRes = await axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/images?api_key=${TMDB_API_KEY}`);
           backdrop_path = fallbackRes.data.backdrops?.[0]?.file_path || null;
-          console.log("🧩 Fallback backdrop_path:", backdrop_path);
         }
       } catch (err) {
         console.warn(`⚠️ Failed to fetch TMDB for tmdbId=${tmdbId}: ${err.message}`);
       }
     }
 
-    // ✅ Poster logic
+    // Poster logic
     let poster = DEFAULT_POSTER;
-
-    const customPoster = await CustomPoster.findOne({
-      userId: log.user._id,
-      movieId: tmdbId
-    });
-
+    const customPoster = await CustomPoster.findOne({ userId: log.user._id, movieId: tmdbId });
     if (customPoster) {
       poster = customPoster.posterUrl;
     } else if (log.poster && log.poster.startsWith('http')) {
@@ -262,31 +273,39 @@ router.get('/:logId', async (req, res) => {
       poster = `https://image.tmdb.org/t/p/w500${tmdbPosterPath}`;
     }
 
-    const backdrop = backdrop_path
-      ? `${TMDB_BACKDROP}${backdrop_path}`
-      : DEFAULT_BACKDROP;
-
-    console.log("✅ Final backdrop URL sent to frontend:", backdrop);
-
+    const backdrop = backdrop_path ? `${TMDB_BACKDROP}${backdrop_path}` : DEFAULT_BACKDROP;
     const likes = log.likes || [];
+
+    // ✅ Reply processing
+    let updated = false;
 
     const replies = await Promise.all(
       (log.replies || []).map(async (r) => {
         let replyUser = null;
         let ratingForThisMovie = null;
 
-        if (r.user) {
-          // ✅ Check if already populated
-          if (typeof r.user === "object" && r.user.username) {
+        try {
+          if (typeof r.user === "string") {
+            const objectId = mongoose.Types.ObjectId(r.user);
+            replyUser = await User.findById(objectId).select("username avatar");
+
+            if (replyUser) {
+              r.user = objectId;
+              updated = true;
+            }
+          } else if (typeof r.user === "object" && r.user?.username) {
             replyUser = r.user;
-          } else {
-            replyUser = await User.findById(r.user).select('username avatar');
+          } else if (r.user?._id) {
+            replyUser = await User.findById(r.user._id).select("username avatar");
           }
-        
-          const userLog = await Log.findOne({ user: replyUser?._id, tmdbId });
-          if (userLog) ratingForThisMovie = userLog.rating || null;
+
+          if (replyUser) {
+            const userLog = await Log.findOne({ user: replyUser._id, tmdbId });
+            if (userLog) ratingForThisMovie = userLog.rating || null;
+          }
+        } catch (err) {
+          console.warn("⚠️ Failed to process reply user:", r.user, err.message);
         }
-        
 
         return {
           _id: r._id,
@@ -294,14 +313,20 @@ router.get('/:logId', async (req, res) => {
           gif: r.gif || "",
           image: r.image || "",
           createdAt: r.createdAt,
-          username: replyUser?.username || "unknown",
+          username: replyUser?.username || "Deleted User",
           avatar: replyUser?.avatar || DEFAULT_AVATAR,
           userId: replyUser?._id || null,
           likes: Array.isArray(r.likes) ? r.likes : [],
-          ratingForThisMovie
+          ratingForThisMovie,
+          parentComment: r.parentComment || null,
         };
       })
     );
+
+    if (updated) {
+      await log.save();
+      console.log("💾 Auto-fixed replies in log:", log._id.toString());
+    }
 
     const rewatchCount = await Log.countDocuments({
       user: log.user,
@@ -321,7 +346,7 @@ router.get('/:logId', async (req, res) => {
         id: log.tmdbId || null,
         title: movieTitle,
         backdrop_path: backdrop_path || null,
-        poster
+        poster,
       },
       poster,
       posterOverride: poster,
@@ -335,7 +360,7 @@ router.get('/:logId', async (req, res) => {
       gif: log.gif || null,
       replies,
       createdAt: log.createdAt,
-      reviewBackdrop: backdrop_path || null
+      reviewBackdrop: backdrop_path || null,
     });
 
   } catch (err) {
@@ -345,15 +370,10 @@ router.get('/:logId', async (req, res) => {
 });
 
 
+
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
   const { text, gif, externalImage, parentComment } = req.body;
 
-  console.log("📥 Incoming reply:");
-  console.log("text:", text);
-  console.log("gif:", gif);
-  console.log("externalImage:", externalImage);
-  console.log("parentComment:", parentComment);
-  console.log("req.user:", req.user);
 
   try {
     const log = await Log.findById(req.params.id);
@@ -362,10 +382,8 @@ router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
     let uploadedImage = null;
 
     if (req.file?.buffer) {
-      console.log("🌤 Uploading local image to Cloudinary...");
       uploadedImage = await uploadToCloudinary(req.file.buffer, "scene/replies");
     } else if (externalImage) {
-      console.log("🌐 Using external image URL...");
       uploadedImage = externalImage;
     }
 
@@ -529,7 +547,7 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
 
         const notif = await Notification.create({
           type: "reaction",
-          message: "liked your reply",
+          message: "liked your comment",
           from: userId,
           to: reply.user,
           relatedId: log._id,
@@ -836,27 +854,34 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
 
     const formatted = await Promise.all(
       logs.map(async (log) => {
-        let replies = await Promise.all(
+        let updated = false; // 🛠️ Track if we fix any replies
+
+        const replies = await Promise.all(
           (log.replies || []).map(async (r) => {
             try {
               let replyUser = null;
 
-              // ✅ Fix string IDs in memory and in DB
               if (typeof r.user === "string") {
                 try {
                   const objectId = mongoose.Types.ObjectId(r.user);
                   replyUser = await User.findById(objectId).select("username avatar");
 
-                  // Live fix: replace string user with ObjectId in DB
+                  // 💾 Fix it in DB if valid
                   r.user = objectId;
-                  await log.save(); // save once per modified reply
+                  updated = true;
+
+                  console.log("🔧 Fixed reply.user string to ObjectId in log:", log._id.toString());
+                  console.log("🧠 Reply User Fetched (from ID):", replyUser);
                 } catch (err) {
-                  console.warn("❌ Invalid userId format:", r.user);
+                  console.warn("❌ Invalid reply.user format:", r.user);
                 }
               } else if (typeof r.user === "object" && r.user?.username) {
                 replyUser = r.user;
+              } else if (r.user?._id) {
+                replyUser = await User.findById(r.user._id).select("username avatar");
               }
 
+              // 🌍 Final reply formatting
               return {
                 _id: r._id,
                 text: r.text || "",
@@ -873,12 +898,12 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
                     }
                   : {
                       _id: r.user || null,
-                      username: "Unknown",
+                      username: "Deleted User",
                       avatar: "/default-avatar.jpg",
                     },
               };
             } catch (err) {
-              console.warn("⚠️ Failed to load reply user:", r.user, err.message);
+              console.warn("⚠️ Error building reply for log:", log._id.toString(), err.message);
               return {
                 _id: r._id,
                 text: r.text || "",
@@ -889,13 +914,23 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
                 parentComment: r.parentComment || null,
                 user: {
                   _id: r.user || null,
-                  username: "Unknown",
+                  username: "Deleted User",
                   avatar: "/default-avatar.jpg",
                 },
               };
             }
           })
         );
+
+        // 💾 Save fixed replies once per log if needed
+        if (updated) {
+          try {
+            await log.save();
+            console.log("💾 Saved fixed replies in log:", log._id.toString());
+          } catch (err) {
+            console.error("❌ Failed to save updated log:", log._id.toString(), err.message);
+          }
+        }
 
         return {
           _id: log._id,
@@ -922,6 +957,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 
@@ -968,25 +1004,23 @@ router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
     const replyIndex = log.replies.findIndex(r => r._id.toString() === req.params.replyId);
 
     if (replyIndex === -1) {
-      console.log('❌ Reply not found');
       return res.status(404).json({ message: 'Reply not found' });
     }
 
     const reply = log.replies[replyIndex];
-    console.log(`✅ Found reply.user=${reply.user}`);
+
 
     if (reply.user && reply.user.toString() !== req.user._id.toString()) {
-      console.log('❌ Unauthorized attempt to delete reply');
+ 
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    console.log('🗑️ Removing reply by splice...');
+
     log.replies.splice(replyIndex, 1);
 
-    console.log('💾 Saving log...');
+
     await log.save({ validateBeforeSave: false });
 
-    console.log('✅ Reply deleted successfully');
     res.json({ message: 'Reply deleted' });
   } catch (err) {
     console.error('🔥 Error deleting reply:', err);
@@ -1000,8 +1034,6 @@ router.delete("/:logId", protect, async (req, res) => {
     const log = await Log.findById(req.params.logId);
     if (!log) return res.status(404).json({ message: "Log not found" });
 
-    console.log("🔍 DELETE check - log.user:", log.user);
-    console.log("🔍 DELETE check - req.user._id:", req.user._id);
 
     if (!log.user) {
       console.warn("⚠️ Log has no user field (legacy log?):", log._id);
@@ -1115,8 +1147,6 @@ router.post("/:id/share", protect, async (req, res) => {
   const logId = req.params.id;
   const userId = req.user._id;
 
-  console.log("📤 SHARING REVIEW FIRED — reviewId:", logId);
-  console.log("🔗 Recipients:", recipients);
 
   try {
     const log = await Log.findById(logId);
@@ -1138,7 +1168,6 @@ router.post("/:id/share", protect, async (req, res) => {
           createdAt: new Date(),
         });
 
-        console.log("✅ Created share-review notif for", rid, "→", notif._id);
 
         // 🔔 Emit real-time notification
         io.to(rid).emit("notification", {
@@ -1182,7 +1211,7 @@ router.post("/:logId/replies/:replyId/like", protect, async (req, res) => {
 
         const notif = await Notification.create({
           type: "reaction",
-          message: "liked your reply",
+          message: "liked your comment",
           from: userId,
           to: reply.user,
           relatedId: log._id,

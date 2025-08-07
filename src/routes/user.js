@@ -49,8 +49,7 @@ router.get("/:id/recent-gifs", async (req, res) => {
 // get all users
 router.get('/', async (req, res) => {
   try {
-    const users = await User.find({}, 'username avatar following followers');
-    console.log("🔥 USERS RETURNED FROM /api/users:", users);
+    const users = await User.find({}, 'username avatar following followers')
     res.status(200).json(users);
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch users', error: err.message });

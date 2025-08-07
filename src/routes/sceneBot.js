@@ -12,8 +12,6 @@ const conversationMap = {}; // userId => messages[]
 router.post("/", protect, async (req, res) => {
   const { message, lang } = req.body;
 
-  console.log("🧪 RAW req.body =", req.body);
-  console.log("📨 Incoming SceneBot Request:");
 
   // ✅ Check if message is a plain string
   if (typeof message !== "string") {
@@ -33,11 +31,10 @@ router.post("/", protect, async (req, res) => {
     console.log("✅ message is a clean string. Safe to continue.");
   }
 
-  console.log("👉 message =", message, "Type:", typeof message);
-  console.log("👉 lang =", lang, "Type:", typeof lang);
+
 
   const user = req.user;
-  console.log("👤 From user =", user.username || user._id);
+
 
   const today = dayjs().format("YYYY-MM-DD");
 
@@ -92,7 +89,7 @@ const completion = await openai.chat.completions.create({
   model: "gpt-4o",
   messages: conversationMap[user._id],
   temperature: 0.8,
-  max_tokens: 700,
+  max_tokens: 800,
 });
 
 usage.count += 1;
