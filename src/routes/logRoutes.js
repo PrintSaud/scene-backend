@@ -834,54 +834,56 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       .limit(returnAll ? 50 : 3)
       .populate("user", "username avatar");
 
-    // ✅ Proper nested population
-    for (const log of logs) {
-      await log.populate({
-        path: "replies.user",
-        select: "username avatar",
-      });
-    }
+    const formatted = await Promise.all(
+      logs.map(async (log) => {
+        const replies = await Promise.all(
+          (log.replies || []).map(async (r) => {
+            let replyUser = null;
+            if (r.user) {
+              replyUser = await User.findById(r.user).select("username avatar");
+            }
 
-    const formatted = logs.map((log) => ({
-      _id: log._id,
-      user: {
-        _id: log.user._id,
-        username: log.user.username,
-        avatar: log.user.avatar,
-      },
-      review: log.review,
-      rating: log.rating,
-      rewatchCount: log.rewatchCount || 0,
-      createdAt: log.createdAt,
-      gif: log.gif,
-      image: log.image,
-      likes: log.likes || [],
-      replies: (log.replies || []).map((reply) => {
-        const isPopulated =
-          reply.user && typeof reply.user === "object" && reply.user.username;
+            return {
+              _id: r._id,
+              text: r.text || "",
+              gif: r.gif || "",
+              image: r.image || "",
+              createdAt: r.createdAt,
+              likes: Array.isArray(r.likes) ? r.likes : [],
+              parentComment: r.parentComment || null,
+              user: replyUser
+                ? {
+                    _id: replyUser._id,
+                    username: replyUser.username,
+                    avatar: replyUser.avatar,
+                  }
+                : {
+                    _id: r.user || null,
+                    username: "Unknown",
+                    avatar: "/default-avatar.jpg",
+                  },
+            };
+          })
+        );
 
         return {
-          _id: reply._id,
-          text: reply.text,
-          gif: reply.gif,
-          image: reply.image,
-          createdAt: reply.createdAt,
-          likes: reply.likes || [],
-          parentComment: reply.parentComment || null,
-          user: isPopulated
-            ? {
-                _id: reply.user._id,
-                username: reply.user.username,
-                avatar: reply.user.avatar,
-              }
-            : {
-                _id: reply.user?._id || reply.user,
-                username: "Unknown",
-                avatar: "/default-avatar.jpg",
-              },
+          _id: log._id,
+          user: {
+            _id: log.user._id,
+            username: log.user.username,
+            avatar: log.user.avatar,
+          },
+          review: log.review,
+          rating: log.rating,
+          rewatchCount: log.rewatchCount || 0,
+          createdAt: log.createdAt,
+          gif: log.gif,
+          image: log.image,
+          likes: log.likes || [],
+          replies,
         };
-      }),
-    }));
+      })
+    );
 
     res.json(formatted);
   } catch (err) {
@@ -889,6 +891,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 
