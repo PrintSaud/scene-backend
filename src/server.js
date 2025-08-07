@@ -96,16 +96,17 @@ app.get("/", (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Socket.IO: Not allowed by CORS"));
-      }
-    },
+    origin: [
+      "http://localhost:5173",
+      "https://scene-frontend-production.up.railway.app",
+      "https://scenesa.com",
+      "https://www.scenesa.com",
+    ],
+    methods: ["GET", "POST"],
     credentials: true,
   },
 });
+
 
 
 app.set("io", io);
