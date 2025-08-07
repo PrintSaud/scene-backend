@@ -969,7 +969,8 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
         };
       })
     );
-
+    
+    console.log("🚨 FINAL LOG STRUCTURE:", JSON.stringify(formatted[0], null, 2));
     res.json(formatted);
   } catch (err) {
     console.error("❌ Failed to fetch popular reviews:", err);
