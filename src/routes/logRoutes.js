@@ -911,7 +911,14 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
                 createdAt: r.createdAt,
                 likes: Array.isArray(r.likes) ? r.likes : [],
                 parentComment: r.parentComment || null,
-                user: userObj,
+                user: {
+                  _id: userObj._id,
+                  username: userObj.username,
+                  avatar: userObj.avatar,
+                },
+                username: userObj.username,
+                avatar: userObj.avatar,
+                userId: userObj._id,                
               };
             } catch (err) {
               console.warn("⚠️ Error mapping reply in log:", log._id.toString(), err.message);
