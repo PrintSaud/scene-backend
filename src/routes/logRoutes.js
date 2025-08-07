@@ -859,80 +859,66 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       .sort({ "likes.length": -1 })
       .limit(returnAll ? 50 : 3);
 
-    const getSafeUser = async (rawUser) => {
-      if (!rawUser) return null;
-
-      try {
-        if (typeof rawUser === "string") {
-          const user = await User.findById(rawUser).select("username avatar");
-          console.log("🔍 Resolved string user:", user);
-          return user || null;
-        }
-
-        if (typeof rawUser === "object") {
-          if (rawUser.username && rawUser.avatar) {
-            console.log("✅ Already valid user object:", rawUser);
+      const getSafeUser = async (rawUser) => {
+        try {
+          if (!rawUser) return null;
+      
+          if (typeof rawUser === "object" && rawUser.username && rawUser.avatar) {
+            console.log("✅ User already populated:", rawUser.username);
             return rawUser;
           }
-
-          if (rawUser._id) {
-            const user = await User.findById(rawUser._id).select("username avatar");
-            console.log("🔁 Resolved object user:", user);
-            return user || null;
-          }
+      
+          const id = typeof rawUser === "string" ? rawUser : rawUser._id;
+          if (!id) return null;
+      
+          const user = await User.findById(id).select("username avatar");
+          console.log("📦 Fetched user:", user?.username);
+          return user || null;
+        } catch (err) {
+          console.error("❌ Failed to get user:", err);
+          return null;
         }
-      } catch (err) {
-        console.error("❌ Error resolving user:", err);
-        return null;
-      }
-
-      return null;
-    };
-
-    const normalizeReplies = async (replies = []) => {
-      return await Promise.all(
-        replies.map(async (r) => {
-          console.log("🧪 MAIN REPLY OBJECT:", r);
-
-          const replyUser = await getSafeUser(r.user);
-
-          const safeUser = replyUser
-            ? {
-                _id: replyUser._id,
-                username: replyUser.username,
-                avatar: replyUser.avatar,
-              }
-            : {
-                _id: null,
-                username: "Deleted User",
-                avatar: "/default-avatar.jpg",
-              };
-
-          const children = await normalizeReplies(r.children || []);
-
-          console.log("🧪 REPLY USER FIELDS:", {
-            replyUserId: safeUser._id,
-            replyUsername: safeUser.username,
-            replyAvatar: safeUser.avatar,
-          });
-
-          return {
-            _id: r._id,
-            text: r.text || "",
-            gif: r.gif || "",
-            image: r.image || "",
-            createdAt: r.createdAt,
-            likes: Array.isArray(r.likes) ? r.likes : [],
-            parentComment: r.parentComment || null,
-            children,
-            user: safeUser,
-            username: safeUser.username,
-            avatar: safeUser.avatar,
-            userId: safeUser._id,
-          };
-        })
-      );
-    };
+      };
+      
+      const normalizeReplies = async (replies = []) => {
+        return await Promise.all(
+          replies.map(async (r) => {
+            const replyUser = await getSafeUser(r.user);
+            const children = await normalizeReplies(r.children || []);
+      
+            const safeUser = replyUser
+              ? {
+                  _id: replyUser._id,
+                  username: replyUser.username,
+                  avatar: replyUser.avatar,
+                }
+              : {
+                  _id: null,
+                  username: "Deleted User",
+                  avatar: "/default-avatar.jpg",
+                };
+      
+            const replyData = {
+              _id: r._id,
+              text: r.text || "",
+              gif: r.gif || "",
+              image: r.image || "",
+              createdAt: r.createdAt,
+              likes: Array.isArray(r.likes) ? r.likes : [],
+              parentComment: r.parentComment || null,
+              children,
+              user: safeUser, // 🔥 finally pass full user object!
+              username: safeUser.username,
+              avatar: safeUser.avatar,
+              userId: safeUser._id,
+            };
+      
+            console.log("🧪 Final replyData:", replyData);
+            return replyData;
+          })
+        );
+      };
+      
 
     const formatted = await Promise.all(
       logs.map(async (log) => {
