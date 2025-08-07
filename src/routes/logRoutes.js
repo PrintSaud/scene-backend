@@ -827,9 +827,10 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       .limit(returnAll ? 50 : 3)
       .populate("user", "username avatar");
 
-    // 🔥 Populate replies.user manually
+    // 🔥 Populate replies.user manually (nested)
     for (const log of logs) {
       for (const reply of log.replies || []) {
+        if (reply.user && typeof reply.user === "object" && reply.user.username) continue;
         await reply.populate("user", "username avatar");
       }
     }
@@ -848,22 +849,31 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       gif: log.gif,
       image: log.image,
       likes: log.likes || [],
-      replies: (log.replies || []).map((reply) => ({
-        _id: reply._id,
-        text: reply.text,
-        gif: reply.gif,
-        image: reply.image,
-        createdAt: reply.createdAt,
-        likes: reply.likes || [],
-        user: reply.user
-          ? {
-              _id: reply.user._id,
-              username: reply.user.username,
-              avatar: reply.user.avatar,
-            }
-          : null,
-        parentComment: reply.parentComment || null,
-      })),
+      replies: (log.replies || []).map((reply) => {
+        const isPopulated =
+          reply.user && typeof reply.user === "object" && reply.user.username;
+
+        return {
+          _id: reply._id,
+          text: reply.text,
+          gif: reply.gif,
+          image: reply.image,
+          createdAt: reply.createdAt,
+          likes: reply.likes || [],
+          parentComment: reply.parentComment || null,
+          user: isPopulated
+            ? {
+                _id: reply.user._id,
+                username: reply.user.username,
+                avatar: reply.user.avatar,
+              }
+            : {
+                _id: reply.user?._id || reply.user,
+                username: "Unknown",
+                avatar: "/default-avatar.jpg",
+              },
+        };
+      }),
     }));
 
     res.json(formatted);
@@ -872,6 +882,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     res.status(500).json({ message: "Server error while fetching reviews" });
   }
 });
+
 
 
 
