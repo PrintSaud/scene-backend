@@ -839,6 +839,7 @@ router.get("/movie/:tmdbId/friends", protect, async (req, res) => {
 });
 
 // 📌 Get top 3 liked reviews for a specific movie
+// 📌 Get top reviews (and replies) for a movie
 router.get("/movie/:id/popular", protect, async (req, res) => {
   try {
     const movieId = parseInt(req.params.id);
@@ -861,7 +862,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
             let replyUser = null;
 
             try {
-              // 💾 Fix string ID → ObjectId
+              // 🧠 Case 1: reply.user is a string → fix to ObjectId
               if (typeof r.user === "string") {
                 try {
                   const objectId = mongoose.Types.ObjectId(r.user);
@@ -877,12 +878,12 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
                 }
               }
 
-              // ✅ Proper ObjectId case
+              // 🧠 Case 2: reply.user is already an object with _id
               else if (typeof r.user === "object" && r.user?._id) {
                 replyUser = await User.findById(r.user._id).select("username avatar");
               }
 
-              // Fallback user object
+              // 🛡️ Safe fallback
               const userObj = replyUser
                 ? {
                     _id: replyUser._id,
@@ -907,7 +908,6 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
               };
             } catch (err) {
               console.warn("⚠️ Error mapping reply in log:", log._id.toString(), err.message);
-
               return {
                 _id: r._id,
                 text: r.text || "",
@@ -926,6 +926,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
           })
         );
 
+        // 💾 Save any fixes (like string → ObjectId conversion)
         if (updated) {
           try {
             await log.save();
