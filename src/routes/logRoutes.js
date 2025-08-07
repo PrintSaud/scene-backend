@@ -838,33 +838,55 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       logs.map(async (log) => {
         const replies = await Promise.all(
           (log.replies || []).map(async (r) => {
-            let replyUser = null;
-            if (r.user) {
-              replyUser = await User.findById(r.user).select("username avatar");
+            try {
+              let replyUser = null;
+        
+              if (typeof r.user === "object" && r.user?.username) {
+                replyUser = r.user; // already populated
+              } else if (typeof r.user === "string") {
+                replyUser = await User.findById(r.user).select("username avatar");
+              }
+        
+              return {
+                _id: r._id,
+                text: r.text || "",
+                gif: r.gif || "",
+                image: r.image || "",
+                createdAt: r.createdAt,
+                likes: Array.isArray(r.likes) ? r.likes : [],
+                parentComment: r.parentComment || null,
+                user: replyUser
+                  ? {
+                      _id: replyUser._id,
+                      username: replyUser.username,
+                      avatar: replyUser.avatar,
+                    }
+                  : {
+                      _id: r.user || null,
+                      username: "Unknown",
+                      avatar: "/default-avatar.jpg",
+                    },
+              };
+            } catch (err) {
+              console.warn("⚠️ Failed to load reply user:", r.user, err.message);
+              return {
+                _id: r._id,
+                text: r.text || "",
+                gif: r.gif || "",
+                image: r.image || "",
+                createdAt: r.createdAt,
+                likes: Array.isArray(r.likes) ? r.likes : [],
+                parentComment: r.parentComment || null,
+                user: {
+                  _id: r.user || null,
+                  username: "Unknown",
+                  avatar: "/default-avatar.jpg",
+                },
+              };
             }
-
-            return {
-              _id: r._id,
-              text: r.text || "",
-              gif: r.gif || "",
-              image: r.image || "",
-              createdAt: r.createdAt,
-              likes: Array.isArray(r.likes) ? r.likes : [],
-              parentComment: r.parentComment || null,
-              user: replyUser
-                ? {
-                    _id: replyUser._id,
-                    username: replyUser.username,
-                    avatar: replyUser.avatar,
-                  }
-                : {
-                    _id: r.user || null,
-                    username: "Unknown",
-                    avatar: "/default-avatar.jpg",
-                  },
-            };
           })
         );
+        
 
         return {
           _id: log._id,
@@ -998,6 +1020,7 @@ router.get('/user/:userId', protect, async (req, res) => {
 
     const logs = await Log.find({ user: profileUserId })
       .populate('user', 'username avatar')
+      .populate('replies.user', 'username avatar')
       .sort({ createdAt: -1 })
       .lean();
 
