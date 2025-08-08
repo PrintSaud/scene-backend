@@ -884,9 +884,16 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     });
 
     // 🧠 Step 3: Format and clean up every reply deeply
-    const formatted = logs.map((log) => {
+    const formatted = logs.map((log) => {     
       const formattedReplies = (log.replies || []).map((reply) => {
         const replyUserId = typeof reply.user === "string" ? reply.user : reply.user?._id?.toString?.();
+
+        console.log("🧪 MAPPING REPLY:", {
+          replyUserId,
+          found: userMap[replyUserId],
+          userMapKeys: Object.keys(userMap),
+        }); 
+        
         const user = userMap[replyUserId] || {
           username: "DeletedUser",
           avatar: "/default-avatar.jpg",
