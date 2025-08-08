@@ -46,6 +46,37 @@ router.get("/:id/recent-gifs", async (req, res) => {
   }
 });
 
+// 🔍 Search users by username
+router.get('/search', async (req, res) => {
+  const query = req.query.query || "";
+
+  if (!query.trim()) return res.json([]);
+
+  try {
+    const users = await User.find({
+      username: { $regex: query, $options: "i" },
+    })
+      .select("username avatar _id")
+      .limit(20);
+
+    // 🧠 Prioritize exact matches first
+    users.sort((a, b) => {
+      const aExact = a.username.toLowerCase() === query.toLowerCase();
+      const bExact = b.username.toLowerCase() === query.toLowerCase();
+
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+      return a.username.localeCompare(b.username);
+    });
+
+    res.json(users);
+  } catch (err) {
+    console.error("❌ User search error:", err);
+    res.status(500).json({ message: "Search failed", error: err.message });
+  }
+});
+
+
 // get all users
 router.get('/', async (req, res) => {
   try {
