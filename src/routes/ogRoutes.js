@@ -1,4 +1,4 @@
-// 📁 routes/ogRoutes.js
+x// 📁 routes/ogRoutes.js
 const express = require("express");
 const router = express.Router();
 const Log = require("../models/log");
@@ -9,7 +9,7 @@ router.get("/review/:id", async (req, res) => {
   const TMDB_IMG = "https://image.tmdb.org/t/p/original";
   const fallbackImage = "https://scenesa.com/scene-og-review-fallback.png";
 
-  // ✅ 1. Render proper star emojis
+  // ✅ Render star emojis
   function renderStars(rating = 0) {
     const fullStars = Math.floor(rating);
     const half = rating % 1 >= 0.5 ? "½" : "";
@@ -27,6 +27,10 @@ router.get("/review/:id", async (req, res) => {
             <meta property="og:title" content="Review not found" />
             <meta property="og:description" content="This review doesn’t exist." />
             <meta property="og:image" content="${fallbackImage}" />
+            <meta name="twitter:card" content="summary_large_image" />
+            <meta name="twitter:title" content="Review not found" />
+            <meta name="twitter:description" content="This review doesn’t exist." />
+            <meta name="twitter:image" content="${fallbackImage}" />
           </head>
           <body></body>
         </html>
@@ -35,10 +39,9 @@ router.get("/review/:id", async (req, res) => {
 
     const title = `@${log.user.username}'s Review – ${renderStars(log.rating)}`;
     const description = log.review
-      ? log.review.replace(/["']/g, "") // remove quote issues
+      ? log.review.replace(/["']/g, "") // clean quotes
       : "Check out what they thought about the movie!";
 
-    // ✅ 2. Choose best backdrop available
     const backdrop =
       log.customBackdrop ||
       (log.reviewBackdrop ? `${TMDB_IMG}${log.reviewBackdrop}` : "") ||
@@ -48,17 +51,23 @@ router.get("/review/:id", async (req, res) => {
     return res.send(`
       <html>
         <head>
-          <meta charset="UTF-8">
+          <meta charset="UTF-8" />
+
+          <!-- 🌐 Open Graph -->
           <meta property="og:title" content="${title}" />
           <meta property="og:description" content="${description}" />
           <meta property="og:image" content="${backdrop}" />
           <meta property="og:type" content="article" />
           <meta property="og:url" content="https://scenesa.com/review/${id}" />
 
+          <!-- 🐦 Twitter -->
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="${title}" />
           <meta name="twitter:description" content="${description}" />
           <meta name="twitter:image" content="${backdrop}" />
+
+          <!-- 👤 Human redirect -->
+          <meta http-equiv="refresh" content="0; url=https://scenesa.com/review/${id}" />
         </head>
         <body></body>
       </html>
@@ -68,10 +77,14 @@ router.get("/review/:id", async (req, res) => {
     res.send(`
       <html>
         <head>
-          <meta charset="UTF-8">
+          <meta charset="UTF-8" />
           <meta property="og:title" content="Error loading review" />
           <meta property="og:description" content="Something went wrong." />
           <meta property="og:image" content="${fallbackImage}" />
+          <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:title" content="Error loading review" />
+          <meta name="twitter:description" content="Something went wrong." />
+          <meta name="twitter:image" content="${fallbackImage}" />
         </head>
         <body></body>
       </html>
