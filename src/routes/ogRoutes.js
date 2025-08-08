@@ -2,7 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const Log = require("../models/log");
-const Movie = require("../models/movie");
+const Movie = require('../models/movieModel');
 
 router.get("/review/:id", async (req, res) => {
   const reviewId = req.params.id;
