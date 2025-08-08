@@ -1076,8 +1076,6 @@ router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
     return res.json({ message: 'Reply deleted' });
 
   } catch (err) {
-    console.error('🔥 ERROR DELETING REPLY:', err);
-    console.error('🧯 STACK TRACE:', err.stack);
     return res.status(500).json({ message: err.message });
   }
 });
@@ -1369,5 +1367,6 @@ router.get('/filter/:filterType', protect, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
 
 module.exports = router;

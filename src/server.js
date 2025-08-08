@@ -73,6 +73,8 @@ app.use("/api/scenebot", express.json(), require("./routes/sceneBot"));
 app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
 app.use("/api/movies/daily", express.json(), require("./routes/dailyMovie"));
 app.use("/api/logs", express.json(), require("./routes/logRoutes"));
+const ogRoutes = require("./routes/ogRoutes");
+app.use("/og", ogRoutes);
 
 
 const tmdbRoutes = require("./routes/tmdbRoutes");
