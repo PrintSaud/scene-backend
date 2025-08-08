@@ -16,6 +16,15 @@ router.get("/og/review/:id", async (req, res) => {
       return "⭐".repeat(full) + half;
     }
   
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+  
     const log = await Log.findById(id).populate("user").populate("movie");
   
     if (!log) {
@@ -31,32 +40,36 @@ router.get("/og/review/:id", async (req, res) => {
       `);
     }
   
-    const title = `@${log.user.username}'s Review – ${renderStars(log.rating || 0)}`;
-    const description = log.review || "Check out what they thought about the movie!";
+    const title = escapeHtml(`@${log.user.username}'s Review – ${renderStars(log.rating || 0)}`);
+    const description = escapeHtml(log.review || "Check out what they thought about the movie!");
     const backdrop =
       log.customBackdrop ||
-      (log.reviewBackdrop ? `${TMDB_IMG}${log.reviewBackdrop}` : "") ||
-      (log.movie?.backdrop_path ? `${TMDB_IMG}${log.movie.backdrop_path}` : "") ||
+      (log.reviewBackdrop ? `${TMDB_IMG}${log.reviewBackdrop}` : null) ||
+      (log.movie?.backdrop_path ? `${TMDB_IMG}${log.movie.backdrop_path}` : null) ||
       fallbackImage;
+  
+    const finalBackdrop = backdrop || fallbackImage;
   
     return res.send(`
       <html>
         <head>
+          <meta charset="UTF-8" />
           <meta property="og:title" content="${title}" />
           <meta property="og:description" content="${description}" />
-          <meta property="og:image" content="${backdrop}" />
+          <meta property="og:image" content="${finalBackdrop}" />
           <meta property="og:type" content="article" />
           <meta property="og:url" content="https://scenesa.com/review/${id}" />
   
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="${title}" />
           <meta name="twitter:description" content="${description}" />
-          <meta name="twitter:image" content="${backdrop}" />
+          <meta name="twitter:image" content="${finalBackdrop}" />
         </head>
         <body></body>
       </html>
     `);
   });
+  
   
   
 
