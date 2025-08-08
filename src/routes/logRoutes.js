@@ -847,6 +847,8 @@ router.get("/movie/:tmdbId/friends", protect, async (req, res) => {
 
 // 📌 Get top reviews (and replies) for a movie
 router.get("/movie/:id/popular", protect, async (req, res) => {
+  console.log("🔥 HIT /movie/:id/popular ROUTE");
+
   try {
     const movieId = parseInt(req.params.id);
     const returnAll = req.query.all === "true";
@@ -893,7 +895,7 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
           found: userMap[replyUserId],
           userMapKeys: Object.keys(userMap),
         }); 
-        
+
         const user = userMap[replyUserId] || {
           username: "DeletedUser",
           avatar: "/default-avatar.jpg",
