@@ -846,7 +846,6 @@ router.get("/movie/:tmdbId/friends", protect, async (req, res) => {
 });
 
 // 📌 Get top reviews (and replies) for a movie
-// 📌 Get top 3 liked reviews for a specific movie
 router.get("/movie/:id/popular", protect, async (req, res) => {
   try {
     const movieId = parseInt(req.params.id);
@@ -861,49 +860,63 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       .limit(returnAll ? 50 : 3)
       .lean();
 
-    // 🧠 STEP 1: collect ALL reply.user ids
-    const replyUserIds = [];
+    // 🧠 Step 1: collect ALL unique user IDs from replies & children
+    const replyUserIds = new Set();
+
     logs.forEach((log) => {
-      (log.replies || []).forEach((r) => {
-        const id =
-          typeof r.user === "string"
-            ? r.user
-            : r.user?._id?.toString?.() || r.user?.toString?.();
-        if (id) replyUserIds.push(id);
+      (log.replies || []).forEach((reply) => {
+        const mainUserId = typeof reply.user === "string" ? reply.user : reply.user?._id;
+        if (mainUserId) replyUserIds.add(mainUserId.toString());
+
+        (reply.children || []).forEach((child) => {
+          const childUserId = typeof child.user === "string" ? child.user : child.user?._id;
+          if (childUserId) replyUserIds.add(childUserId.toString());
+        });
       });
     });
 
-    // 🧠 STEP 2: fetch users from DB
-    const users = await User.find(
-      { _id: { $in: replyUserIds } },
-      { username: 1, avatar: 1 }
-    ).lean();
+    // 🧠 Step 2: Fetch all user data
+    const users = await User.find({ _id: { $in: [...replyUserIds] } }, "username avatar").lean();
 
     const userMap = {};
     users.forEach((u) => {
       userMap[u._id.toString()] = u;
     });
 
-    // 🧠 STEP 3: format replies
+    // 🧠 Step 3: Format and clean up every reply deeply
     const formatted = logs.map((log) => {
-      const formattedReplies = (log.replies || []).map((r) => {
-        const userId =
-          typeof r.user === "string"
-            ? r.user
-            : r.user?._id?.toString?.() || r.user?.toString?.();
-
-        const replyUser = userMap[userId] || {
+      const formattedReplies = (log.replies || []).map((reply) => {
+        const replyUserId = typeof reply.user === "string" ? reply.user : reply.user?._id?.toString?.();
+        const user = userMap[replyUserId] || {
           username: "DeletedUser",
           avatar: "/default-avatar.jpg",
         };
 
+        const formattedChildren = (reply.children || []).map((child) => {
+          const childUserId = typeof child.user === "string" ? child.user : child.user?._id?.toString?.();
+          const childUser = userMap[childUserId] || {
+            username: "DeletedUser",
+            avatar: "/default-avatar.jpg",
+          };
+
+          return {
+            ...child,
+            user: {
+              _id: childUserId,
+              username: childUser.username,
+              avatar: childUser.avatar,
+            },
+          };
+        });
+
         return {
-          ...r,
+          ...reply,
           user: {
-            _id: userId,
-            username: replyUser.username,
-            avatar: replyUser.avatar,
+            _id: replyUserId,
+            username: user.username,
+            avatar: user.avatar,
           },
+          children: formattedChildren,
         };
       });
 
@@ -915,10 +928,11 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
 
     res.json(formatted);
   } catch (err) {
-    console.error("❌ Popular Reviews Error:", err);
+    console.error("❌ Final Popular Reviews Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
