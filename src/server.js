@@ -58,6 +58,8 @@ mongoose
   });
 
 // 🛣️ 4️⃣ Routes (only attach express.json() per route group)
+const ogRoutes = require("./routes/ogRoutes");
+app.use("/og", ogRoutes);
 app.use("/api/auth", express.json(), require("./routes/auth"));
 app.use("/api/users", express.json(), require("./routes/user")); 
 app.use("/api/upload", express.json(), require("./routes/upload"));
@@ -73,8 +75,7 @@ app.use("/api/scenebot", express.json(), require("./routes/sceneBot"));
 app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
 app.use("/api/movies/daily", express.json(), require("./routes/dailyMovie"));
 app.use("/api/logs", express.json(), require("./routes/logRoutes"));
-const ogRoutes = require("./routes/ogRoutes");
-app.use("/og", ogRoutes);
+
 
 
 const tmdbRoutes = require("./routes/tmdbRoutes");
