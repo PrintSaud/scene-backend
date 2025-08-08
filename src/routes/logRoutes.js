@@ -846,6 +846,7 @@ router.get("/movie/:tmdbId/friends", protect, async (req, res) => {
 });
 
 // 📌 Get top reviews (and replies) for a movie
+// 📌 Get top 3 liked reviews for a specific movie
 router.get("/movie/:id/popular", protect, async (req, res) => {
   try {
     const movieId = parseInt(req.params.id);
@@ -859,98 +860,58 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       .sort({ "likes.length": -1 })
       .limit(returnAll ? 50 : 3);
 
-    const getSafeUser = async (rawUser) => {
-      try {
-        if (!rawUser) return null;
+    const userIdsToFetch = new Set();
 
-        if (typeof rawUser === "object" && rawUser.username && rawUser.avatar) {
-          console.log("✅ User already populated:", rawUser.username);
-          return rawUser;
+    // Collect all reply user IDs
+    logs.forEach((log) => {
+      (log.replies || []).forEach((r) => {
+        if (typeof r.user === "string") {
+          userIdsToFetch.add(r.user);
+        } else if (r.user && r.user._id) {
+          userIdsToFetch.add(r.user._id.toString());
+        } else if (r.user && typeof r.user === "object") {
+          userIdsToFetch.add(String(r.user));
         }
+      });
+    });
 
-        const id = typeof rawUser === "string" ? rawUser : rawUser._id;
-        if (!id) return null;
+    const users = await User.find(
+      { _id: { $in: Array.from(userIdsToFetch) } },
+      { username: 1, avatar: 1 }
+    ).lean();
 
-        const user = await User.findById(id).select("username avatar");
-        console.log("📦 Fetched user:", user?.username);
-        return user || null;
-      } catch (err) {
-        console.error("❌ Failed to get user:", err);
-        return null;
-      }
-    };
+    const userMap = {};
+    users.forEach((u) => {
+      userMap[u._id.toString()] = u;
+    });
 
-    const normalizeReplies = async (replies = []) => {
-      return await Promise.all(
-        replies.map(async (r) => {
-          const replyUser = await getSafeUser(r.user);
-          const children = await normalizeReplies(r.children || []);
+    const formatted = logs.map((log) => {
+      const replies = (log.replies || []).map((r) => {
+        const userId = r.user?._id?.toString?.() || r.user?.toString?.();
+        const replyUser = userMap[userId] || {};
 
-          const safeUser = replyUser
-            ? {
-                _id: replyUser._id,
-                username: replyUser.username,
-                avatar: replyUser.avatar,
-              }
-            : {
-                _id: null,
-                username: "Deleted User",
-                avatar: "/default-avatar.jpg",
-              };
-
-          const replyData = {
-            _id: r._id,
-            text: r.text || "",
-            gif: r.gif || "",
-            image: r.image || "",
-            createdAt: r.createdAt,
-            likes: Array.isArray(r.likes) ? r.likes : [],
-            parentComment: r.parentComment || null,
-            children,
-            user: safeUser, // 🔥 THIS is what your frontend uses
-            username: safeUser.username,
-            avatar: safeUser.avatar,
-            userId: safeUser._id,
-          };
-
-          console.log("🧪 Final replyData:", replyData);
-          return replyData;
-        })
-      );
-    };
-
-    const formatted = await Promise.all(
-      logs.map(async (log) => {
-        const replies = await normalizeReplies(log.replies || []);
         return {
-          _id: log._id,
+          ...r.toObject?.() || r,
           user: {
-            _id: log.user._id,
-            username: log.user.username,
-            avatar: log.user.avatar,
+            _id: userId,
+            username: replyUser.username || "Unknown",
+            avatar: replyUser.avatar || "/default-avatar.jpg",
           },
-          review: log.review,
-          rating: log.rating,
-          rewatchCount: log.rewatchCount || 0,
-          createdAt: log.createdAt,
-          gif: log.gif,
-          image: log.image,
-          likes: log.likes || [],
-          replies,
         };
-      })
-    );
+      });
+
+      return {
+        ...log.toObject(),
+        replies,
+      };
+    });
 
     res.json(formatted);
   } catch (err) {
-    console.error("❌ Failed to fetch reviews:", err);
-    res.status(500).json({ message: "Server error while fetching reviews" });
+    console.error("❌ Error fetching popular reviews:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
-
-
-
-
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
 router.patch('/:logId/backdrop', expressJson, protect, async (req, res) => {
