@@ -7,9 +7,16 @@ const Movie = require('../models/movieModel');
 // ✅ backend route: /og/review/:id
 router.get("/og/review/:id", async (req, res) => {
     const { id } = req.params;
-    const log = await Log.findById(id).populate("user");
-  
+    const TMDB_IMG = "https://image.tmdb.org/t/p/original";
     const fallbackImage = "https://scenesa.com/scene-og-review-fallback.png";
+  
+    function renderStars(rating) {
+      const full = Math.floor(rating);
+      const half = rating % 1 >= 0.5 ? "½" : "";
+      return "⭐".repeat(full) + half;
+    }
+  
+    const log = await Log.findById(id).populate("user").populate("movie");
   
     if (!log) {
       return res.send(`
@@ -24,9 +31,13 @@ router.get("/og/review/:id", async (req, res) => {
       `);
     }
   
-    const title = `@${log.user.username}'s Review – ${log.rating || "No rating"}`;
+    const title = `@${log.user.username}'s Review – ${renderStars(log.rating || 0)}`;
     const description = log.review || "Check out what they thought about the movie!";
-    const backdrop = log.backdrop || fallbackImage;
+    const backdrop =
+      log.customBackdrop ||
+      (log.reviewBackdrop ? `${TMDB_IMG}${log.reviewBackdrop}` : "") ||
+      (log.movie?.backdrop_path ? `${TMDB_IMG}${log.movie.backdrop_path}` : "") ||
+      fallbackImage;
   
     return res.send(`
       <html>
@@ -46,6 +57,7 @@ router.get("/og/review/:id", async (req, res) => {
       </html>
     `);
   });
+  
   
 
 module.exports = router;
