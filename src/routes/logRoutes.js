@@ -586,18 +586,92 @@ router.post('/:logId/replies/:replyId/like', protect, async (req, res) => {
 });
 
 // Popular Logs
-router.get('/movie/:id/popular', protect, async (req, res) => {
+router.get("/movie/:id/popular", protect, async (req, res) => {
   try {
-    const logs = await Log.find({ tmdbId: parseInt(req.params.id), review: { $exists: true } })
-      .populate('user', 'username avatar')
-      .sort({ createdAt: -1 })
-      .limit(10);
-    res.json(logs);
+    const movieId = parseInt(req.params.id);
+    const returnAll = req.query.all === "true";
+
+    const logs = await Log.find({
+      tmdbId: movieId,
+      review: { $exists: true, $ne: "" },
+    })
+      .populate("user", "username avatar")
+      .sort({ "likes.length": -1 })
+      .limit(returnAll ? 50 : 3)
+      .lean();
+
+    // 🧠 Step 1: collect ALL unique user IDs from replies & children
+    const replyUserIds = new Set();
+
+    logs.forEach((log) => {
+      (log.replies || []).forEach((reply) => {
+        const mainUserId = typeof reply.user === "string" ? reply.user : reply.user?._id;
+        if (mainUserId) replyUserIds.add(mainUserId.toString());
+
+        (reply.children || []).forEach((child) => {
+          const childUserId = typeof child.user === "string" ? child.user : child.user?._id;
+          if (childUserId) replyUserIds.add(childUserId.toString());
+        });
+      });
+    });
+
+    const users = await User.find({ _id: { $in: [...replyUserIds] } }, "username avatar").lean();
+
+    const userMap = {};
+    users.forEach((u) => {
+      userMap[u._id.toString()] = u;
+    });
+
+    const formatted = logs.map((log) => {
+      const formattedReplies = (log.replies || []).map((reply) => {
+        const replyUserId = typeof reply.user === "string" ? reply.user : reply.user?._id?.toString?.();
+
+        const user = userMap[replyUserId] || {
+          username: "DeletedUser",
+          avatar: "/default-avatar.jpg",
+        };
+
+        const formattedChildren = (reply.children || []).map((child) => {
+          const childUserId = typeof child.user === "string" ? child.user : child.user?._id?.toString?.();
+          const childUser = userMap[childUserId] || {
+            username: "DeletedUser",
+            avatar: "/default-avatar.jpg",
+          };
+
+          return {
+            ...child,
+            user: {
+              _id: childUserId,
+              username: childUser.username,
+              avatar: childUser.avatar,
+            },
+          };
+        });
+
+        return {
+          ...reply,
+          user: {
+            _id: replyUserId,
+            username: user.username,
+            avatar: user.avatar,
+          },
+          children: formattedChildren,
+        };
+      });
+
+      return {
+        ...log,
+        replies: formattedReplies,
+      };
+    });
+
+    res.json(formatted);
   } catch (err) {
-    console.error("❌ Popular logs fetch error:", err);
-    res.status(500).json({ message: err.message });
+    console.error("❌ Final Popular Reviews Error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
+
 
 // Friend Logs
 router.get('/movie/:id/friends', protect, async (req, res) => {
