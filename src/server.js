@@ -109,19 +109,19 @@ const io = new Server(server, {
 
 app.set("io", io);
 
-io.on("connection", (socket) => {
-  io.engine.on("connection_error", (err) => {
-    console.error("🚨 Socket.IO CORS connection error:", err.message);
-  });
-  
+// ✅ Only run this ONCE globally
+io.engine.on("connection_error", (err) => {
+  console.error("🚨 Socket.IO CORS connection error:", err.message);
+});
 
+io.on("connection", (socket) => {
   socket.on("join", (userId) => {
     socket.join(userId);
   });
 
-  socket.on("disconnect", () => {
-  });
+  socket.on("disconnect", () => {});
 });
+
 
 // 🚀 7️⃣ Start server
 const PORT = process.env.PORT || 8080;

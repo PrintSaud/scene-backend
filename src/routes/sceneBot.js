@@ -115,9 +115,6 @@ res.json({ reply });
     res.status(500).json({ message: "SceneBot is currently unavailable. Please try again later." });
   }
 
-  conversationMap[user._id].push({ role: "assistant", content: reply });
-conversationMap[user._id] = conversationMap[user._id].slice(-8);
-
 });
 
 
