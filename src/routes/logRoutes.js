@@ -858,25 +858,24 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
     })
       .populate("user", "username avatar")
       .sort({ "likes.length": -1 })
-      .limit(returnAll ? 50 : 3);
+      .limit(returnAll ? 50 : 3)
+      .lean();
 
-    const userIdsToFetch = new Set();
-
-    // Collect all reply user IDs
+    // 🧠 STEP 1: collect ALL reply.user ids
+    const replyUserIds = [];
     logs.forEach((log) => {
       (log.replies || []).forEach((r) => {
-        if (typeof r.user === "string") {
-          userIdsToFetch.add(r.user);
-        } else if (r.user && r.user._id) {
-          userIdsToFetch.add(r.user._id.toString());
-        } else if (r.user && typeof r.user === "object") {
-          userIdsToFetch.add(String(r.user));
-        }
+        const id =
+          typeof r.user === "string"
+            ? r.user
+            : r.user?._id?.toString?.() || r.user?.toString?.();
+        if (id) replyUserIds.push(id);
       });
     });
 
+    // 🧠 STEP 2: fetch users from DB
     const users = await User.find(
-      { _id: { $in: Array.from(userIdsToFetch) } },
+      { _id: { $in: replyUserIds } },
       { username: 1, avatar: 1 }
     ).lean();
 
@@ -885,33 +884,42 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
       userMap[u._id.toString()] = u;
     });
 
+    // 🧠 STEP 3: format replies
     const formatted = logs.map((log) => {
-      const replies = (log.replies || []).map((r) => {
-        const userId = r.user?._id?.toString?.() || r.user?.toString?.();
-        const replyUser = userMap[userId] || {};
+      const formattedReplies = (log.replies || []).map((r) => {
+        const userId =
+          typeof r.user === "string"
+            ? r.user
+            : r.user?._id?.toString?.() || r.user?.toString?.();
+
+        const replyUser = userMap[userId] || {
+          username: "DeletedUser",
+          avatar: "/default-avatar.jpg",
+        };
 
         return {
-          ...r.toObject?.() || r,
+          ...r,
           user: {
             _id: userId,
-            username: replyUser.username || "Unknown",
-            avatar: replyUser.avatar || "/default-avatar.jpg",
+            username: replyUser.username,
+            avatar: replyUser.avatar,
           },
         };
       });
 
       return {
-        ...log.toObject(),
-        replies,
+        ...log,
+        replies: formattedReplies,
       };
     });
 
     res.json(formatted);
   } catch (err) {
-    console.error("❌ Error fetching popular reviews:", err);
+    console.error("❌ Popular Reviews Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 // PATCH /api/logs/:logId/backdrop → Update custom backdrop
 router.patch('/:logId/backdrop', expressJson, protect, async (req, res) => {
