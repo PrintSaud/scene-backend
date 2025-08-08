@@ -1044,43 +1044,44 @@ router.patch('/:logId/backdrop', expressJson, protect, async (req, res) => {
 
 router.delete('/:logId/replies/:replyId', protect, async (req, res) => {
   try {
-    console.log(`👉 Attempting to delete replyId=${req.params.replyId} on logId=${req.params.logId} for user=${req.user._id}`);
+    console.log("🔥 DELETE REPLY REQUEST");
+    console.log("🧾 logId =", req.params.logId);
+    console.log("🧾 replyId =", req.params.replyId);
+    console.log("👤 user =", req.user._id);
 
     const log = await Log.findById(req.params.logId);
-    console.log('🔍 Fetched log:', log ? 'FOUND' : 'NOT FOUND');
+    console.log('📦 Found log:', log ? true : false);
 
-    if (!log) {
-      return res.status(404).json({ message: 'Log not found' });
-    }
+    if (!log) return res.status(404).json({ message: 'Log not found' });
 
-    console.log('📝 log.replies IDs:', log.replies.map(r => r._id.toString()));
+    console.log("🔁 All reply IDs:", log.replies.map(r => r._id.toString()));
+    
     const replyIndex = log.replies.findIndex(r => r._id.toString() === req.params.replyId);
+    console.log("🔍 Found reply index:", replyIndex);
 
     if (replyIndex === -1) {
       return res.status(404).json({ message: 'Reply not found' });
     }
 
     const reply = log.replies[replyIndex];
-
+    console.log("👤 Reply.user =", reply.user?.toString());
 
     if (reply.user && reply.user.toString() !== req.user._id.toString()) {
- 
-      return res.status(403).json({ message: 'Unauthorized' });
+      return res.status(403).json({ message: 'Unauthorized to delete' });
     }
 
-
     log.replies.splice(replyIndex, 1);
-
-
     await log.save({ validateBeforeSave: false });
 
-    res.json({ message: 'Reply deleted' });
+    return res.json({ message: 'Reply deleted' });
+
   } catch (err) {
-    console.error('🔥 Error deleting reply:', err);
-    console.error('🔥 Error stack:', err.stack);
-    res.status(500).json({ message: err.message });
+    console.error('🔥 ERROR DELETING REPLY:', err);
+    console.error('🧯 STACK TRACE:', err.stack);
+    return res.status(500).json({ message: err.message });
   }
 });
+
 
 router.delete("/:logId", protect, async (req, res) => {
   try {
