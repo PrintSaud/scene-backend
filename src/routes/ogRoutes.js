@@ -1,4 +1,4 @@
-x// 📁 routes/ogRoutes.js
+// 📁 routes/ogRoutes.js
 const express = require("express");
 const router = express.Router();
 const Log = require("../models/log");
