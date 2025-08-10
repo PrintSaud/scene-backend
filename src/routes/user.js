@@ -162,28 +162,6 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
 });
 
 
-
-
-
-router.post('/:userId/favorites/:movieId', async (req, res) => {
-    const { userId, movieId } = req.params;
-  
-    try {
-      const tmdbId = parseInt(movieId);
-      const user = await User.findById(userId);
-  
-      if (!user.favorites.includes(tmdbId)) {
-        user.favorites.push(tmdbId);
-        await user.save();
-      }
-  
-      res.status(200).json({ message: 'TMDB movie added to favorites' });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Server error' });
-    }
-  });
-
   router.post('/:id/custom-poster', async (req, res) => {
     const { movieId, newPoster } = req.body;
   
@@ -286,64 +264,159 @@ router.post('/:userId/favorites/:movieId', async (req, res) => {
     }
   });
 
-// Remove from favorites
-router.delete('/:userId/favorites/:movieId', async (req, res) => {
-  const { userId, movieId } = req.params;
-
+// ADD favorite (numeric TMDB id)
+router.post('/:userId/favorites/:tmdbId', protect, async (req, res) => {
   try {
-    const user = await User.findById(userId);
-    user.favorites = user.favorites.filter(id => id.toString() !== movieId);
-    await user.save();
-    res.status(200).json({ message: 'Movie removed from favorites' });
+    const { userId, tmdbId } = req.params;
+    const idNum = Number(tmdbId);
+    if (!/^[0-9a-fA-F]{24}$/.test(userId)) return res.status(400).json({ error: 'Invalid userId' });
+    if (!Number.isInteger(idNum)) return res.status(400).json({ error: 'tmdbId (number) required' });
+
+    await User.updateOne(
+      { _id: userId },
+      { $addToSet: { favorites: idNum } },
+      { runValidators: false } // <- critical
+    );
+
+    const fresh = await User.findById(userId).select('favorites').lean();
+    return res.status(200).json({ message: 'Added to favorites', favorites: fresh?.favorites || [] });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('favorites POST error:', err);
+    return res.status(500).json({ error: err?.message || 'Server error' });
   }
 });
 
-router.get('/:userId/favorites', async (req, res) => {
+// REMOVE favorite
+router.delete('/:userId/favorites/:tmdbId', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    const { userId, tmdbId } = req.params;
+    const idNum = Number(tmdbId);
+    if (!/^[0-9a-fA-F]{24}$/.test(userId)) return res.status(400).json({ error: 'Invalid userId' });
+    if (!Number.isInteger(idNum)) return res.status(400).json({ error: 'tmdbId (number) required' });
 
-    res.status(200).json({ favorites: user.favorites || [] });
+    await User.updateOne(
+      { _id: userId },
+      { $pull: { favorites: idNum } },
+      { runValidators: false } // <- critical
+    );
+
+    const fresh = await User.findById(userId).select('favorites').lean();
+    return res.json({ message: 'Removed from favorites', favorites: fresh?.favorites || [] });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('favorites DELETE error:', err);
+    return res.status(500).json({ error: err?.message || 'Server error' });
   }
 });
 
-// PATCH /api/users/:id — update user profile
-router.patch('/:id', upload.single("avatar"), async (req, res) => {
+// GET /api/users/:id  (profile payload)
+router.get('/:id', async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const user = await User.findById(req.params.id).select('-password').lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    if (req.file) {
-      const cloudUrl = await uploadToCloudinary(req.file.buffer, "scene/avatars");
-      user.avatar = cloudUrl;
-    }
+    const customPostersDocs = await CustomPoster.find({ userId: req.params.id });
+    const customPosters = {};
+    for (const doc of customPostersDocs) customPosters[doc.movieId] = doc.posterUrl;
 
-    user.name = req.body.name || user.name;
-    user.bio = req.body.bio || user.bio;
-    user.profileBackdrop = req.body.backdrop || user.profileBackdrop;
-    user.favoriteFilms = req.body.favoriteFilms || user.favoriteFilms;
+    const uniqueFilms = await Log.distinct('movie', { user: req.params.id });
+    const totalLogs = uniqueFilms.length;
+    const followerCount = await User.countDocuments({ following: req.params.id });
+    const recentLogs = await Log.find({ user: req.params.id })
+      .sort({ createdAt: -1 })
+      .limit(4)
+      .select('movie title poster rating rewatch createdAt review')
+      .lean();
 
-    if (req.body.socials) {
-      user.socials = {
-        ...user.socials,
-        ...req.body.socials,
-      };
-    }
+    // ✅ Keep Top-4 as objects
+    const favoriteFilms = Array.isArray(user.favoriteFilms) ? user.favoriteFilms : [];
 
-    await user.save();
+    // ✅ Hearts/likes list as numbers (if you have this field)
+    const favorites = (user.favorites || [])
+      .map((n) => Number(n))
+      .filter(Number.isFinite);
 
-    res.json({ message: "✅ Profile updated", user });
+    res.json({
+      ...user,
+      favoriteFilms,           // used by ProfileTabProfile top-4 grid
+      favorites,               // used by heart/like UI across the app
+      customPosters,
+      totalLogs,
+      followerCount,
+      followingCount: user.following?.length || 0,
+      recentLogs,
+    });
   } catch (err) {
-    console.error("❌ Update failed:", err.message);
-    res.status(500).json({ error: "Server error" });
+    console.error('❌ Failed to get user profile:', err);
+    res.status(500).json({ message: 'Failed to fetch user', error: err.message });
   }
 });
+
+
+
+
+
+// PATCH /api/users/:id — update user profile (safe merge)
+router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const patch = {};
+
+    // avatar (optional)
+    if (req.file) {
+      const cloudUrl = await uploadToCloudinary(req.file.buffer, "scene/avatars");
+      patch.avatar = cloudUrl;
+    }
+
+    // primitives — only set if key exists (avoid wiping with empty strings)
+    if ("name" in req.body) patch.name = req.body.name?.trim() || user.name;
+    if ("bio" in req.body) patch.bio = req.body.bio ?? user.bio;
+
+    // backdrop — use consistent field name
+    if ("backdrop" in req.body) patch.backdrop = req.body.backdrop ?? user.backdrop;
+
+    // favoriteFilms — parse if string; only set if key present
+    if ("favoriteFilms" in req.body) {
+      const fav = Array.isArray(req.body.favoriteFilms)
+        ? req.body.favoriteFilms
+        : safeJson(req.body.favoriteFilms, []);
+      patch.favoriteFilms = fav;
+    }
+
+    // connections/socials — merge with existing
+    if ("connections" in req.body || "socials" in req.body) {
+      const incoming =
+        typeof req.body.connections === "string"
+          ? safeJson(req.body.connections, {})
+          : req.body.connections ||
+            (typeof req.body.socials === "string"
+              ? safeJson(req.body.socials, {})
+              : req.body.socials || {});
+      patch.connections = { ...(user.connections || {}), ...(incoming || {}) };
+    }
+
+    // apply
+    Object.assign(user, patch);
+    await user.save();
+
+    // return the updated doc
+    return res.json({ message: "✅ Profile updated", user });
+  } catch (err) {
+    console.error("❌ Update failed:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// util
+function safeJson(str, fallback) {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return fallback;
+  }
+}
+
 
 router.get('/:id', async (req, res) => {
   try {
