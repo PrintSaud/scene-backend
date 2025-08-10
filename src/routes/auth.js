@@ -9,52 +9,82 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const crypto = require('crypto');
 const saveImageFromUrl = require('../utils/saveImageFromUrl');
 const sendEmail = require("../utils/sendEmail");
+const validateEmailDeliverability = require('../utils/validateEmailDeliverability');
+const Log = require('../models/log');
+const CustomPoster = require('../models/customPoster');
+const Notification = require('../models/notification');
+
+router.post('/validate-email', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ ok: false, reason: 'missing_email' });
+
+    const check = await validateEmailDeliverability(email);
+    return res.json({
+      ok: !!check.ok,
+      reason: check.reason || 'unknown',
+      didYouMean: check.didYouMean,
+      email: check.email,
+    });
+  } catch {
+    return res.json({ ok: false, reason: 'validator_error' });
+  }
+});
+
+
 
 // 📥 Register
-
 router.post('/register', async (req, res) => {
   try {
     let { name, username, email, password, avatar } = req.body;
 
-    username = username.trim();
-    email = email.trim().toLowerCase();
+    username = (username || '').trim();
+    email = (email || '').trim().toLowerCase();
+
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Deliverability check
+    const check = await validateEmailDeliverability(email);
+    if (!check.ok) {
+      return res.status(400).json({
+        error: 'Please use a real, deliverable email address',
+        reason: check.reason,
+      });
+    }
 
     const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ error: 'Email already in use' });
+    if (existingUser) return res.status(400).json({ error: 'Email already in use' });
 
     const existingUsername = await User.findOne({
       username: { $regex: `^${username}$`, $options: "i" }
     });
-    if (existingUsername)
-      return res.status(400).json({ error: 'Username already taken' });
+    if (existingUsername) return res.status(400).json({ error: 'Username already taken' });
 
-    // ✅ Generate 6-digit code
+    // 6-digit code + expiry
     const verificationCode = crypto.randomInt(100000, 999999).toString();
 
-    // ✅ Set code + expiration
     const user = new User({
       name,
       username,
       email,
-      password,
+      password, // assume hashing in pre-save hook
       avatar,
       verificationCode,
-      verificationCodeExpires: new Date(Date.now() + 10 * 60 * 1000) // 10 mins
+      verificationCodeExpires: new Date(Date.now() + 10 * 60 * 1000), // 10 mins
+      emailVerified: false,
     });
 
     await user.save();
 
-    // ✅ Send email
     await sendEmail(
       email,
       "Your Scene verification code",
-      `Welcome to Scene! 🎬\n\nHere’s your 6-digit verification code:\n\n${verificationCode}\n\nThis code expires in 10 minutes.`
+      `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
     );
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: '30d',
-    });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
 
     res.status(201).json({
       message: 'User registered successfully. Verification email sent.',
@@ -72,6 +102,7 @@ router.post('/register', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 
 router.post("/verify-email-code", async (req, res) => {
@@ -333,10 +364,51 @@ router.put('/profile', protect, async (req, res) => {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    if (username) user.username = username.toLowerCase().trim();
-    if (email) user.email = email.toLowerCase().trim();
-    if (password) user.password = password;
-    if (bio) user.bio = bio;
+    // Username
+    if (username) {
+      const uname = username.toLowerCase().trim();
+      if (uname !== user.username) {
+        const exists = await User.findOne({
+          _id: { $ne: user._id },
+          username: { $regex: `^${uname}$`, $options: 'i' }
+        });
+        if (exists) return res.status(400).json({ error: 'Username already taken' });
+        user.username = uname;
+      }
+    }
+
+    // Email (validate deliverability + uniqueness, then re-verify)
+    if (email) {
+      const newEmail = email.toLowerCase().trim();
+      if (newEmail !== user.email) {
+        const check = await validateEmailDeliverability(newEmail);
+        if (!check.ok) {
+          return res.status(400).json({
+            error: 'Please use a real, deliverable email address',
+            reason: check.reason,
+          });
+        }
+
+        const emailTaken = await User.findOne({ _id: { $ne: user._id }, email: newEmail });
+        if (emailTaken) return res.status(400).json({ error: 'Email already in use' });
+
+        user.email = newEmail;
+        user.emailVerified = false;
+
+        const verificationCode = crypto.randomInt(100000, 999999).toString();
+        user.verificationCode = verificationCode;
+        user.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+        await sendEmail(
+          newEmail,
+          "Verify your new email for Scene",
+          `Here’s your code: ${verificationCode}\n\nIt expires in 10 minutes.`
+        );
+      }
+    }
+
+    if (password) user.password = password; // hashed in pre-save
+    if (bio !== undefined) user.bio = bio;
     if (avatar) user.avatar = avatar;
 
     await user.save();
@@ -349,12 +421,15 @@ router.put('/profile', protect, async (req, res) => {
         email: user.email,
         bio: user.bio,
         avatar: user.avatar,
+        emailVerified: !!user.emailVerified,
       },
     });
   } catch (error) {
+    console.error('❌ Update profile error:', error);
     res.status(500).json({ error: error.message });
   }
 });
+
 
 
 // 🔍 Username + Email Availability Checks
@@ -382,6 +457,28 @@ router.get('/check-email', async (req, res) => {
   const exists = await User.findOne({ email });
   res.json({ available: !exists });
 });
+
+router.delete('/account', protect, async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Delete related docs (extend as needed)
+    await Promise.all([
+      Log.deleteMany({ user: userId }),
+      Notification.deleteMany({ $or: [{ to: userId }, { from: userId }] }),
+      CustomPoster.deleteMany({ userId }),
+      User.updateMany({}, { $pull: { followers: userId, following: userId } }),
+    ]);
+
+    await User.deleteOne({ _id: userId });
+
+    res.status(200).json({ message: 'Account deleted successfully' });
+  } catch (err) {
+    console.error('❌ Delete account error:', err);
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
 
 // 🔁 Ping
 router.get('/ping', (req, res) => {
