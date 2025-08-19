@@ -622,10 +622,6 @@ router.get('/mutuals', protect, async (req, res) => {
   }
 });
 
-
-
-
-
 // routes/userRoutes.js
 router.post('/:id/remove-follower/:followerId', protect, async (req, res) => {
   try {
