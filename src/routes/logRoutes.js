@@ -691,6 +691,20 @@ router.get('/movie/:id/friends', protect, async (req, res) => {
   }
 });
 
+// get all logs for this movie (any user)
+router.get("/movie/:id/all", protect, async (req, res) => {
+  try {
+    const movieId = parseInt(req.params.id);
+    const logs = await Log.find({ tmdbId: movieId })
+      .populate("user", "username avatar")
+      .sort({ createdAt: -1 });
+    res.json(logs);
+  } catch (err) {
+    console.error("❌ Failed to fetch all logs for movie:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 
 // POST /api/logs/full → Full-featured log (text, rating, gif, image, etc.)
 router.post('/full', protect, upload.single('image'), async (req, res) => {

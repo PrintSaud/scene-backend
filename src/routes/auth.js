@@ -316,34 +316,55 @@ router.post('/google', async (req, res) => {
 });
 
 // 🔐 Login
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-
+router.post('/login', async (req, res, next) => {
   try {
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const { email, username, password } = req.body || {};
+    if (!password || (!email && !username)) {
+      return res.status(400).json({ error: 'Email/Username and password are required' });
+    }
+
+    const query = email
+      ? { email: String(email).toLowerCase().trim() }
+      : { username: String(username).trim() };
+
+    // Select password explicitly (schema often has select:false)
+    const user = await User.findOne(query).select('+password');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const isMatch = await user.matchPassword(password);
-    if (!isMatch) return res.status(401).json({ error: 'Invalid password' });
+    // Some Google-only accounts have no real hash
+    if (!user.password || user.password === 'google-oauth') {
+      return res.status(401).json({ error: 'Account requires Google login' });
+    }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: '30d',
-    });
-    
+    // Use your model method if present; otherwise compare safely
+    let isMatch = false;
+    if (typeof user.matchPassword === 'function') {
+      isMatch = await user.matchPassword(password);
+    } else {
+      const bcrypt = require('bcryptjs');
+      isMatch = await bcrypt.compare(password, user.password);
+    }
 
-    res.status(200).json({
+    if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+
+    return res.status(200).json({
       message: 'Login successful',
       token,
       user: {
         _id: user._id,
         username: user.username,
         email: user.email,
-      }
+        avatar: user.avatar,
+      },
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return next(error);
   }
 });
+
+
 
 // 🧾 Profile
 router.get('/profile', protect, async (req, res) => {

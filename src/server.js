@@ -26,47 +26,85 @@ console.warn("🧪 ENV — DB_URI:", process.env.DB_URI ? "set" : "missing");
 console.warn("🧪 ENV — JWT_SECRET:", mask(process.env.JWT_SECRET));
 console.warn("🧪 ENV — TMDB_KEY:", mask(process.env.TMDB_API_KEY));
 
-const app = express();
-
-// 🔐 1️⃣ CORS Setup — placed early
-const allowedOrigins = [
+// 🧭 Build allowed origins from env (comma-separated)
+const DEFAULT_ORIGINS = [
   "http://localhost:5173",
   "https://scene-frontend-production.up.railway.app",
   "https://scenesa.com",
   "https://www.scenesa.com",
 ];
+const ORIGINS = (process.env.FRONTEND_ORIGINS || DEFAULT_ORIGINS.join(","))
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const allowedOrigins = new Set(ORIGINS);
 
-app.use(cors({
-  origin: allowedOrigins,
+const app = express();
+
+// If behind a proxy (Railway/NGINX), enable trust proxy for cookies/IP
+app.set("trust proxy", 1);
+
+// 🔐 1️⃣ CORS Setup — placed early
+const corsOptions = {
+  origin(origin, callback) {
+    // allow non-browser/undefined origins (mobile apps, curl, SSR)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+
+    // Optional: allow any subdomain of scenesa.com
+    const scenesaSubdomain = /^https?:\/\/([a-z0-9-]+\.)*scenesa\.com$/i;
+    if (scenesaSubdomain.test(origin)) return callback(null, true);
+
+    return callback(new Error("Not allowed by CORS"));
+  },
   credentials: true,
-  methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-}));
-
-// 🌐 1.5 Handle all OPTIONS requests for CORS preflight
-app.options("*", (req, res) => res.sendStatus(200));
+};
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // 🌐 Preflight
 
 // 📁 2️⃣ Static files
 app.use(express.static("public"));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// 🔌 3️⃣ MongoDB connection
+// 🔌 3️⃣ MongoDB connection (robust on flaky DNS)
 const DB_URI = process.env.DB_URI;
 if (!DB_URI) {
-  console.error("❌ MISSING DB_URI — check Railway Environment Variables");
-} else if (!DB_URI.includes("scene")) {
-  console.warn("⚠️ DB_URI doesn’t look like your Scene DB. Proceeding anyway.");
+  console.error("❌ MISSING DB_URI — check Environment Variables");
+} else if (!/mongodb(\+srv)?:\/\//.test(DB_URI)) {
+  console.warn("⚠️ DB_URI format unexpected. Proceeding anyway.");
 }
 
-mongoose
-  .connect(DB_URI)
-  .then(() => console.warn(`✅ MongoDB connected to: ${mongoose.connection.name}`))
-  .catch((err) => {
-    console.error("❌ MongoDB connection error:", err);
-    process.exit(1);
-  });
+const mongoOpts = {
+  serverSelectionTimeoutMS: 15000, // don't hang forever
+  family: 4, // force IPv4 to avoid SRV/TXT hiccups (not a LAN IP; safe to keep)
+};
 
-// 🛣️ 4️⃣ Routes (use express.json per group to avoid unnecessary parsing)
+async function connectWithRetry(attempt = 1) {
+  try {
+    await mongoose.connect(DB_URI, mongoOpts);
+    console.warn(`✅ MongoDB connected to: ${mongoose.connection.name}`);
+  } catch (err) {
+    console.error(
+      `❌ MongoDB connect failed (attempt ${attempt}):`,
+      err.code || err.message
+    );
+    const backoff = Math.min(30000, attempt * 3000);
+    setTimeout(() => connectWithRetry(attempt + 1), backoff);
+  }
+}
+connectWithRetry();
+
+// 🔒 Gate requests until Mongo is ready (only for API paths)
+function requireDbReady(req, res, next) {
+  const ready = mongoose.connection.readyState === 1; // 1 = connected
+  if (!ready) return res.status(503).json({ error: "Database not connected yet" });
+  next();
+}
+app.use("/api", requireDbReady);
+
+// 🛣️ 4️⃣ Routes (use express.json per group)
 const ogRoutes = require("./routes/ogRoutes");
 app.use("/og", ogRoutes);
 app.use("/api/auth", express.json(), require("./routes/auth"));
@@ -92,32 +130,63 @@ app.use("/api/letterboxd", importRoutes);
 // 💓 5️⃣ Health check
 app.get("/", (req, res) => res.send("Root route is working!"));
 
-// 🧠 6️⃣ Socket.IO setup
+// 🧠 6️⃣ Socket.IO setup (mirror CORS)
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.has(origin)) return callback(null, true);
+      const scenesaSubdomain = /^https?:\/\/([a-z0-9-]+\.)*scenesa\.com$/i;
+      if (scenesaSubdomain.test(origin)) return callback(null, true);
+      return callback(new Error("Not allowed by CORS (ws)"));
+    },
     methods: ["GET", "POST"],
     credentials: true,
   },
 });
-
 app.set("io", io);
 
 // Global Socket.IO error logging
 io.engine.on("connection_error", (err) => {
   console.error("🚨 Socket.IO CORS connection error:", err.message);
 });
-
 io.on("connection", (socket) => {
   socket.on("join", (userId) => socket.join(userId));
   socket.on("disconnect", () => {});
 });
 
-// 🚀 7️⃣ Start server
+// 404 (keep it simple so we see real 404s during debugging)
+app.use((req, res) => {
+  res.status(404).json({ message: "Not Found", path: req.originalUrl });
+});
+
+// Central error handler (shows full details in console)
+app.use((err, req, res, next) => {
+  console.error("💥 Unhandled error:", {
+    method: err?.method || req.method,
+    url: err?.url || req.originalUrl,
+    message: err.message,
+    stack: err.stack,
+  });
+  res.status(err.status || 500).json({ error: err.message || "Internal Server Error" });
+});
+
+// 🚀 7️⃣ Start server AFTER Mongo connects; also watch for disconnects
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => {
-  console.warn(`🚀 Server + Socket.IO running on port ${PORT}`);
+
+mongoose.connection.once("connected", () => {
+  server.listen(PORT, () => {
+    console.warn(`🚀 Server + Socket.IO running on port ${PORT}`);
+  });
+});
+
+mongoose.connection.on("error", (err) => {
+  console.error("❌ Mongo connection error:", err?.code || err?.message || err);
+});
+
+mongoose.connection.on("disconnected", () => {
+  console.error("⚠️ Mongo disconnected");
 });
 
 module.exports = app;

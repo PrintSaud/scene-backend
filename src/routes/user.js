@@ -369,14 +369,14 @@ router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
       patch.avatar = cloudUrl;
     }
 
-    // primitives — only set if key exists (avoid wiping with empty strings)
     if ("name" in req.body) patch.name = req.body.name?.trim() || user.name;
     if ("bio" in req.body) patch.bio = req.body.bio ?? user.bio;
 
-    // backdrop — use consistent field name
-    if ("backdrop" in req.body) patch.backdrop = req.body.backdrop ?? user.backdrop;
+    // ✅ use profileBackdrop consistently
+    if ("profileBackdrop" in req.body) {
+      patch.profileBackdrop = req.body.profileBackdrop ?? user.profileBackdrop;
+    }
 
-    // favoriteFilms — parse if string; only set if key present
     if ("favoriteFilms" in req.body) {
       const fav = Array.isArray(req.body.favoriteFilms)
         ? req.body.favoriteFilms
@@ -384,7 +384,6 @@ router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
       patch.favoriteFilms = fav;
     }
 
-    // connections/socials — merge with existing
     if ("connections" in req.body || "socials" in req.body) {
       const incoming =
         typeof req.body.connections === "string"
@@ -396,11 +395,9 @@ router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
       patch.connections = { ...(user.connections || {}), ...(incoming || {}) };
     }
 
-    // apply
     Object.assign(user, patch);
     await user.save();
 
-    // return the updated doc
     return res.json({ message: "✅ Profile updated", user });
   } catch (err) {
     console.error("❌ Update failed:", err);
@@ -408,7 +405,6 @@ router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
   }
 });
 
-// util
 function safeJson(str, fallback) {
   try {
     return JSON.parse(str);
@@ -416,6 +412,7 @@ function safeJson(str, fallback) {
     return fallback;
   }
 }
+
 
 
 router.get('/:id', async (req, res) => {
