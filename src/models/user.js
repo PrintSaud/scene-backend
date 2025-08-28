@@ -22,8 +22,9 @@ const UserSchema = new mongoose.Schema({
     }
   ],
   
-  
-  
+  language: { type: String, default: "en" },
+
+  noNewFollowers: { type: Boolean, default: false }, // 🚫 prevent new followers
   favorites: { type: [Number], default: [] },
 
   favoriteFilms: {

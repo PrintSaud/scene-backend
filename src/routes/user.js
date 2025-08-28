@@ -101,6 +101,7 @@ router.get('/all', async (req, res) => {
 
 
 // followww
+// follow / unfollow
 router.post('/:userId/follow/:targetId', async (req, res) => {
   try {
     const user = await User.findById(req.params.userId);
@@ -112,10 +113,20 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
 
     const isFollowing = user.following.includes(req.params.targetId);
 
+    // 🚫 Prevent new follows if blocked
+    if (!isFollowing && targetUser.noNewFollowers) {
+      console.log("🚨 Blocked follow attempt on", targetUser.username);
+      return res.status(403).json({
+        error: "🚫 يلا بس",
+      });
+    }
+
     if (isFollowing) {
+      // ✅ Unfollow
       user.following.pull(req.params.targetId);
       targetUser.followers.pull(req.params.userId);
     } else {
+      // ✅ Follow
       user.following.push(req.params.targetId);
       targetUser.followers.push(req.params.userId);
 
@@ -128,7 +139,7 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
         createdAt: new Date(),
       });
 
-      // ✅ Emit real-time follow notification
+      // Real-time notification
       const io = req.app.get("io");
       io.to(targetUser._id.toString()).emit("notification", {
         ...notif._doc,
@@ -140,12 +151,12 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
       });
     }
 
-    // ✅ Clean corrupted watchlist entries before save
+    // ✅ Clean corrupted watchlist entries
     user.watchlist = (user.watchlist || []).filter(
-      item => item && typeof item === 'object' && typeof item.tmdbId === 'number'
+      (item) => item && typeof item === "object" && typeof item.tmdbId === "number"
     );
     targetUser.watchlist = (targetUser.watchlist || []).filter(
-      item => item && typeof item === 'object' && typeof item.tmdbId === 'number'
+      (item) => item && typeof item === "object" && typeof item.tmdbId === "number"
     );
 
     await user.save();
@@ -153,14 +164,13 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
 
     res.status(200).json({
       following: !isFollowing,
-      message: isFollowing ? 'Unfollowed user' : 'Now following user',
+      message: isFollowing ? "Unfollowed user" : "Now following user",
     });
   } catch (err) {
     console.error("❌ Failed to toggle follow:", err);
-    res.status(500).json({ error: 'Failed to toggle follow', details: err.message });
+    res.status(500).json({ error: "Failed to toggle follow", details: err.message });
   }
 });
-
 
   router.post('/:id/custom-poster', async (req, res) => {
     const { movieId, newPoster } = req.body;
@@ -632,6 +642,69 @@ router.post('/:id/remove-follower/:followerId', protect, async (req, res) => {
   } catch (err) {
     console.error("❌ Failed to remove follower", err);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+// PATCH /api/users/:id/language
+router.patch("/:id/language", protect, async (req, res) => {
+  try {
+    if (String(req.user._id) !== req.params.id) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    const { language } = req.body;
+    const validLangs = ["en", "ar"]; // add more later
+    if (!validLangs.includes(language)) {
+      return res.status(400).json({ error: "Invalid language" });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { language },
+      { new: true }
+    );
+
+    res.json({ message: "Language updated", user });
+  } catch (err) {
+    console.error("❌ Update language error:", err);
+    res.status(500).json({ error: "Failed to update language" });
+  }
+});
+
+// admin: force A to unfollow B
+router.post("/admin/force-unfollow", protect, async (req, res) => {
+  try {
+    const { aId, bId } = req.body;
+
+    await User.findByIdAndUpdate(aId, { $pull: { following: bId } });
+    await User.findByIdAndUpdate(bId, { $pull: { followers: aId } });
+
+    res.json({ message: "✅ Forced unfollow successful" });
+  } catch (err) {
+    console.error("❌ Force unfollow failed:", err);
+    res.status(500).json({ error: "Failed to force unfollow" });
+  }
+});
+
+// ✅ Admin toggle block/unblock following
+router.post("/admin/block-follow/:id", protect, async (req, res) => {
+  try {
+    const { block } = req.body; // send { block: true } or { block: false }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    user.noNewFollowers = !!block; // 🚫 true = block, false = allow
+    await user.save();
+
+    res.json({
+      message: `User ${user.username} is now ${
+        user.noNewFollowers ? "blocked from new followers 🚫" : "open to followers ✅"
+      }`,
+    });
+  } catch (err) {
+    console.error("❌ Block follow failed:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
