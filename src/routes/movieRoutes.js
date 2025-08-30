@@ -46,10 +46,10 @@ router.patch('/:tmdbId/poster', async (req, res) => {
 // 🔥 GET /api/movies/trending
 router.get('/trending', async (req, res) => {
   try {
-    const movies = await getTrendingMovies();
+    const movies = await getTrendingMovies("en-US");
     const formatted = movies.slice(0, 20).map((movie) => ({
       id: movie.id,
-      title: movie.title,
+      title_en: movie.title, // English title
       poster: `https://image.tmdb.org/t/p/w500${movie.poster_path}`,
     }));
     res.json(formatted);
@@ -67,15 +67,25 @@ router.get('/search', async (req, res) => {
       return res.status(400).json({ error: 'Query param `q` is required.' });
     }
 
-    const data = await searchMovies(q, page);
-    res.json({ results: data.results, totalPages: data.total_pages });
+    const data = await searchMovies(q, page, "en-US"); // force English
+    res.json({
+      results: data.results.map((m) => ({
+        id: m.id,
+        title_en: m.title,
+        poster: m.poster_path
+          ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
+          : null,
+        original_language: m.original_language,
+      })),
+      totalPages: data.total_pages,
+    });
   } catch (err) {
     console.error('🔍 Search error:', err);
     res.status(500).json({ error: 'Failed to search movies.' });
   }
 });
 
-// 🎬 GET /api/movies/:tmdbId → returns title + backdrops
+// 🎬 GET /api/movies/:tmdbId → returns English + Arabic titles + backdrops
 router.get('/:tmdbId', async (req, res) => {
   try {
     const tmdbId = parseInt(req.params.tmdbId);
@@ -83,27 +93,32 @@ router.get('/:tmdbId', async (req, res) => {
       return res.status(400).json({ error: '❌ Invalid Movie ID' });
     }
 
-    const details = await getMovieDetails(tmdbId);
+    // Fetch both English + Arabic versions
+    const detailsEn = await getMovieDetails(tmdbId, "en-US");
+    const detailsAr = await getMovieDetails(tmdbId, "ar-SA");
 
+    // Save to DB if missing
     let movie = await Movie.findOne({ tmdbId });
     if (!movie) {
       movie = await Movie.create({
-        tmdbId: details.id,
-        title: details.title,
-        overview: details.overview,
-        posterPath: details.poster_path,
-        releaseDate: details.release_date,
-        genres: details.genres.map((g) => g.name),
-        runtime: details.runtime,
+        tmdbId: detailsEn.id,
+        title: detailsEn.title, // default English
+        overview: detailsEn.overview,
+        posterPath: detailsEn.poster_path,
+        releaseDate: detailsEn.release_date,
+        genres: detailsEn.genres.map((g) => g.name),
+        runtime: detailsEn.runtime,
       });
     }
 
-    const backdrops = (details.images?.backdrops || [])
+    const backdrops = (detailsEn.images?.backdrops || [])
       .map((b) => b.file_path)
       .filter(Boolean);
 
     res.json({
-      title: details.title,
+      title_en: detailsEn.title,
+      title_ar: detailsAr.title,
+      original_language: detailsEn.original_language,
       backdrops,
     });
   } catch (err) {
