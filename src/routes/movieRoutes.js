@@ -50,7 +50,9 @@ router.get('/trending', async (req, res) => {
     const formatted = movies.slice(0, 20).map((movie) => ({
       id: movie.id,
       title_en: movie.title, // English title
-      poster: `https://image.tmdb.org/t/p/w500${movie.poster_path}`,
+      poster: movie.poster_path
+        ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
+        : null,
     }));
     res.json(formatted);
   } catch (err) {
@@ -68,6 +70,7 @@ router.get('/search', async (req, res) => {
     }
 
     const data = await searchMovies(q, page, "en-US"); // force English
+
     res.json({
       results: data.results.map((m) => ({
         id: m.id,
@@ -75,7 +78,15 @@ router.get('/search', async (req, res) => {
         poster: m.poster_path
           ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
           : null,
+        backdrop: m.backdrop_path
+          ? `https://image.tmdb.org/t/p/w780${m.backdrop_path}`
+          : null,
         original_language: m.original_language,
+        overview: m.overview || "",
+        vote_average: m.vote_average || 0,
+        vote_count: m.vote_count || 0,
+        popularity: m.popularity || 0,
+        adult: m.adult || false,
       })),
       totalPages: data.total_pages,
     });
@@ -93,16 +104,20 @@ router.get('/:tmdbId', async (req, res) => {
       return res.status(400).json({ error: '❌ Invalid Movie ID' });
     }
 
-    // Fetch both English + Arabic versions
+    // Fetch both English + Arabic versions with backdrops
     const detailsEn = await getMovieDetails(tmdbId, "en-US");
     const detailsAr = await getMovieDetails(tmdbId, "ar-SA");
+
+    if (!detailsEn) {
+      return res.status(404).json({ error: "Movie not found" });
+    }
 
     // Save to DB if missing
     let movie = await Movie.findOne({ tmdbId });
     if (!movie) {
       movie = await Movie.create({
         tmdbId: detailsEn.id,
-        title: detailsEn.title, // default English
+        title: detailsEn.title,
         overview: detailsEn.overview,
         posterPath: detailsEn.poster_path,
         releaseDate: detailsEn.release_date,
@@ -111,13 +126,14 @@ router.get('/:tmdbId', async (req, res) => {
       });
     }
 
+    // ✅ Full URLs for backdrops
     const backdrops = (detailsEn.images?.backdrops || [])
-      .map((b) => b.file_path)
+      .map((b) => `https://image.tmdb.org/t/p/original${b.file_path}`)
       .filter(Boolean);
 
     res.json({
       title_en: detailsEn.title,
-      title_ar: detailsAr.title,
+      title_ar: detailsAr?.title || detailsEn.title,
       original_language: detailsEn.original_language,
       backdrops,
     });

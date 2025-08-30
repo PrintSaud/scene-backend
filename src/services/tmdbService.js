@@ -24,13 +24,14 @@ async function searchMovies(query, page = 1, language = "en-US") {
   }
 }
 
-// 🎬 Get Movie Details
+// 🎬 Get Movie Details (with backdrops!)
 async function getMovieDetails(tmdbId, language = "en-US") {
   try {
     const { data } = await axios.get(`${TMDB_BASE_URL}/movie/${tmdbId}`, {
       params: {
         api_key: apiKey,
         append_to_response: 'credits,images',
+        include_image_language: 'en,null', // ✅ ensures we get EN + global backdrops
         language,
       },
     });
@@ -88,6 +89,7 @@ async function getPersonDetails(personId, language = "en-US") {
       params: {
         api_key: apiKey,
         append_to_response: 'movie_credits,images',
+        include_image_language: 'en,null', // ✅ ensures we get usable profile images
         language,
       },
     });
