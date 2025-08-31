@@ -10,7 +10,8 @@ const CustomPoster = require("../models/customPoster");  // Ensure this is impor
 const Notification = require('../models/notification');  // 🔔 Add this line!
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() }); // ✅ in-memory upload
-
+const axios = require("axios");
+const TMDB_API_KEY = process.env.TMDB_API_KEY;
 // ✅ Save recent GIF
 router.post("/gif/recent", async (req, res) => {
   const { userId, gifUrl } = req.body;
@@ -361,13 +362,10 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-
-
-
-
 // PATCH /api/users/:id — update user profile (safe merge)
 router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
   try {
+    const TMDB_API_KEY = process.env.TMDB_API_KEY;
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -375,7 +373,10 @@ router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
 
     // avatar (optional)
     if (req.file) {
-      const cloudUrl = await uploadToCloudinary(req.file.buffer, "scene/avatars");
+      const cloudUrl = await uploadToCloudinary(
+        req.file.buffer,
+        "scene/avatars"
+      );
       patch.avatar = cloudUrl;
     }
 
@@ -387,13 +388,57 @@ router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
       patch.profileBackdrop = req.body.profileBackdrop ?? user.profileBackdrop;
     }
 
+    // ✅ favorite films: normalize + enrich with TMDB poster_path
     if ("favoriteFilms" in req.body) {
       const fav = Array.isArray(req.body.favoriteFilms)
         ? req.body.favoriteFilms
         : safeJson(req.body.favoriteFilms, []);
-      patch.favoriteFilms = fav;
+
+      const enriched = await Promise.all(
+        fav.map(async (m) => {
+          // normalize id → tmdbId (always numeric)
+          const tmdbId = Number(m?.tmdbId || m?.id || m);
+          if (!tmdbId || Number.isNaN(tmdbId)) return null;
+
+          // ✅ enforce clean schema: only tmdbId/title/poster_path
+          if (m?.poster_path || m?.poster) {
+            return {
+              tmdbId,
+              title: m.title || m?.original_title || "",
+              poster_path: m.poster_path || m.poster,
+            };
+          }
+
+          try {
+            const { data } = await axios.get(
+              `https://api.themoviedb.org/3/movie/${tmdbId}`,
+              { params: { api_key: TMDB_API_KEY, language: "en-US" } }
+            );
+
+            return {
+              tmdbId,
+              title: m.title || data.title,
+              poster_path: data.poster_path,
+            };
+          } catch (err) {
+            console.warn("⚠️ TMDB fetch failed for", tmdbId, err.message);
+            return { tmdbId, title: m.title || "Unknown", poster_path: null };
+          }
+        })
+      );
+
+      // filter nulls + dedupe by tmdbId
+      const seen = new Set();
+      patch.favoriteFilms = enriched
+        .filter(Boolean)
+        .filter((f) => {
+          if (seen.has(f.tmdbId)) return false;
+          seen.add(f.tmdbId);
+          return true;
+        });
     }
 
+    // ✅ merge socials/connections
     if ("connections" in req.body || "socials" in req.body) {
       const incoming =
         typeof req.body.connections === "string"
@@ -414,6 +459,10 @@ router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
     return res.status(500).json({ error: "Server error" });
   }
 });
+
+
+
+
 
 function safeJson(str, fallback) {
   try {
