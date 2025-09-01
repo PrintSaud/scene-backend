@@ -583,80 +583,89 @@ router.post('/:id/notify/share', async (req, res) => {
   }
 });
 
-
-
-
-
-router.get('/:userId/watchlist', async (req, res) => {
+// ✅ Fast Watchlist (no TMDB calls)
+// ✅ Fast Watchlist (always returns poster_path)
+router.get("/:userId/watchlist", async (req, res) => {
   const { userId } = req.params;
-  const sort = req.query.sort || "title";
+  const sort = req.query.sort || "added";
   const order = req.query.order === "desc" ? -1 : 1;
   const genre = req.query.genre ? Number(req.query.genre) : null;
 
   try {
-    const user = await User.findById(userId);
-    if (!user || !user.watchlist)
+    const user = await User.findById(userId).lean();
+    if (!user || !user.watchlist) {
       return res.status(404).json({ error: "User or watchlist not found" });
+    }
 
-    let movieDetails = await Promise.all(
-      user.watchlist.map(async (item) => {
-        let tmdbId, addedAt;
+    // Clean: only objects with tmdbId
+    let movies = user.watchlist.filter((w) => typeof w === "object" && w.tmdbId);
 
-        if (typeof item === "object" && item.tmdbId) {
-          tmdbId = item.tmdbId;
-          addedAt = item.addedAt || new Date(0);
-        } else {
-          tmdbId = item;
-          addedAt = new Date(0);
-        }
-
-        const movie = await getMovieDetails(tmdbId);
-        if (!movie || !movie.id) return null;
-
-        const customPoster = await CustomPoster.findOne({
-          userId: userId,
-          movieId: { $in: [tmdbId, String(tmdbId)] }
-        });
-
-        const posterOverride = customPoster
-          ? customPoster.posterUrl
-          : movie.poster_path
-          ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
-          : "/default-poster.jpg";
-
-        return {
-          ...movie,
-          posterOverride,
-          tmdbId: movie.id,
-          addedAt
-        };
-      })
-    );
-
-    movieDetails = movieDetails.filter(Boolean);
-
-    // 🔥 Genre filtering here:
+    // 🎬 Genre filter (if you store genres locally)
     if (genre && !isNaN(genre)) {
-      movieDetails = movieDetails.filter(movie =>
-        Array.isArray(movie.genres) &&
-        movie.genres.some(g => g.id === genre)
+      movies = movies.filter(
+        (m) => Array.isArray(m.genres) && m.genres.some((g) => g.id === genre)
       );
     }
 
-    movieDetails.sort((a, b) => {
+    // Sort
+    movies.sort((a, b) => {
       if (sort === "added") return (new Date(a.addedAt) - new Date(b.addedAt)) * order;
-      if (sort === "runtime") return (a.runtime - b.runtime) * order;
+      if (sort === "runtime") return ((a.runtime || 0) - (b.runtime || 0)) * order;
       if (sort === "rating") return ((a.vote_average || 0) - (b.vote_average || 0)) * order;
       if (sort === "release") return (new Date(a.release_date) - new Date(b.release_date)) * order;
       return (a.title || "").localeCompare(b.title || "") * order;
     });
 
-    res.json(movieDetails);
+    // 🎨 Custom posters
+    const customPosters = await CustomPoster.find({
+      userId,
+      movieId: { $in: movies.map((m) => String(m.tmdbId)) },
+    }).lean();
+
+    const postersMap = {};
+    customPosters.forEach((cp) => {
+      postersMap[cp.movieId] = cp.posterUrl;
+    });
+
+    // 🔍 Enrich missing poster_path using TMDB
+    let enrichedMovies = await Promise.all(
+      movies.map(async (m) => {
+        let poster_path = m.poster_path || null;
+        let title = m.title || null;
+        let release_date = m.release_date || null;
+
+        if (!poster_path) {
+          try {
+            const details = await getMovieDetails(m.tmdbId);
+            poster_path = details?.poster_path || null;
+            title = title || details?.title || null;
+            release_date = release_date || details?.release_date || null;
+          } catch (err) {
+            console.warn("⚠️ Failed to fetch TMDB details for", m.tmdbId);
+          }
+        }
+
+        return {
+          ...m,
+          posterOverride: postersMap[m.tmdbId] || null,
+          poster_path,
+          title,
+          release_date,
+        };
+      })
+    );
+
+    res.json(enrichedMovies);
   } catch (err) {
     console.error("❌ Failed to fetch watchlist", err);
     res.status(500).json({ error: "Could not fetch watchlist" });
   }
 });
+
+
+
+
+
 
 
 router.get('/mutuals', protect, async (req, res) => {
