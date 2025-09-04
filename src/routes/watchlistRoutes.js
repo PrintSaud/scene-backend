@@ -24,6 +24,9 @@ router.get("/status/:movieId", protect, async (req, res) => {
 router.post("/toggle", protect, async (req, res) => {
   const { movieId } = req.body;
   const userId = req.user._id;
+  console.log("Incoming movieId:", movieId, typeof movieId);
+console.log("User before push:", user.watchlist);
+
 
   try {
     const user = await User.findById(userId);
