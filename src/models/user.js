@@ -30,13 +30,14 @@ const UserSchema = new mongoose.Schema({
   favoriteFilms: {
     type: [
       {
-        tmdbId: { type: Number, required: true },  // 🚨 REQUIRED
-        title: { type: String, required: true },
-        poster_path: { type: String },
+        tmdbId: { type: Number },  // ⬅️ remove required
+        title: String,
+        poster_path: String,
       }
     ],
     default: []
   },
+  
   
   
   
