@@ -24,15 +24,17 @@ router.get("/status/:movieId", protect, async (req, res) => {
 router.post("/toggle", protect, async (req, res) => {
   const { movieId } = req.body;
   const userId = req.user._id;
-  console.log("Incoming movieId:", movieId, typeof movieId);
-console.log("User before push:", user.watchlist);
-
 
   try {
-    const user = await User.findById(userId);
+    const user = await User.findById(userId);  // <-- define first
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    console.log("User before push:", user.watchlist); // <-- safe now
 
     // 🧹 Clean malformed entries
-    user.watchlist = user.watchlist.filter((w) => typeof w === "object" && w.tmdbId);
+    user.watchlist = user.watchlist.filter(
+      (w) => typeof w === "object" && w.tmdbId
+    );
     await user.save();
 
     const alreadyIn = user.watchlist?.some((w) => w.tmdbId === movieId);
@@ -43,15 +45,9 @@ console.log("User before push:", user.watchlist);
         { $pull: { watchlist: { tmdbId: movieId } } },
         { new: true }
       );
-
-      return res.json({
-        message: "Removed from watchlist",
-        inWatchlist: false,
-      });
+      return res.json({ message: "Removed from watchlist", inWatchlist: false });
     } else {
-      // 🔍 Fetch TMDB details to save poster_path
       const details = await getMovieDetails(movieId);
-
       await User.findByIdAndUpdate(
         userId,
         {
@@ -67,17 +63,14 @@ console.log("User before push:", user.watchlist);
         },
         { new: true }
       );
-
-      return res.json({
-        message: "Added to watchlist",
-        inWatchlist: true,
-      });
+      return res.json({ message: "Added to watchlist", inWatchlist: true });
     }
   } catch (err) {
     console.error("Toggle watchlist error:", err);
     res.status(500).json({ error: "Failed to toggle watchlist" });
   }
 });
+
 
 
 // ✅ Add to watchlist manually (non-auth fallback)
