@@ -584,12 +584,18 @@ router.post('/:id/notify/share', async (req, res) => {
 });
 
 // ✅ Fast Watchlist (no TMDB calls)
-// ✅ Fast Watchlist (always returns poster_path)
 router.get("/:userId/watchlist", async (req, res) => {
   const { userId } = req.params;
-  const sort = req.query.sort || "added";
-  const order = req.query.order === "desc" ? -1 : 1;
+  const rawSort = req.query.sort || "added";
+  const rawOrder = req.query.order === "asc" ? "asc" : "desc"; // default desc
   const genre = req.query.genre ? Number(req.query.genre) : null;
+
+  // sanitize
+  const ALLOWED_SORTS = new Set(["added", "release", "rating", "runtime"]);
+  const sort = ALLOWED_SORTS.has(rawSort) ? rawSort : "added";
+  const dir = rawOrder === "asc" ? 1 : -1;
+
+  const toTs = (d) => (d ? new Date(d).getTime() || 0 : 0);
 
   try {
     const user = await User.findById(userId).lean();
@@ -597,38 +603,86 @@ router.get("/:userId/watchlist", async (req, res) => {
       return res.status(404).json({ error: "User or watchlist not found" });
     }
 
-    // Clean: only objects with tmdbId
+    // Clean malformed
     let movies = user.watchlist.filter((w) => typeof w === "object" && w.tmdbId);
 
-    // 🎬 Genre filter (if you store genres locally)
-    if (genre && !isNaN(genre)) {
+    // If filtering by genre, hydrate any entries missing genres
+    if (Number.isFinite(genre) && genre > 0) {
+      const needHydrate = movies.filter(
+        (m) => !Array.isArray(m.genres) || m.genres.length === 0
+      );
+
+      if (needHydrate.length) {
+        // hydrate missing fields in memory (and optionally persist back)
+        await Promise.all(
+          needHydrate.map(async (m) => {
+            try {
+              const d = await getMovieDetails(m.tmdbId);
+              m.genres = d?.genres || [];
+              // fill helpful sort fields if missing
+              if (m.runtime == null) m.runtime = d?.runtime ?? null;
+              if (m.vote_average == null) m.vote_average = d?.vote_average ?? null;
+              if (!m.release_date) m.release_date = d?.release_date ?? null;
+
+              // optional: persist back so next call is instant
+              await User.updateOne(
+                { _id: userId, "watchlist.tmdbId": m.tmdbId },
+                {
+                  $set: {
+                    "watchlist.$.genres": m.genres,
+                    "watchlist.$.runtime": m.runtime ?? null,
+                    "watchlist.$.vote_average": m.vote_average ?? null,
+                    "watchlist.$.release_date": m.release_date ?? null,
+                  },
+                }
+              );
+            } catch (e) {
+              // ignore per-item errors
+            }
+          })
+        );
+      }
+
+      // apply genre filter
       movies = movies.filter(
         (m) => Array.isArray(m.genres) && m.genres.some((g) => g.id === genre)
       );
     }
 
-    // Sort
+    // Safe sort (no NaN)
     movies.sort((a, b) => {
-      if (sort === "added") return (new Date(a.addedAt) - new Date(b.addedAt)) * order;
-      if (sort === "runtime") return ((a.runtime || 0) - (b.runtime || 0)) * order;
-      if (sort === "rating") return ((a.vote_average || 0) - (b.vote_average || 0)) * order;
-      if (sort === "release") return (new Date(a.release_date) - new Date(b.release_date)) * order;
-      return (a.title || "").localeCompare(b.title || "") * order;
+      if (sort === "added") {
+        return (toTs(a.addedAt) - toTs(b.addedAt)) * dir;
+      }
+      if (sort === "release") {
+        return (toTs(a.release_date) - toTs(b.release_date)) * dir;
+      }
+      if (sort === "rating") {
+        const av = Number.isFinite(a?.vote_average) ? a.vote_average : 0;
+        const bv = Number.isFinite(b?.vote_average) ? b.vote_average : 0;
+        return (av - bv) * dir;
+      }
+      if (sort === "runtime") {
+        const ar = Number.isFinite(a?.runtime) ? a.runtime : 0;
+        const br = Number.isFinite(b?.runtime) ? b.runtime : 0;
+        return (ar - br) * dir;
+      }
+      return ((a.title || "").localeCompare(b.title || "")) * dir;
     });
 
-    // 🎨 Custom posters
+    // Custom posters
     const customPosters = await CustomPoster.find({
       userId,
       movieId: { $in: movies.map((m) => String(m.tmdbId)) },
     }).lean();
 
     const postersMap = {};
-    customPosters.forEach((cp) => {
-      postersMap[cp.movieId] = cp.posterUrl;
-    });
+    for (const cp of customPosters) {
+      postersMap[String(cp.movieId)] = cp.posterUrl;
+    }
 
-    // 🔍 Enrich missing poster_path using TMDB
-    let enrichedMovies = await Promise.all(
+    // Enrich missing poster_path if needed (kept lightweight)
+    const enriched = await Promise.all(
       movies.map(async (m) => {
         let poster_path = m.poster_path || null;
         let title = m.title || null;
@@ -636,18 +690,18 @@ router.get("/:userId/watchlist", async (req, res) => {
 
         if (!poster_path) {
           try {
-            const details = await getMovieDetails(m.tmdbId);
-            poster_path = details?.poster_path || null;
-            title = title || details?.title || null;
-            release_date = release_date || details?.release_date || null;
-          } catch (err) {
-            console.warn("⚠️ Failed to fetch TMDB details for", m.tmdbId);
+            const d = await getMovieDetails(m.tmdbId);
+            poster_path = d?.poster_path || null;
+            title = title || d?.title || null;
+            release_date = release_date || d?.release_date || null;
+          } catch {
+            // ignore per-item fetch errors
           }
         }
 
         return {
           ...m,
-          posterOverride: postersMap[m.tmdbId] || null,
+          posterOverride: postersMap[String(m.tmdbId)] || null, // <- ensure string key
           poster_path,
           title,
           release_date,
@@ -655,7 +709,7 @@ router.get("/:userId/watchlist", async (req, res) => {
       })
     );
 
-    res.json(enrichedMovies);
+    res.json(enriched);
   } catch (err) {
     console.error("❌ Failed to fetch watchlist", err);
     res.status(500).json({ error: "Could not fetch watchlist" });
