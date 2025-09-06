@@ -57,12 +57,16 @@ router.post("/toggle", protect, async (req, res) => {
               poster_path: details?.poster_path || null,
               title: details?.title || null,
               release_date: details?.release_date || null,
+              runtime: details?.runtime || null,
+              vote_average: details?.vote_average || null,
+              genres: details?.genres || [],   // ✅ store genres locally
               addedAt: new Date(),
             },
           },
         },
         { new: true }
       );
+      
       return res.json({ message: "Added to watchlist", inWatchlist: true });
     }
   } catch (err) {
