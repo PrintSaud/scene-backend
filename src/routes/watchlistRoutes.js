@@ -1,5 +1,4 @@
 // src/routes/watchlist.js
-
 const express = require("express");
 const router = express.Router();
 const User = require("../models/user");
@@ -26,10 +25,8 @@ router.post("/toggle", protect, async (req, res) => {
   const userId = req.user._id;
 
   try {
-    const user = await User.findById(userId);  // <-- define first
+    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
-
-    console.log("User before push:", user.watchlist); // <-- safe now
 
     // 🧹 Clean malformed entries
     user.watchlist = user.watchlist.filter(
@@ -59,14 +56,14 @@ router.post("/toggle", protect, async (req, res) => {
               release_date: details?.release_date || null,
               runtime: details?.runtime || null,
               vote_average: details?.vote_average || null,
-              genres: details?.genres || [],   // ✅ store genres locally
+              genres: details?.genres || [],
               addedAt: new Date(),
             },
           },
         },
         { new: true }
       );
-      
+
       return res.json({ message: "Added to watchlist", inWatchlist: true });
     }
   } catch (err) {
@@ -74,8 +71,6 @@ router.post("/toggle", protect, async (req, res) => {
     res.status(500).json({ error: "Failed to toggle watchlist" });
   }
 });
-
-
 
 // ✅ Add to watchlist manually (non-auth fallback)
 router.post("/:userId/watchlist", async (req, res) => {
@@ -91,13 +86,17 @@ router.post("/:userId/watchlist", async (req, res) => {
     );
 
     const user = await User.findById(userId);
-    let cleanedWatchlist = user.watchlist.filter((item) => typeof item === "object" && item.tmdbId);
+    let cleanedWatchlist = user.watchlist.filter(
+      (item) => typeof item === "object" && item.tmdbId
+    );
 
     let movieDetails = await Promise.all(
       cleanedWatchlist.map((w) => getMovieDetails(w.tmdbId))
     );
 
-    movieDetails = movieDetails.filter((movie) => movie && movie.id && movie.poster_path);
+    movieDetails = movieDetails.filter(
+      (movie) => movie && movie.id && movie.poster_path
+    );
 
     res.json(movieDetails);
   } catch (err) {
@@ -124,17 +123,13 @@ router.delete("/:userId/watchlist/:tmdbId", async (req, res) => {
   }
 });
 
-
-
-// ✅ Fast Watchlist (no TMDB calls)
 // ✅ Fast Watchlist (resilient: hydrates when needed, safe sorting)
 router.get("/:userId/watchlist", async (req, res) => {
   const { userId } = req.params;
   const rawSort = req.query.sort || "added";
-  const rawOrder = req.query.order === "asc" ? "asc" : "desc"; // default desc
+  const rawOrder = req.query.order === "asc" ? "asc" : "desc";
   const genre = req.query.genre ? Number(req.query.genre) : null;
 
-  // sanitize
   const ALLOWED_SORTS = new Set(["added", "release", "rating", "runtime"]);
   const sort = ALLOWED_SORTS.has(rawSort) ? rawSort : "added";
   const dir = rawOrder === "asc" ? 1 : -1;
@@ -147,53 +142,57 @@ router.get("/:userId/watchlist", async (req, res) => {
       return res.status(404).json({ error: "User or watchlist not found" });
     }
 
-    // Clean malformed
-    let movies = user.watchlist.filter((w) => typeof w === "object" && w.tmdbId);
+    let movies = user.watchlist.filter(
+      (w) => typeof w === "object" && w.tmdbId
+    );
 
-    // If filtering by genre, hydrate any entries missing genres
-    if (Number.isFinite(genre) && genre > 0) {
-      const needHydrate = movies.filter(
-        (m) => !Array.isArray(m.genres) || m.genres.length === 0
-      );
+    // Hydrate any entries missing runtime, rating, release_date, or genres
+    const needHydrate = movies.filter(
+      (m) =>
+        !Array.isArray(m.genres) ||
+        m.genres.length === 0 ||
+        m.runtime == null ||
+        m.vote_average == null ||
+        !m.release_date
+    );
 
-      if (needHydrate.length) {
-        // hydrate missing fields in memory (and optionally persist back)
-        await Promise.all(
-          needHydrate.map(async (m) => {
-            try {
-              const d = await getMovieDetails(m.tmdbId);
-              m.genres = d?.genres || [];
-              // fill helpful sort fields if missing
-              if (m.runtime == null) m.runtime = d?.runtime ?? null;
-              if (m.vote_average == null) m.vote_average = d?.vote_average ?? null;
-              if (!m.release_date) m.release_date = d?.release_date ?? null;
+    if (needHydrate.length) {
+      await Promise.all(
+        needHydrate.map(async (m) => {
+          try {
+            const d = await getMovieDetails(m.tmdbId);
+            m.genres = d?.genres || [];
+            m.runtime = d?.runtime ?? null;
+            m.vote_average = d?.vote_average ?? null;
+            m.release_date = d?.release_date ?? null;
 
-              // optional: persist back so next call is instant
-              await User.updateOne(
-                { _id: userId, "watchlist.tmdbId": m.tmdbId },
-                {
-                  $set: {
-                    "watchlist.$.genres": m.genres,
-                    "watchlist.$.runtime": m.runtime ?? null,
-                    "watchlist.$.vote_average": m.vote_average ?? null,
-                    "watchlist.$.release_date": m.release_date ?? null,
-                  },
-                }
-              );
-            } catch (e) {
-              // ignore per-item errors
-            }
-          })
-        );
-      }
-
-      // apply genre filter
-      movies = movies.filter(
-        (m) => Array.isArray(m.genres) && m.genres.some((g) => g.id === genre)
+            await User.updateOne(
+              { _id: userId, "watchlist.tmdbId": m.tmdbId },
+              {
+                $set: {
+                  "watchlist.$.genres": m.genres,
+                  "watchlist.$.runtime": m.runtime,
+                  "watchlist.$.vote_average": m.vote_average,
+                  "watchlist.$.release_date": m.release_date,
+                },
+              }
+            );
+          } catch (e) {
+            // ignore per-item errors
+          }
+        })
       );
     }
 
-    // Safe sort (no NaN)
+    // Apply genre filter if requested
+    if (Number.isFinite(genre) && genre > 0) {
+      movies = movies.filter(
+        (m) =>
+          Array.isArray(m.genres) && m.genres.some((g) => g.id === genre)
+      );
+    }
+
+    // Safe sort
     movies.sort((a, b) => {
       if (sort === "added") {
         return (toTs(a.addedAt) - toTs(b.addedAt)) * dir;
@@ -225,7 +224,7 @@ router.get("/:userId/watchlist", async (req, res) => {
       postersMap[String(cp.movieId)] = cp.posterUrl;
     }
 
-    // Enrich missing poster_path if needed (kept lightweight)
+    // Enrich missing poster_path if needed
     const enriched = await Promise.all(
       movies.map(async (m) => {
         let poster_path = m.poster_path || null;
@@ -245,7 +244,7 @@ router.get("/:userId/watchlist", async (req, res) => {
 
         return {
           ...m,
-          posterOverride: postersMap[String(m.tmdbId)] || null, // <- ensure string key
+          posterOverride: postersMap[String(m.tmdbId)] || null,
           poster_path,
           title,
           release_date,
@@ -259,8 +258,5 @@ router.get("/:userId/watchlist", async (req, res) => {
     res.status(500).json({ error: "Could not fetch watchlist" });
   }
 });
-
-
-
 
 module.exports = router;
