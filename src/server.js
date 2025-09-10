@@ -106,7 +106,7 @@ app.use("/api", requireDbReady);
 
 // 🛣️ 4️⃣ Routes (use express.json per group)
 const ogRoutes = require("./routes/ogRoutes");
-app.use("/og", ogRoutes);
+app.use("/", ogRoutes);
 app.use("/api/auth", express.json(), require("./routes/auth"));
 app.use("/api/users", express.json(), require("./routes/user"));
 app.use("/api/upload", express.json(), require("./routes/upload"));
