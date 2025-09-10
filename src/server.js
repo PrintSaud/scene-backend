@@ -26,7 +26,7 @@ console.warn("🧪 ENV — DB_URI:", process.env.DB_URI ? "set" : "missing");
 console.warn("🧪 ENV — JWT_SECRET:", mask(process.env.JWT_SECRET));
 console.warn("🧪 ENV — TMDB_KEY:", mask(process.env.TMDB_API_KEY));
 
-// 🧭 Build allowed origins from env (comma-separated)
+// 🧭 Allowed origins
 const DEFAULT_ORIGINS = [
   "http://localhost:5173",
   "https://scene-frontend-production.up.railway.app",
@@ -40,21 +40,15 @@ const ORIGINS = (process.env.FRONTEND_ORIGINS || DEFAULT_ORIGINS.join(","))
 const allowedOrigins = new Set(ORIGINS);
 
 const app = express();
-
-// If behind a proxy (Railway/NGINX), enable trust proxy for cookies/IP
 app.set("trust proxy", 1);
 
-// 🔐 1️⃣ CORS Setup — placed early
+// 🔐 1️⃣ CORS Setup
 const corsOptions = {
   origin(origin, callback) {
-    // allow non-browser/undefined origins (mobile apps, curl, SSR)
     if (!origin) return callback(null, true);
     if (allowedOrigins.has(origin)) return callback(null, true);
-
-    // Optional: allow any subdomain of scenesa.com
-    const scenesaSubdomain = /^https?:\/\/([a-z0-9-]+\.)*scenesa\.com$/i;
-    if (scenesaSubdomain.test(origin)) return callback(null, true);
-
+    const sub = /^https?:\/\/([a-z0-9-]+\.)*scenesa\.com$/i;
+    if (sub.test(origin)) return callback(null, true);
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
@@ -62,51 +56,41 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // 🌐 Preflight
+app.options("*", cors(corsOptions));
 
-// 📁 2️⃣ Static files
+// 2️⃣ OG routes FIRST (important for crawlers)
+const ogRoutes = require("./routes/ogRoutes");
+app.use("/", ogRoutes);
+
+// 3️⃣ Static files
 app.use(express.static("public"));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// 🔌 3️⃣ MongoDB connection (robust on flaky DNS)
+// 🔌 4️⃣ MongoDB connection
 const DB_URI = process.env.DB_URI;
-if (!DB_URI) {
-  console.error("❌ MISSING DB_URI — check Environment Variables");
-} else if (!/mongodb(\+srv)?:\/\//.test(DB_URI)) {
-  console.warn("⚠️ DB_URI format unexpected. Proceeding anyway.");
-}
-
-const mongoOpts = {
-  serverSelectionTimeoutMS: 15000, // don't hang forever
-  family: 4, // force IPv4 to avoid SRV/TXT hiccups (not a LAN IP; safe to keep)
-};
-
+const mongoOpts = { serverSelectionTimeoutMS: 15000, family: 4 };
 async function connectWithRetry(attempt = 1) {
   try {
     await mongoose.connect(DB_URI, mongoOpts);
     console.warn(`✅ MongoDB connected to: ${mongoose.connection.name}`);
   } catch (err) {
-    console.error(
-      `❌ MongoDB connect failed (attempt ${attempt}):`,
-      err.code || err.message
-    );
+    console.error(`❌ MongoDB connect failed (attempt ${attempt}):`, err.code || err.message);
     const backoff = Math.min(30000, attempt * 3000);
     setTimeout(() => connectWithRetry(attempt + 1), backoff);
   }
 }
 connectWithRetry();
 
-// 🔒 Gate requests until Mongo is ready (only for API paths)
+// 🔒 Gate requests until Mongo ready
 function requireDbReady(req, res, next) {
-  const ready = mongoose.connection.readyState === 1; // 1 = connected
-  if (!ready) return res.status(503).json({ error: "Database not connected yet" });
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ error: "Database not connected yet" });
+  }
   next();
 }
 app.use("/api", requireDbReady);
 
-// 🛣️ 4️⃣ Routes (use express.json per group)
-const ogRoutes = require("./routes/ogRoutes");
-app.use("/", ogRoutes);
+// 5️⃣ API routes
 app.use("/api/auth", express.json(), require("./routes/auth"));
 app.use("/api/users", express.json(), require("./routes/user"));
 app.use("/api/upload", express.json(), require("./routes/upload"));
@@ -127,59 +111,49 @@ const importRoutes = require("./routes/importRoutes");
 app.use("/api/import", importRoutes);
 app.use("/api/letterboxd", importRoutes);
 
-// 💓 5️⃣ Health check
-app.get("/", (req, res) => res.send("Root route is working!"));
+// 💓 Health check
+app.get("/health", (req, res) => res.json({ ok: true }));
 
-// 🧠 6️⃣ Socket.IO setup (mirror CORS)
+// 🧠 6️⃣ Socket.IO setup
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin(origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.has(origin)) return callback(null, true);
-      const scenesaSubdomain = /^https?:\/\/([a-z0-9-]+\.)*scenesa\.com$/i;
-      if (scenesaSubdomain.test(origin)) return callback(null, true);
-      return callback(new Error("Not allowed by CORS (ws)"));
+    origin(origin, cb) {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.has(origin)) return cb(null, true);
+      const sub = /^https?:\/\/([a-z0-9-]+\.)*scenesa\.com$/i;
+      if (sub.test(origin)) return cb(null, true);
+      return cb(new Error("Not allowed by CORS (ws)"));
     },
     methods: ["GET", "POST"],
     credentials: true,
   },
 });
 app.set("io", io);
-
-// Global Socket.IO error logging
-io.engine.on("connection_error", (err) => {
-  console.error("🚨 Socket.IO CORS connection error:", err.message);
-});
 io.on("connection", (socket) => {
   socket.on("join", (userId) => socket.join(userId));
-  socket.on("disconnect", () => {});
 });
 
-// 404 (keep it simple so we see real 404s during debugging)
-app.use((req, res) => {
-  res.status(404).json({ message: "Not Found", path: req.originalUrl });
+// 7️⃣ SPA fallback — after OG + API
+app.get("*", (req, res) => {
+  res.sendFile(path.resolve(__dirname, "../dist/index.html"));
 });
 
-// Central error handler (shows full details in console)
+// ❌ Error handlers
+app.use((req, res) => res.status(404).json({ message: "Not Found", path: req.originalUrl }));
 app.use((err, req, res, next) => {
-  console.error("💥 Unhandled error:", {
-    method: err?.method || req.method,
-    url: err?.url || req.originalUrl,
-    message: err.message,
-    stack: err.stack,
-  });
+  console.error("💥 Unhandled error:", { url: req.originalUrl, message: err.message });
   res.status(err.status || 500).json({ error: err.message || "Internal Server Error" });
 });
 
-// 🚀 7️⃣ Start server AFTER Mongo connects; also watch for disconnects
+// 🚀 Start
 const PORT = process.env.PORT || 8080;
-
 mongoose.connection.once("connected", () => {
   server.listen(PORT, () => {
     console.warn(`🚀 Server + Socket.IO running on port ${PORT}`);
   });
 });
+
 
 mongoose.connection.on("error", (err) => {
   console.error("❌ Mongo connection error:", err?.code || err?.message || err);
