@@ -1,91 +1,113 @@
 // 📁 routes/ogRoutes.js
 const express = require("express");
+const path = require("path");
 const router = express.Router();
 const Log = require("../models/log");
 
+const TMDB_IMG = "https://image.tmdb.org/t/p/original";
+const FALLBACK_IMAGE = "https://scenesa.com/scene-og-review-fallback.png";
+
+// Detect crawlers (Twitter, Discord, FB, etc.)
+const BOT_UA = /(facebookexternalhit|Twitterbot|Discordbot|LinkedInBot|Slackbot|WhatsApp)/i;
+
+// Escape strings safely for HTML attributes
+function esc(str = "") {
+  return String(str).replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+// Render stars as emojis (rounded halves)
+function renderStars(rating = 0) {
+  const full = Math.floor(rating);
+  const half = rating % 1 >= 0.5 ? "½" : "";
+  return "⭐".repeat(full) + half;
+}
+
 router.get("/review/:id", async (req, res) => {
   const { id } = req.params;
-  const TMDB_IMG = "https://image.tmdb.org/t/p/original";
-  const fallbackImage = "https://scenesa.com/scene-og-review-fallback.png";
-
-  // ✅ Render star emojis
-  function renderStars(rating = 0) {
-    const fullStars = Math.floor(rating);
-    const half = rating % 1 >= 0.5 ? "½" : "";
-    return "⭐".repeat(fullStars) + half;
-  }
+  const ua = req.headers["user-agent"] || "";
+  const isBot = BOT_UA.test(ua);
 
   try {
     const log = await Log.findById(id).populate("user").populate("movie");
 
     if (!log) {
-      return res.send(`
+      const html = `
         <html>
           <head>
             <meta charset="UTF-8">
             <meta property="og:title" content="Review not found" />
             <meta property="og:description" content="This review doesn’t exist." />
-            <meta property="og:image" content="${fallbackImage}" />
+            <meta property="og:image" content="${FALLBACK_IMAGE}" />
             <meta name="twitter:card" content="summary_large_image" />
             <meta name="twitter:title" content="Review not found" />
             <meta name="twitter:description" content="This review doesn’t exist." />
-            <meta name="twitter:image" content="${fallbackImage}" />
+            <meta name="twitter:image" content="${FALLBACK_IMAGE}" />
           </head>
           <body></body>
-        </html>
-      `);
+        </html>`;
+      return res.send(html);
     }
 
-    // 🔥 Always use chosen backdrop (custom or reviewBackdrop) — no default movie backdrop
+    const movieTitle = esc(log.movie?.title || "Untitled Movie");
+    const stars = renderStars(log.rating);
+    const username = esc(log.user?.username || "user");
+
     const backdrop =
       log.customBackdrop ||
       (log.reviewBackdrop ? `${TMDB_IMG}${log.reviewBackdrop}` : "") ||
-      fallbackImage;
+      FALLBACK_IMAGE;
 
-    const title = `${log.movie?.title || "Untitled Movie"} – ${renderStars(log.rating)}`;
-    const description = `Review by @${log.user?.username || "user"}`;
+    const title = `${movieTitle} – ${stars}`;
+    const description = `Review by @${username}`;
+    const fullUrl = `https://scenesa.com/review/${id}`;
 
-    return res.send(`
-      <html>
-        <head>
-          <meta charset="UTF-8" />
+    // 🎯 If bot → send OG tags
+    if (isBot) {
+      const html = `
+        <html>
+          <head>
+            <meta charset="UTF-8" />
 
-          <!-- 🌐 Open Graph -->
-          <meta property="og:title" content="${title}" />
-          <meta property="og:description" content="${description}" />
-          <meta property="og:image" content="${backdrop}" />
-          <meta property="og:type" content="article" />
-          <meta property="og:url" content="https://scenesa.com/review/${id}" />
+            <!-- 🌐 Open Graph -->
+            <meta property="og:title" content="${title}" />
+            <meta property="og:description" content="${description}" />
+            <meta property="og:image" content="${backdrop}" />
+            <meta property="og:type" content="article" />
+            <meta property="og:url" content="${fullUrl}" />
 
-          <!-- 🐦 Twitter -->
-          <meta name="twitter:card" content="summary_large_image" />
-          <meta name="twitter:title" content="${title}" />
-          <meta name="twitter:description" content="${description}" />
-          <meta name="twitter:image" content="${backdrop}" />
+            <!-- 🐦 Twitter -->
+            <meta name="twitter:card" content="summary_large_image" />
+            <meta name="twitter:title" content="${title}" />
+            <meta name="twitter:description" content="${description}" />
+            <meta name="twitter:image" content="${backdrop}" />
 
-          <!-- 👤 Human redirect -->
-          <meta http-equiv="refresh" content="0; url=https://scenesa.com/review/${id}" />
-        </head>
-        <body></body>
-      </html>
-    `);
+            <meta name="theme-color" content="#000000" />
+          </head>
+          <body>Preview for bots</body>
+        </html>`;
+      return res.send(html);
+    }
+
+    // 🎬 If human → just load SPA
+    return res.sendFile(path.resolve(__dirname, "../../dist/index.html"));
   } catch (error) {
     console.error("❌ OG route error:", error);
-    res.send(`
+
+    const html = `
       <html>
         <head>
           <meta charset="UTF-8" />
           <meta property="og:title" content="Error loading review" />
           <meta property="og:description" content="Something went wrong." />
-          <meta property="og:image" content="${fallbackImage}" />
+          <meta property="og:image" content="${FALLBACK_IMAGE}" />
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="Error loading review" />
           <meta name="twitter:description" content="Something went wrong." />
-          <meta name="twitter:image" content="${fallbackImage}" />
+          <meta name="twitter:image" content="${FALLBACK_IMAGE}" />
         </head>
         <body></body>
-      </html>
-    `);
+      </html>`;
+    return res.send(html);
   }
 });
 
