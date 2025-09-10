@@ -2,7 +2,6 @@
 const express = require("express");
 const router = express.Router();
 const Log = require("../models/log");
-const Movie = require("../models/movieModel");
 
 router.get("/review/:id", async (req, res) => {
   const { id } = req.params;
@@ -37,16 +36,14 @@ router.get("/review/:id", async (req, res) => {
       `);
     }
 
-    const title = `@${log.user.username}'s Review – ${renderStars(log.rating)}`;
-    const description = log.review
-      ? log.review.replace(/["']/g, "") // clean quotes
-      : "Check out what they thought about the movie!";
-
+    // 🔥 Always use chosen backdrop (custom or reviewBackdrop) — no default movie backdrop
     const backdrop =
       log.customBackdrop ||
       (log.reviewBackdrop ? `${TMDB_IMG}${log.reviewBackdrop}` : "") ||
-      (log.movie?.backdrop_path ? `${TMDB_IMG}${log.movie.backdrop_path}` : "") ||
       fallbackImage;
+
+    const title = `${log.movie?.title || "Untitled Movie"} – ${renderStars(log.rating)}`;
+    const description = `Review by @${log.user?.username || "user"}`;
 
     return res.send(`
       <html>
