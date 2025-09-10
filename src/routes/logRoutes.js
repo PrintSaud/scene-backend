@@ -1313,7 +1313,11 @@ router.get('/user/:userId/movie/:movieId', async (req, res) => {
     const logs = await Log.find({
       user: userId,
       tmdbId: tmdbId,
-    }).sort({ createdAt: -1 });
+    })
+      .populate("user", "username avatar")
+      .populate("replies.user", "username avatar")
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json(logs);
   } catch (err) {
@@ -1321,6 +1325,7 @@ router.get('/user/:userId/movie/:movieId', async (req, res) => {
     res.status(500).json({ message: "Failed to fetch logs for user/movie" });
   }
 });
+
 
 // ✅ TEMP TEST ROUTE — check user field type
 router.get("/debug/logs/:id", async (req, res) => {
