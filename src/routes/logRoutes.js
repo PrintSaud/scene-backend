@@ -1132,19 +1132,10 @@ router.get('/user/:userId', protect, async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    const uniqueLogsMap = new Map();
-    logs.forEach((log) => {
-      const movieId = log.movie?.id || log.movie?.toString() || log.tmdbId;
-      if (movieId && !uniqueLogsMap.has(movieId)) {
-        uniqueLogsMap.set(movieId, log);
-      }
-    });
-
-    const uniqueLogs = Array.from(uniqueLogsMap.values());
-
-    const movieIds = uniqueLogs.map((log) => {
-      return log.tmdbId || (typeof log.movie === 'object' ? log.movie?.id : log.movie);
-    }).filter(Boolean);
+    // collect all movieIds (don’t dedupe)
+    const movieIds = logs.map((log) =>
+      log.tmdbId || (typeof log.movie === 'object' ? log.movie?.id : log.movie)
+    ).filter(Boolean);
 
     const posters = await CustomPoster.find({
       userId: profileUserId,
@@ -1157,7 +1148,7 @@ router.get('/user/:userId', protect, async (req, res) => {
     });
 
     const logsWithPosters = await Promise.all(
-      uniqueLogs.map(async (log) => {
+      logs.map(async (log) => {
         const rawMovie = log.movie;
         const movieId =
           (typeof rawMovie === "object" && rawMovie.id) ||
@@ -1206,6 +1197,7 @@ router.get('/user/:userId', protect, async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch user logs', error: err.message });
   }
 });
+
 
 // src/routes/logRoutes.js
 router.post("/:id/share", protect, async (req, res) => {
