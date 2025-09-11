@@ -396,11 +396,9 @@ router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
 
       const enriched = await Promise.all(
         fav.map(async (m) => {
-          // normalize id → tmdbId (always numeric)
           const tmdbId = Number(m?.tmdbId || m?.id || m);
           if (!tmdbId || Number.isNaN(tmdbId)) return null;
 
-          // ✅ enforce clean schema: only tmdbId/title/poster_path
           if (m?.poster_path || m?.poster) {
             return {
               tmdbId,
@@ -427,7 +425,6 @@ router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
         })
       );
 
-      // filter nulls + dedupe by tmdbId
       const seen = new Set();
       patch.favoriteFilms = enriched
         .filter(Boolean)
@@ -438,16 +435,13 @@ router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
         });
     }
 
-    // ✅ merge socials/connections
-    if ("connections" in req.body || "socials" in req.body) {
+    // ✅ merge socials (your schema)
+    if ("socials" in req.body) {
       const incoming =
-        typeof req.body.connections === "string"
-          ? safeJson(req.body.connections, {})
-          : req.body.connections ||
-            (typeof req.body.socials === "string"
-              ? safeJson(req.body.socials, {})
-              : req.body.socials || {});
-      patch.connections = { ...(user.connections || {}), ...(incoming || {}) };
+        typeof req.body.socials === "string"
+          ? safeJson(req.body.socials, {})
+          : req.body.socials || {};
+      patch.socials = { ...(user.socials || {}), ...(incoming || {}) };
     }
 
     Object.assign(user, patch);
@@ -459,6 +453,7 @@ router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
     return res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 
