@@ -368,7 +368,7 @@ router.post('/google', async (req, res) => {
     });
     
 
-    res.status(200).json({
+    return res.status(200).json({
       message: 'Login successful',
       token,
       user: {
@@ -376,7 +376,9 @@ router.post('/google', async (req, res) => {
         username: user.username,
         email: user.email,
         avatar: user.avatar,
+        emailVerified: user.emailVerified,  // ✅ Added
       },
+    
     });
   } catch (err) {
     console.error('❌ Google token verification failed:', err);
