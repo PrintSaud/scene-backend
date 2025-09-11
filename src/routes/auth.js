@@ -160,27 +160,74 @@ router.post("/forgot-password", async (req, res) => {
 });
 
 // ✅ Verify reset code
-router.post("/verify-reset-code", async (req, res) => {
+router.post("/verify-email-code", async (req, res) => {
   const { email, code } = req.body;
 
   try {
     const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) return res.status(404).json({ error: "User not found." });
+    if (!user) return res.status(404).json({ error: "User not found" });
 
     if (
-      user.resetCode !== code ||
-      !user.resetCodeExpires ||
-      user.resetCodeExpires < new Date()
+      user.verificationCode !== code ||
+      !user.verificationCodeExpires ||
+      user.verificationCodeExpires < new Date()
     ) {
-      return res.status(401).json({ error: "Invalid or expired code." });
+      return res.status(401).json({ error: "Invalid or expired code" });
     }
 
-    res.status(200).json({ message: "Code verified." });
+    // Clear verification code + mark verified
+    user.verificationCode = undefined;
+    user.verificationCodeExpires = undefined;
+    user.emailVerified = true;
+    await user.save();
+
+    // Sign a token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
+
+    res.status(200).json({
+      message: "Email verified successfully",
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar,
+      },
+    });
   } catch (err) {
-    console.error("❌ Verify code error:", err);
-    res.status(500).json({ error: "Something went wrong." });
+    console.error("❌ Verification error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
+
+router.post("/resend-email-code", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email is required." });
+
+  try {
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) return res.status(404).json({ error: "User not found." });
+    if (user.emailVerified) return res.status(400).json({ error: "Email already verified." });
+
+    const verificationCode = crypto.randomInt(100000, 999999).toString();
+    user.verificationCode = verificationCode;
+    user.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    await sendEmail(
+      user.email,
+      "Your Scene verification code",
+      `Here’s your new verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
+    );
+
+    res.status(200).json({ message: "New verification code sent." });
+  } catch (err) {
+    console.error("❌ Resend verification error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 
 // ✅ Reset password
 router.post("/reset-password", async (req, res) => {
