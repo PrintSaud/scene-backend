@@ -85,8 +85,12 @@ router.post('/register', async (req, res) => {
       `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
     );
 
+    // ✅ Issue token immediately (but user stays emailVerified: false)
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+
     res.status(201).json({
       message: 'User registered successfully. Verification email sent.',
+      token,
       user: {
         _id: user._id,
         name: user.name,
@@ -101,6 +105,7 @@ router.post('/register', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 
 
