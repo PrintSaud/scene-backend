@@ -34,6 +34,7 @@ router.post('/validate-email', async (req, res) => {
 
 
 // 📥 Register
+// 📥 Register
 router.post('/register', async (req, res) => {
   try {
     let { name, username, email, password, avatar } = req.body;
@@ -84,17 +85,15 @@ router.post('/register', async (req, res) => {
       `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
     );
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
-
     res.status(201).json({
       message: 'User registered successfully. Verification email sent.',
-      token,
       user: {
         _id: user._id,
         name: user.name,
         username: user.username,
         email: user.email,
         avatar: user.avatar,
+        emailVerified: false,
       }
     });
   } catch (error) {
@@ -120,17 +119,35 @@ router.post("/verify-email-code", async (req, res) => {
       return res.status(401).json({ error: "Invalid or expired code" });
     }
 
-    // Clear verification code
+    // Clear verification code + mark verified
     user.verificationCode = undefined;
     user.verificationCodeExpires = undefined;
+    user.emailVerified = true;
     await user.save();
 
-    res.status(200).json({ message: "Email verified successfully" });
+    // Sign a token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "30d",
+    });
+
+    res.status(200).json({
+      message: "Email verified successfully",
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar,
+        emailVerified: true,
+      },
+    });
   } catch (err) {
     console.error("❌ Verification error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 // 📩 Forgot Password
 router.post("/forgot-password", async (req, res) => {
