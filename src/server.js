@@ -134,10 +134,21 @@ io.on("connection", (socket) => {
   socket.on("join", (userId) => socket.join(userId));
 });
 
+// SceneBot health
+app.get("/api/scene-bot/health", (req, res) => {
+  res.json({ ok: true, message: "SceneBot is live" });
+});
+
+
 // 7️⃣ SPA fallback — after OG + API
-app.get("*", (req, res) => {
+app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.resolve(__dirname, "../dist/index.html"));
 });
+
+app.get("/api/scene-bot/demo", (req, res) => {
+  res.json({ reply: "Hello! I am SceneBot, your film expert 🍿🎬" });
+});
+
 
 // ❌ Error handlers
 app.use((req, res) => res.status(404).json({ message: "Not Found", path: req.originalUrl }));
