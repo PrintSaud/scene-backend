@@ -134,7 +134,7 @@ router.post("/translate", protect, async (req, res) => {
         { role: "user", content: text },
       ],
       temperature: 0.2,
-      max_tokens: 100,
+      max_tokens: 300,
     });
 
     const translated = completion.choices[0].message.content;
@@ -154,18 +154,6 @@ router.get("/health", async (req, res) => {
     return res.status(500).json({ status: "error" });
   }
 });
-
-router.post("/demo", async (req, res) => {
-  try {
-    const { message = "Recommend a movie" } = req.body || {};
-    const reply = `Demo reply: I’d recommend "The Matrix" (1999) — a classic sci-fi film.`;
-    return res.json({ reply, demoMessageReceived: message });
-  } catch (err) {
-    console.error("Demo route error:", err);
-    return res.status(500).json({ message: "Demo unavailable" });
-  }
-});
-// --- END ADD ---
 
 
 module.exports = router;

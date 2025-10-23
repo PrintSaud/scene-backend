@@ -102,7 +102,7 @@ app.use("/api/search", express.json(), require("./routes/search"));
 app.use("/api/ai", express.json(), require("./routes/ai"));
 app.use("/api/home", express.json(), require("./routes/home"));
 app.use("/api/movies", express.json(), require("./routes/movieRoutes"));
-app.use("/api/scenebot", express.json(), require("./routes/sceneBot"));
+app.use("/api/scene-bot", express.json(), require("./routes/sceneBot"));
 app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
 app.use("/api/movies/daily", express.json(), require("./routes/dailyMovie"));
 app.use("/api/logs", express.json(), require("./routes/logRoutes"));
@@ -145,9 +145,6 @@ app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.resolve(__dirname, "../dist/index.html"));
 });
 
-app.get("/api/scene-bot/demo", (req, res) => {
-  res.json({ reply: "Hello! I am SceneBot, your film expert 🍿🎬" });
-});
 
 
 // ❌ Error handlers
