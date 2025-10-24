@@ -10,28 +10,37 @@ const conversationMap = {}; // userId => messages[]
 
 // 🎬 Freeform Film Expert Mode
 router.post("/", async (req, res, next) => {
-  const { message, lang } = req.body;
+  console.log("🟢 Entered SceneBot route");
+  console.log("🟢 OpenAI key exists?", !!process.env.OPENAI_API_KEY);
 
-  // ✅ Check token: either normal auth or SCENEBOT_SECRET bypass
+  const { message, lang } = req.body;
+  console.log("🟢 Incoming request body:", { message, lang });
+
+  // ✅ Check token: either normal auth or Apple review token
   let user;
   const authHeader = req.headers.authorization || "";
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  const token = authHeader.replace("Bearer ", "");
+  console.log("🟢 Authorization header token:", token);
 
-  if (token && token === process.env.SCENEBOT_SECRET) {
-    // Secret bypass for review / testing
+  if (token === process.env.SCENEBOT_SECRET) {
+    console.log("🟢 Using SCENEBOT_SECRET token -> bypass normal auth");
     user = { _id: "apple-review", username: "Apple Reviewer" };
   } else {
-    // Use existing protect middleware for normal users
-    await new Promise((resolve) => {
+    console.log("🟢 Using normal auth middleware");
+    await new Promise((resolve, reject) => {
       protect(req, res, () => {
         user = req.user;
         resolve();
       });
     });
-    if (!user) return; // protect already sent 401 if invalid
+    if (!user) {
+      console.log("🟢 User not found after protect middleware. Aborting.");
+      return; // protect already sent 401 if invalid
+    }
   }
 
   // ✅ Check if message is a plain string
+  console.log("🟢 Checking message type...");
   if (typeof message !== "string") {
     console.error("🛑 SERVER BLOCK: message is NOT a string — Actual type:", typeof message);
     console.trace();
@@ -45,17 +54,22 @@ router.post("/", async (req, res, next) => {
       console.warn("🚨 message is a STRINGIFIED OBJECT:", maybeObject);
       return res.status(400).json({ message: "❌ message cannot be a stringified object" });
     }
-  } catch {}
+  } catch (e) {
+    console.log("🟢 message is a clean string. Safe to continue.");
+  }
 
   const today = dayjs().format("YYYY-MM-DD");
 
   if (!message || message.trim() === "") {
+    console.log("🟢 Empty message received");
     return res.status(400).json({ message: "❗ You must enter a message." });
   }
 
   try {
+    console.log("🟢 Checking usage for user:", user._id, "date:", today);
     let usage = await SceneBotUsage.findOne({ userId: user._id, date: today });
     if (!usage) {
+      console.log("🟢 No usage record found for today, creating one");
       usage = await SceneBotUsage.create({ userId: user._id, date: today, count: 0 });
     }
 
@@ -67,6 +81,7 @@ router.post("/", async (req, res, next) => {
     else if (lower.includes("reset language")) delete userLangPrefs[user._id];
 
     const langPref = userLangPrefs[user._id] || lang || "english";
+    console.log("🟢 Language preference for user:", langPref);
 
     const introMap = {
       english: "Sure! Let’s dive into the world of movies 🍿🎬",
@@ -88,19 +103,23 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
 🧠 IMPORTANT: Avoid robotic answers or generic disclaimers. Be fun, smart, and purely about cinema.`;
 
     if (!conversationMap[user._id]) {
+      console.log("🟢 Initializing conversation map for user");
       conversationMap[user._id] = [
         { role: "system", content: `${systemPrompt}\n\n${assistantIntro}` },
       ];
     }
 
     conversationMap[user._id].push({ role: "user", content: rewrittenMessage });
+    console.log("🟢 Messages sent to GPT:", conversationMap[user._id]);
 
+    console.log("🟢 Sending request to OpenAI...");
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: conversationMap[user._id],
       temperature: 0.8,
       max_tokens: 800,
     });
+    console.log("🟢 Received response from OpenAI");
 
     usage.count += 1;
     await usage.save();
@@ -120,10 +139,12 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
     res.json({ reply });
 
   } catch (err) {
-    console.error("❌ SceneBot error:", err);
+    console.error("❌ SceneBot error caught:", err);
+    if (!process.env.OPENAI_API_KEY) console.error("❌ OpenAI API key is missing!");
     res.status(500).json({ message: "SceneBot is currently unavailable. Please try again later." });
   }
 });
+
 
 // 🌐 Translate Fun Prompt
 router.post("/translate", protect, async (req, res) => {
