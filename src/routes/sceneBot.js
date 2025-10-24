@@ -12,17 +12,17 @@ const conversationMap = {}; // userId => messages[]
 router.post("/", async (req, res, next) => {
   const { message, lang } = req.body;
 
-  // ✅ Check token: either normal auth or Apple review token
+  // ✅ Check token: either normal auth or SCENEBOT_SECRET bypass
   let user;
   const authHeader = req.headers.authorization || "";
-  const token = authHeader.replace("Bearer ", "");
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 
-  if (token === process.env.SCENEBOT_SECRET) {
-    // Apple review bypass
+  if (token && token === process.env.SCENEBOT_SECRET) {
+    // Secret bypass for review / testing
     user = { _id: "apple-review", username: "Apple Reviewer" };
   } else {
     // Use existing protect middleware for normal users
-    await new Promise((resolve, reject) => {
+    await new Promise((resolve) => {
       protect(req, res, () => {
         user = req.user;
         resolve();
