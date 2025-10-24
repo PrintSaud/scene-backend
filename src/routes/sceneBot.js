@@ -19,15 +19,38 @@ router.post("/", async (req, res, next) => {
   console.log("🟢 Incoming request body:", { message, lang });
 
   // ✅ Check token: either normal auth or SCENEBOT_SECRET bypass
+    // ---------------------------
+  // AUTH: SCENEBOT_SECRET or JWT
+  // ---------------------------
   let user;
   const authHeader = req.headers.authorization || "";
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
   console.log("🟢 Authorization header token:", token ? "[REDACTED]" : "(none)");
 
   if (token && process.env.SCENEBOT_SECRET && token === process.env.SCENEBOT_SECRET) {
+    // exact string bypass (keeps backwards compatibility)
     console.log("🟢 Using SCENEBOT_SECRET token -> bypass normal auth (apple-review)");
     user = { _id: "scene-bot-user", username: "Apple Reviewer", isReviewBypass: true };
-  } else {
+  } else if (token) {
+    // token present — attempt to verify as JWT signed with SCENEBOT_JWT_KEY
+    try {
+      const decoded = jwt.verify(token, process.env.SCENEBOT_JWT_KEY);
+      console.log("🟢 JWT verified successfully:", decoded);
+      // optional: validate payload if you expect e.g. decoded.bot === 'scene'
+      if (decoded && decoded.bot) {
+        user = { _id: "scene-bot-user", username: "Apple Reviewer", isReviewBypass: true };
+      } else {
+        console.warn("🟡 JWT missing expected payload; falling back to normal auth");
+      }
+    } catch (err) {
+      console.error("❌ JWT verification failed:", err.message);
+      // do NOT return here — fall back to normal auth which may handle other tokens
+      // but if you prefer to reject invalid JWTs immediately, uncomment:
+      // return res.status(401).json({ error: "Token is invalid or expired" });
+    }
+  }
+
+  if (!user) {
     console.log("🟢 Using normal auth middleware");
     await new Promise((resolve) => {
       protect(req, res, () => {
@@ -40,6 +63,7 @@ router.post("/", async (req, res, next) => {
       return; // protect already sent 401 if invalid
     }
   }
+
 
   // ✅ Check if message is a plain string
   console.log("🟢 Checking message type...");
@@ -162,16 +186,20 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
 // --- Health check ---
 router.get("/health", async (req, res) => res.json({ status: "ok" }));
 
-// --- Token generation ---
 router.post("/token", async (req, res) => {
   const { secret } = req.body;
-  if (secret !== process.env.SCENEBOT_SECRET) return res.status(401).json({ error: "Invalid secret" });
 
+  if (secret !== process.env.SCENEBOT_SECRET) {
+    return res.status(401).json({ error: "Invalid secret" });
+  }
+
+  // ✅ Use a proper JWT with a shared secret
   const token = jwt.sign(
-    { bot: "scene" },
-    process.env.SCENEBOT_JWT_KEY,
-    { expiresIn: "1h" }
+    { bot: "scene-bot-user" },          // payload (can identify SceneBot)
+    process.env.SCENEBOT_JWT_KEY,       // make sure this exists in your .env
+    { expiresIn: "1h" }                 // 1 hour expiration
   );
+
   res.json({ token });
 });
 
