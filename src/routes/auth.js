@@ -86,7 +86,7 @@ router.post('/register', async (req, res) => {
     );
 
     // ✅ Issue token immediately (but user stays emailVerified: false)
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '90d' });
 
     res.status(201).json({
       message: 'User registered successfully. Verification email sent.',
@@ -132,7 +132,7 @@ router.post("/verify-email-code", async (req, res) => {
 
     // Sign a token
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "30d",
+      expiresIn: "90d",
     });
 
     res.status(200).json({
@@ -204,7 +204,7 @@ router.post("/verify-email-code", async (req, res) => {
     await user.save();
 
     // Sign a token
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "90d" });
 
     res.status(200).json({
       message: "Email verified successfully",
@@ -364,7 +364,7 @@ router.post('/google', async (req, res) => {
     }
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: '30d',
+      expiresIn: '90d',
     });
     
 
@@ -418,7 +418,7 @@ router.post('/login', async (req, res, next) => {
 
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '90d' });
 
     return res.status(200).json({
       message: 'Login successful',

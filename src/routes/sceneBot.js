@@ -155,5 +155,21 @@ router.get("/health", async (req, res) => {
   }
 });
 
+// 🚀 Token endpoint for SceneBot
+router.post("/token", async (req, res) => {
+  const { secret } = req.body;
+
+  if (secret !== process.env.SCENEBOT_SECRET) {
+    return res.status(401).json({ error: "Invalid secret" });
+  }
+
+  // generate a temporary token (you can also use JWT)
+  const token = Math.random().toString(36).substring(2) + "flick"; 
+  // Optional: save this token to DB if you want to track usage
+
+  res.json({ token });
+});
+
+
 
 module.exports = router;
