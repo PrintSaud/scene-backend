@@ -3,7 +3,7 @@ const dayjs = require("dayjs");
 const protect = require("../middleware/authMiddleware");
 const openai = require("../utils/openai");
 const SceneBotUsage = require("../models/sceneBotUsage");
-
+const jwt = require("jsonwebtoken");
 const router = express.Router();
 const userLangPrefs = {}; // 🧠 In-memory language memory per user
 const conversationMap = {}; // userId => messages[]
@@ -194,7 +194,7 @@ router.get("/health", async (req, res) => {
   }
 });
 
-// 🚀 Token endpoint for Apple review / temporary usage
+// Inside your /token route
 router.post("/token", async (req, res) => {
   const { secret } = req.body;
 
@@ -202,9 +202,15 @@ router.post("/token", async (req, res) => {
     return res.status(401).json({ error: "Invalid secret" });
   }
 
-  // generate a temporary token (can be JWT or random string)
-  const token = Math.random().toString(36).substring(2) + "flick"; 
+  // Create a real JWT
+  const token = jwt.sign(
+    { bot: "scene" },              // payload
+    process.env.SCENEBOT_JWT_KEY,  // secret key (add to your .env)
+    { expiresIn: "1h" }            // token expires in 1 hour
+  );
+
   res.json({ token });
 });
+
 
 module.exports = router;
