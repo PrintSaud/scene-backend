@@ -16,18 +16,18 @@ router.post("/", async (req, res, next) => {
   const { message, lang } = req.body;
   console.log("🟢 Incoming request body:", { message, lang });
 
-  // ✅ Check token: either normal auth or Apple review token
+  // ✅ Check token: either normal auth or SCENEBOT_SECRET bypass
   let user;
   const authHeader = req.headers.authorization || "";
-  const token = authHeader.replace("Bearer ", "");
-  console.log("🟢 Authorization header token:", token);
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  console.log("🟢 Authorization header token:", token ? "[REDACTED]" : "(none)");
 
-  if (token === process.env.SCENEBOT_SECRET) {
-    console.log("🟢 Using SCENEBOT_SECRET token -> bypass normal auth");
-    user = { _id: "apple-review", username: "Apple Reviewer" };
+  if (token && process.env.SCENEBOT_SECRET && token === process.env.SCENEBOT_SECRET) {
+    console.log("🟢 Using SCENEBOT_SECRET token -> bypass normal auth (apple-review)");
+    user = { _id: "apple-review", username: "Apple Reviewer", isReviewBypass: true };
   } else {
     console.log("🟢 Using normal auth middleware");
-    await new Promise((resolve, reject) => {
+    await new Promise((resolve) => {
       protect(req, res, () => {
         user = req.user;
         resolve();
@@ -66,11 +66,17 @@ router.post("/", async (req, res, next) => {
   }
 
   try {
-    console.log("🟢 Checking usage for user:", user._id, "date:", today);
-    let usage = await SceneBotUsage.findOne({ userId: user._id, date: today });
-    if (!usage) {
-      console.log("🟢 No usage record found for today, creating one");
-      usage = await SceneBotUsage.create({ userId: user._id, date: today, count: 0 });
+    // ===== Usage tracking: SKIP for Apple-review bypass user =====
+    let usage = null;
+    if (user.isReviewBypass) {
+      console.log("🟢 Skipping DB usage logging for review bypass user:", user._id);
+    } else {
+      console.log("🟢 Checking usage for user:", user._id, "date:", today);
+      usage = await SceneBotUsage.findOne({ userId: user._id, date: today });
+      if (!usage) {
+        console.log("🟢 No usage record found for today, creating one");
+        usage = await SceneBotUsage.create({ userId: user._id, date: today, count: 0 });
+      }
     }
 
     // Language overrides
@@ -103,14 +109,14 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
 🧠 IMPORTANT: Avoid robotic answers or generic disclaimers. Be fun, smart, and purely about cinema.`;
 
     if (!conversationMap[user._id]) {
-      console.log("🟢 Initializing conversation map for user");
+      console.log("🟢 Initializing conversation map for user:", user._id);
       conversationMap[user._id] = [
         { role: "system", content: `${systemPrompt}\n\n${assistantIntro}` },
       ];
     }
 
     conversationMap[user._id].push({ role: "user", content: rewrittenMessage });
-    console.log("🟢 Messages sent to GPT:", conversationMap[user._id]);
+    console.log("🟢 Messages sent to OpenAI (length):", conversationMap[user._id].length);
 
     console.log("🟢 Sending request to OpenAI...");
     const completion = await openai.chat.completions.create({
@@ -121,8 +127,12 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
     });
     console.log("🟢 Received response from OpenAI");
 
-    usage.count += 1;
-    await usage.save();
+    // Only increment and save usage for real users
+    if (usage) {
+      usage.count += 1;
+      await usage.save();
+      console.log("🟢 Usage incremented and saved for user:", user._id);
+    }
 
     let reply = completion.choices?.[0]?.message?.content;
     console.log("🧠 Raw GPT Reply:", reply);
@@ -144,6 +154,7 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
     res.status(500).json({ message: "SceneBot is currently unavailable. Please try again later." });
   }
 });
+
 
 
 // 🌐 Translate Fun Prompt
