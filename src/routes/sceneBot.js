@@ -9,14 +9,32 @@ const userLangPrefs = {}; // 🧠 In-memory language memory per user
 const conversationMap = {}; // userId => messages[]
 
 // 🎬 Freeform Film Expert Mode
-router.post("/", protect, async (req, res) => {
+router.post("/", async (req, res, next) => {
   const { message, lang } = req.body;
 
+  // ✅ Check token: either normal auth or Apple review token
+  let user;
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.replace("Bearer ", "");
+
+  if (token === process.env.SCENEBOT_SECRET) {
+    // Apple review bypass
+    user = { _id: "apple-review", username: "Apple Reviewer" };
+  } else {
+    // Use existing protect middleware for normal users
+    await new Promise((resolve, reject) => {
+      protect(req, res, () => {
+        user = req.user;
+        resolve();
+      });
+    });
+    if (!user) return; // protect already sent 401 if invalid
+  }
 
   // ✅ Check if message is a plain string
   if (typeof message !== "string") {
     console.error("🛑 SERVER BLOCK: message is NOT a string — Actual type:", typeof message);
-    console.trace(); // 🔍 Where the request originated from (middleware, etc.)
+    console.trace();
     return res.status(400).json({ message: "❌ message must be a plain string" });
   }
 
@@ -24,17 +42,10 @@ router.post("/", protect, async (req, res) => {
   try {
     const maybeObject = JSON.parse(message);
     if (typeof maybeObject === "object") {
-      console.warn("🚨 message is a STRINGIFIED OBJECT (e.g., [object Object]):", maybeObject);
+      console.warn("🚨 message is a STRINGIFIED OBJECT:", maybeObject);
       return res.status(400).json({ message: "❌ message cannot be a stringified object" });
     }
-  } catch (e) {
-    console.log("✅ message is a clean string. Safe to continue.");
-  }
-
-
-
-  const user = req.user;
-
+  } catch {}
 
   const today = dayjs().format("YYYY-MM-DD");
 
@@ -76,47 +87,43 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
 🎬 Respond with a direct, helpful, or creative film-related answer — like a real person would.
 🧠 IMPORTANT: Avoid robotic answers or generic disclaimers. Be fun, smart, and purely about cinema.`;
 
-if (!conversationMap[user._id]) {
-  conversationMap[user._id] = [
-    { role: "system", content: `${systemPrompt}\n\n${assistantIntro}` },
-  ];
-}
+    if (!conversationMap[user._id]) {
+      conversationMap[user._id] = [
+        { role: "system", content: `${systemPrompt}\n\n${assistantIntro}` },
+      ];
+    }
 
-conversationMap[user._id].push({ role: "user", content: rewrittenMessage });
+    conversationMap[user._id].push({ role: "user", content: rewrittenMessage });
 
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: conversationMap[user._id],
+      temperature: 0.8,
+      max_tokens: 800,
+    });
 
-const completion = await openai.chat.completions.create({
-  model: "gpt-4o",
-  messages: conversationMap[user._id],
-  temperature: 0.8,
-  max_tokens: 800,
-});
+    usage.count += 1;
+    await usage.save();
 
-usage.count += 1;
-await usage.save();
+    let reply = completion.choices?.[0]?.message?.content;
+    console.log("🧠 Raw GPT Reply:", reply);
 
-let reply = completion.choices?.[0]?.message?.content;
-console.log("🧠 Raw GPT Reply:", reply);
+    if (typeof reply !== "string") {
+      reply = typeof reply === "object" ? JSON.stringify(reply) : String(reply);
+    }
 
-if (typeof reply !== "string") {
-  reply = typeof reply === "object" ? JSON.stringify(reply) : String(reply);
-}
+    // ✅ Save to conversation history
+    conversationMap[user._id].push({ role: "assistant", content: reply });
+    conversationMap[user._id] = conversationMap[user._id].slice(-8); // keep it lean
 
-// ✅ Save to conversation history
-conversationMap[user._id].push({ role: "assistant", content: reply });
-conversationMap[user._id] = conversationMap[user._id].slice(-8); // keep it lean
-
-console.log("✅ Final reply to client:", reply);
-res.json({ reply });
-
+    console.log("✅ Final reply to client:", reply);
+    res.json({ reply });
 
   } catch (err) {
     console.error("❌ SceneBot error:", err);
     res.status(500).json({ message: "SceneBot is currently unavailable. Please try again later." });
   }
-
 });
-
 
 // 🌐 Translate Fun Prompt
 router.post("/translate", protect, async (req, res) => {
@@ -145,7 +152,7 @@ router.post("/translate", protect, async (req, res) => {
   }
 });
 
-// --- ADD: health + demo routes (temporary for App Review) ---
+// --- Health check route ---
 router.get("/health", async (req, res) => {
   try {
     return res.json({ status: "ok" });
@@ -155,7 +162,7 @@ router.get("/health", async (req, res) => {
   }
 });
 
-// 🚀 Token endpoint for SceneBot
+// 🚀 Token endpoint for Apple review / temporary usage
 router.post("/token", async (req, res) => {
   const { secret } = req.body;
 
@@ -163,13 +170,9 @@ router.post("/token", async (req, res) => {
     return res.status(401).json({ error: "Invalid secret" });
   }
 
-  // generate a temporary token (you can also use JWT)
+  // generate a temporary token (can be JWT or random string)
   const token = Math.random().toString(36).substring(2) + "flick"; 
-  // Optional: save this token to DB if you want to track usage
-
   res.json({ token });
 });
-
-
 
 module.exports = router;
