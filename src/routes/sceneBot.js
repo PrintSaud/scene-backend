@@ -15,7 +15,8 @@ router.post("/", async (req, res, next) => {
   console.log("🟢 Entered SceneBot route");
   console.log("🟢 OpenAI key exists?", !!process.env.OPENAI_API_KEY);
 
-  const { message, lang } = req.body;
+
+  const { message, lang } = req.body || {};
   console.log("🟢 Incoming request body:", { message, lang });
 
   // ✅ Check token: either normal auth or SCENEBOT_SECRET bypass
