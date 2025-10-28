@@ -15,13 +15,12 @@ router.post("/", async (req, res, next) => {
   console.log("🟢 Entered SceneBot route");
   console.log("🟢 OpenAI key exists?", !!process.env.OPENAI_API_KEY);
 
-
-  const { message, lang } = req.body || {};
-  const userMessage = typeof message === 'string' ? message : JSON.stringify(message);
+  // Coerce message to string to prevent type errors from client
+  const { message: rawMessage, lang } = req.body || {};
+  const message = typeof rawMessage === "string" ? rawMessage : JSON.stringify(rawMessage || "");
   console.log("🟢 Incoming request body:", { message, lang });
 
-  // ✅ Check token: either normal auth or SCENEBOT_SECRET bypass
-    // ---------------------------
+  // ---------------------------
   // AUTH: SCENEBOT_SECRET or JWT
   // ---------------------------
   let user;
@@ -30,15 +29,12 @@ router.post("/", async (req, res, next) => {
   console.log("🟢 Authorization header token:", token ? "[REDACTED]" : "(none)");
 
   if (token && process.env.SCENEBOT_SECRET && token === process.env.SCENEBOT_SECRET) {
-    // exact string bypass (keeps backwards compatibility)
     console.log("🟢 Using SCENEBOT_SECRET token -> bypass normal auth (apple-review)");
     user = { _id: "scene-bot-user", username: "Apple Reviewer", isReviewBypass: true };
   } else if (token) {
-    // token present — attempt to verify as JWT signed with SCENEBOT_JWT_KEY
     try {
       const decoded = jwt.verify(token, process.env.SCENEBOT_JWT_KEY);
       console.log("🟢 JWT verified successfully:", decoded);
-      // optional: validate payload if you expect e.g. decoded.bot === 'scene'
       if (decoded && decoded.bot) {
         user = { _id: "scene-bot-user", username: "Apple Reviewer", isReviewBypass: true };
       } else {
@@ -46,9 +42,6 @@ router.post("/", async (req, res, next) => {
       }
     } catch (err) {
       console.error("❌ JWT verification failed:", err.message);
-      // do NOT return here — fall back to normal auth which may handle other tokens
-      // but if you prefer to reject invalid JWTs immediately, uncomment:
-      // return res.status(401).json({ error: "Token is invalid or expired" });
     }
   }
 
@@ -66,28 +59,6 @@ router.post("/", async (req, res, next) => {
     }
   }
 
-
-  // ✅ Check if message is a plain string
-  console.log("🟢 Checking message type...");
-  if (typeof message !== "string") {
-    console.error("🛑 SERVER BLOCK: message is NOT a string — Actual type:", typeof message);
-    console.trace();
-    return res.status(400).json({ message: "❌ message must be a plain string" });
-  }
-
-  // ✅ Try parsing to detect if it's a stringified object
-  try {
-    const maybeObject = JSON.parse(message);
-    if (typeof maybeObject === "object") {
-      console.warn("🚨 message is a STRINGIFIED OBJECT:", maybeObject);
-      return res.status(400).json({ message: "❌ message cannot be a stringified object" });
-    }
-  } catch (e) {
-    console.log("🟢 message is a clean string. Safe to continue.");
-  }
-
-  const today = dayjs().format("YYYY-MM-DD");
-
   if (!message || message.trim() === "") {
     console.log("🟢 Empty message received");
     return res.status(400).json({ message: "❗ You must enter a message." });
@@ -96,15 +67,16 @@ router.post("/", async (req, res, next) => {
   try {
     // ===== Usage tracking: SKIP for Apple-review bypass user =====
     let usage = null;
-    if (user.isReviewBypass) {
-      console.log("🟢 Skipping DB usage logging for review bypass user:", user._id);
-    } else {
+    const today = dayjs().format("YYYY-MM-DD");
+    if (!user.isReviewBypass) {
       console.log("🟢 Checking usage for user:", user._id, "date:", today);
       usage = await SceneBotUsage.findOne({ userId: user._id, date: today });
       if (!usage) {
         console.log("🟢 No usage record found for today, creating one");
         usage = await SceneBotUsage.create({ userId: user._id, date: today, count: 0 });
       }
+    } else {
+      console.log("🟢 Skipping DB usage logging for review bypass user:", user._id);
     }
 
     // Language overrides
@@ -169,7 +141,6 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
       reply = typeof reply === "object" ? JSON.stringify(reply) : String(reply);
     }
 
-    // ✅ Save to conversation history
     conversationMap[user._id].push({ role: "assistant", content: reply });
     conversationMap[user._id] = conversationMap[user._id].slice(-8); // keep it lean
 
@@ -183,8 +154,6 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
   }
 });
 
-
-
 // --- Health check ---
 router.get("/health", async (req, res) => res.json({ status: "ok" }));
 
@@ -195,11 +164,10 @@ router.post("/token", async (req, res) => {
     return res.status(401).json({ error: "Invalid secret" });
   }
 
-  // ✅ Use a proper JWT with a shared secret
   const token = jwt.sign(
-    { bot: "scene-bot-user" },          // payload (can identify SceneBot)
-    process.env.SCENEBOT_JWT_KEY,       // make sure this exists in your .env
-    { expiresIn: "1h" }                 // 1 hour expiration
+    { bot: "scene-bot-user" },
+    process.env.SCENEBOT_JWT_KEY,
+    { expiresIn: "1h" }
   );
 
   res.json({ token });
