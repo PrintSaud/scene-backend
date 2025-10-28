@@ -19,7 +19,6 @@ router.post("/", async (req, res) => {
   console.log("🟢 Incoming request body:", { message, lang });
 
   if (!message || message.trim() === "") {
-    console.log("🟢 Empty message received");
     return res.status(400).json({ message: "❗ You must enter a message." });
   }
 
@@ -28,15 +27,15 @@ router.post("/", async (req, res) => {
   const origin = req.headers.origin || "";
   const oldFrontendAllowed = origin.includes("scenesa.com") || origin.includes("localhost:5173");
   const reviewSecret = process.env.SCENEBOT_SECRET || "supersecretstring123";
-  
+
   // ---------------------------
-  // BYPASS: no token / invalid token / old frontend
+  // REVIEW / TEMP BYPASS
   // ---------------------------
   if (!authHeader || authHeader.trim() === "" || oldFrontendAllowed) {
-    console.log("🟡 TEMP BYPASS: SceneBot called without valid token");
+    console.log("🟡 SceneBot called without valid token, using bypass user");
     user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
   }
-  
+
   // ---------------------------
   // Normal JWT auth
   // ---------------------------
@@ -49,32 +48,12 @@ router.post("/", async (req, res) => {
         });
       });
       if (!user) {
-        // Instead of sending 401, fallback to bypass user
-        console.log("🟡 Auth failed, falling back to bypass user");
+        console.log("🟡 JWT invalid or missing, falling back to bypass user");
         user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
       }
     } catch (err) {
       console.log("🟡 Auth middleware error, using bypass user", err?.message);
       user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
-    }
-  }
-  
-
-  // ---------------------------
-  // Normal JWT auth
-  // ---------------------------
-  if (!user) {
-    try {
-      await new Promise((resolve) => {
-        protect(req, res, () => {
-          user = req.user;
-          resolve();
-        });
-      });
-      if (!user) return; // protect already sent 401 if invalid
-    } catch (err) {
-      console.error("❌ Auth failed:", err);
-      return res.status(401).json({ message: "Token is invalid or expired" });
     }
   }
 
@@ -94,7 +73,6 @@ router.post("/", async (req, res) => {
     else if (lower.includes("reply in french")) userLangPrefs[user._id] = "french";
     else if (lower.includes("reset language")) delete userLangPrefs[user._id];
     const langPref = userLangPrefs[user._id] || lang || "english";
-    console.log("🟢 Language preference for user:", langPref);
 
     // ===== System prompt =====
     const introMap = {
@@ -118,28 +96,23 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
 
     // ===== Conversation map =====
     if (!conversationMap[user._id]) {
-      console.log("🟢 Initializing conversation map for user:", user._id);
       conversationMap[user._id] = [
         { role: "system", content: `${systemPrompt}\n\n${assistantIntro}` },
       ];
     }
     conversationMap[user._id].push({ role: "user", content: rewrittenMessage });
-    console.log("🟢 Messages sent to OpenAI (length):", conversationMap[user._id].length);
 
     // ===== OpenAI request =====
-    console.log("🟢 Sending request to OpenAI...");
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: conversationMap[user._id],
       temperature: 0.8,
       max_tokens: 800,
     });
-    console.log("🟢 Received response from OpenAI");
 
     if (usage) {
       usage.count += 1;
       await usage.save();
-      console.log("🟢 Usage incremented and saved for user:", user._id);
     }
 
     let reply = completion.choices?.[0]?.message?.content;
@@ -152,7 +125,6 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
     res.json({ reply });
   } catch (err) {
     console.error("❌ SceneBot error caught:", err);
-    if (!process.env.OPENAI_API_KEY) console.error("❌ OpenAI API key is missing!");
     res.status(500).json({ message: "SceneBot is temporarily unavailable. Please try again later." });
   }
 });
