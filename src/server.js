@@ -90,6 +90,11 @@ function requireDbReady(req, res, next) {
 }
 app.use("/api", requireDbReady);
 
+app.use((req, res, next) => {
+  console.log("🔥 Incoming request:", req.method, req.originalUrl);
+  next();
+});
+
 // 5️⃣ API routes
 app.use("/api/auth", express.json(), require("./routes/auth"));
 app.use("/api/users", express.json(), require("./routes/user"));
