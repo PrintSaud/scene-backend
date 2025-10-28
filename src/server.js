@@ -114,9 +114,15 @@ app.use("/api/ai", express.json(), require("./routes/ai"));
 app.use("/api/home", express.json(), require("./routes/home"));
 app.use("/api/movies", express.json(), require("./routes/movieRoutes"));
 
-
 app.use("/api/scene-bot", express.json(), sceneRoute);
-app.use("/api/scenebot", express.json(), sceneRoute);
+
+app.use("/api/scenebot", express.json(), (req, res, next) => {
+  // If Authorization missing, inject REVIEW_SECRET
+  if (!req.headers.authorization) {
+    req.headers.authorization = `Bearer ${process.env.SCENEBOT_SECRET}`;
+  }
+  next();
+}, sceneRoute);
 
 app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
 app.use("/api/movies/daily", express.json(), require("./routes/dailyMovie"));
