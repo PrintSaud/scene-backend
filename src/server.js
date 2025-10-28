@@ -110,6 +110,9 @@ app.use("/api/tmdb", require("./routes/tmdbRoutes"));
 const importRoutes = require("./routes/importRoutes");
 app.use("/api/import", importRoutes);
 app.use("/api/letterboxd", importRoutes);
+// near other route imports
+const sceneShim = require('./routes/sceneShim');
+app.use('/api', sceneShim);
 
 // 💓 Health check
 app.get("/health", (req, res) => res.json({ ok: true }));
