@@ -107,6 +107,30 @@ app.use((req, res, next) => {
   next();
 });
 
+// 🟡 TEMP: Support old frontend calls that hit /api/scenebot without token
+app.post("/api/scenebot", express.json(), async (req, res) => {
+  console.log("🔥 SceneBot proxy hit from old frontend:", req.method, req.originalUrl);
+  console.log("🔥 Incoming request body:", req.body);
+
+  try {
+    const response = await fetch(`${process.env.BACKEND_URL || "https://backend.scenesa.com"}/api/scene-bot`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.SCENEBOT_SECRET || "supersecretstring123"}`
+      },
+      body: JSON.stringify(req.body || {}),
+    });
+
+    const data = await response.json();
+    console.log("🔥 SceneBot proxy success ->", data);
+    return res.json(data);
+  } catch (err) {
+    console.error("❌ SceneBot proxy error:", err);
+    res.status(500).json({ message: "SceneBot is currently unavailable. Please try again later." });
+  }
+});
+
 
 // 5️⃣ API routes
 app.use("/api/auth", express.json(), require("./routes/auth"));
