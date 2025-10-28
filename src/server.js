@@ -90,6 +90,46 @@ function requireDbReady(req, res, next) {
 }
 
 // -----------------------------
+// REVIEW: tryAuthOrBypass middleware
+// -----------------------------
+/**
+ * Tries to run your normal protect middleware. If protect sets req.user -> OK.
+ * If protect rejects (missing/invalid token), we DO NOT return 401; instead
+ * we set a lightweight bypass user on req.user so the app can proceed.
+ *
+ * ONLY mount this on endpoints you want to allow review access to.
+ */
+function tryAuthOrBypass(req, res, next) {
+  // If a valid Authorization header exists, run protect normally.
+  const authHeader = req.headers.authorization || "";
+
+  // If there's clearly *no* Authorization header, we can short-circuit to bypass immediately.
+  // (This avoids protect raising "jwt malformed" on empty header strings.)
+  if (!authHeader || authHeader.trim() === "") {
+    req.user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
+    return next();
+  }
+
+  // If header exists, attempt normal protect but catch errors.
+  try {
+    // protect expects (req, res, next) and will call next() to continue.
+    protect(req, res, () => {
+      // protect finished successfully and should set req.user
+      if (req.user) return next();
+      // protect didn't set a user (rare), fallback to bypass
+      req.user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
+      return next();
+    });
+  } catch (err) {
+    // If protect throws synchronously for some reason, fallback to bypass user
+    console.warn("🟡 tryAuthOrBypass: protect threw — falling back to bypass user:", err?.message);
+    req.user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
+    return next();
+  }
+}
+
+
+// -----------------------------
 // TEMP: Catch /api/scenebot and proxy it to /api/scene-bot with injected secret
 // Place this HIGH in server.js after `const app = express()` and before other /api mounts.
 // -----------------------------
@@ -217,23 +257,25 @@ app.post("/api/scenebot", express.json(), async (req, res) => {
 
 // 5️⃣ API routes
 app.use("/api/auth", express.json(), require("./routes/auth"));
-app.use("/api/users", express.json(), require("./routes/user"));
 app.use("/api/upload", express.json(), require("./routes/upload"));
-app.use("/api/watchlist", express.json(), require("./routes/watchlistRoutes"));
-app.use("/api/lists", express.json(), require("./routes/listRoutes"));
+
+app.use("/api/users", express.json(), tryAuthOrBypass, require("./routes/user"));
+app.use("/api/logs", express.json(), tryAuthOrBypass, require("./routes/logRoutes"));
+app.use("/api/watchlist", express.json(), tryAuthOrBypass, require("./routes/watchlistRoutes"));
+
+app.use("/api/lists", express.json(), tryAuthOrBypass,  require("./routes/listRoutes"));
 app.use("/api/polls", express.json(), require("./routes/poll"));
-app.use("/api/notifications", express.json(), require("./routes/notification"));
+app.use("/api/notifications", express.json(), tryAuthOrBypass,  require("./routes/notification"));
 app.use("/api/search", express.json(), require("./routes/search"));
 app.use("/api/ai", express.json(), require("./routes/ai"));
-app.use("/api/home", express.json(), require("./routes/home"));
-app.use("/api/movies", express.json(), require("./routes/movieRoutes"));
+app.use("/api/home", express.json(), tryAuthOrBypass, require("./routes/home"));
+app.use("/api/movies", express.json(),tryAuthOrBypass,  require("./routes/movieRoutes"));
 
 app.use("/api/scene-bot", express.json(), sceneBotRouter); // existing
 app.use("/api/scenebot", express.json(), sceneBotRouter);  // catch old frontend
 
 app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
-app.use("/api/movies/daily", express.json(), require("./routes/dailyMovie"));
-app.use("/api/logs", express.json(), require("./routes/logRoutes"));
+app.use("/api/movies/daily", express.json(), tryAuthOrBypass,  require("./routes/dailyMovie"));
 app.use("/api/tmdb", require("./routes/tmdbRoutes"));
 const importRoutes = require("./routes/importRoutes");
 app.use("/api/import", importRoutes);
