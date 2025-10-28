@@ -12,30 +12,38 @@ const conversationMap = {};     // userId => messages[]
 
 // 🎬 Freeform Film Expert Mode
 router.post("/", async (req, res, next) => {
-  console.log("🟢 SceneBot POST hit", req.headers.authorization, req.body);
+  // ---------------------------
+  // SAFE BODY & MESSAGE FALLBACK
+  // ---------------------------
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  let rawMessage = body.message;
+  const lang = body.lang;
+
+  // fallback if frontend sent nothing
+  if (!rawMessage || typeof rawMessage !== "string" || rawMessage.trim() === "") {
+    console.warn("⚠️ Frontend sent empty or undefined body. Using fallback message 'Hello'.");
+    rawMessage = "Hello";
+  }
+
+  const message = rawMessage.trim();
+  console.log("🟢 SceneBot POST hit", req.headers.authorization, body);
   console.log("🟢 Entered SceneBot route");
   console.log("🟢 OpenAI key exists?", !!process.env.OPENAI_API_KEY);
-
-  // Coerce message to string to prevent type errors from client
-  const { message: rawMessage, lang } = req.body || {};
-  const message = typeof rawMessage === "string" ? rawMessage : JSON.stringify(rawMessage || "");
-  console.log("🟢 Incoming request body:", { message, lang });
+  console.log("🟢 Incoming request body (safe fallback):", { message, lang });
 
   // ---------------------------
   // AUTH: SCENEBOT_SECRET or JWT
   // ---------------------------
+  let user;
 
-let user;
+  // 🔹 TEMPORARY: Allow old frontend (origin check) to bypass token
+  const origin = req.headers.origin || "";
+  const oldFrontendAllowed = origin.includes("scenesa.com") || origin.includes("localhost:5173");
 
-// 🔹 TEMPORARY: Allow old frontend (origin check) to bypass token
-const origin = req.headers.origin || "";
-const oldFrontendAllowed = origin.includes("scenesa.com") || origin.includes("localhost:5173");
-
-if (!user && oldFrontendAllowed) {
-  console.log("🟡 TEMP BYPASS: Old frontend calling SceneBot without token");
-  user = { _id: "scene-bot-user", username: "Old Frontend User", isReviewBypass: true };
-}
-
+  if (!user && oldFrontendAllowed) {
+    console.log("🟡 TEMP BYPASS: Old frontend calling SceneBot without token");
+    user = { _id: "scene-bot-user", username: "Old Frontend User", isReviewBypass: true };
+  }
 
   if (!user) {
     console.log("🟢 Using normal auth middleware");
@@ -49,11 +57,6 @@ if (!user && oldFrontendAllowed) {
       console.log("🟢 User not found after protect middleware. Aborting.");
       return; // protect already sent 401 if invalid
     }
-  }
-
-  if (!message || message.trim() === "") {
-    console.log("🟢 Empty message received");
-    return res.status(400).json({ message: "❗ You must enter a message." });
   }
 
   try {
@@ -145,6 +148,7 @@ Only respond to movie-related questions, suggestions, trivia, or ideas. Your ton
     res.status(500).json({ message: "SceneBot is currently unavailable. Please try again later." });
   }
 });
+
 
 // --- Health check ---
 router.get("/health", async (req, res) => res.json({ status: "ok" }));
