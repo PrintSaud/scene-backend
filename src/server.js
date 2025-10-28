@@ -88,6 +88,89 @@ function requireDbReady(req, res, next) {
   }
   next();
 }
+
+// -----------------------------
+// TEMP: Catch /api/scenebot and proxy it to /api/scene-bot with injected secret
+// Place this HIGH in server.js after `const app = express()` and before other /api mounts.
+// -----------------------------
+const rateMap = new Map();
+const BYPASS_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const BYPASS_LIMIT_MAX = 60; // adjust lower if you want stricter protection
+
+function bypassRateAllow(ip) {
+  const now = Date.now();
+  let rec = rateMap.get(ip);
+  if (!rec) {
+    rec = { count: 1, resetAt: now + BYPASS_LIMIT_WINDOW_MS };
+    rateMap.set(ip, rec);
+    return true;
+  }
+  if (now > rec.resetAt) {
+    rec.count = 1;
+    rec.resetAt = now + BYPASS_LIMIT_WINDOW_MS;
+    rateMap.set(ip, rec);
+    return true;
+  }
+  if (rec.count >= BYPASS_LIMIT_MAX) return false;
+  rec.count += 1;
+  rateMap.set(ip, rec);
+  return true;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, rec] of rateMap.entries()) {
+    if (now > rec.resetAt + 5 * 60 * 1000) rateMap.delete(ip);
+  }
+}, 10 * 60 * 1000);
+
+app.post("/api/scenebot", express.json(), async (req, res) => {
+  try {
+    const ip = req.ip || req.connection?.remoteAddress || "unknown";
+    const origin = req.headers.origin || "";
+    console.log("🔥 SceneBot proxy hit (/api/scenebot) IP:", ip, "origin:", origin, "body:", req.body);
+
+    if (!bypassRateAllow(ip)) {
+      console.warn("⚠️ SceneBot bypass rate limit exceeded for IP:", ip);
+      return res.status(429).json({ error: "Too many requests. Try again later." });
+    }
+
+    // If body missing, ensure a safe fallback so /api/scene-bot always gets a message
+    const outgoingBody = (req.body && typeof req.body === "object" && Object.keys(req.body).length)
+      ? req.body
+      : { message: "Hello" };
+
+    // Use your secret so the inner route treats this as a bypass user
+    const secret = process.env.SCENEBOT_SECRET || "supersecretstring123";
+
+    // Use internal URL: if your server can call itself via localhost you can use that for speed:
+    // const internalBase = process.env.INTERNAL_BACKEND_URL || `http://localhost:${process.env.PORT || 8080}`;
+    // However many deployments (Railway etc.) won't accept calling localhost; use the public hostname instead:
+    const internalBase = process.env.INTERNAL_BACKEND_URL || `https://backend.scenesa.com`;
+
+    const proxyRes = await fetch(`${internalBase}/api/scene-bot`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${secret}`,
+      },
+      body: JSON.stringify(outgoingBody),
+    });
+
+    const ct = proxyRes.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+      const json = await proxyRes.json().catch(() => ({ error: "invalid json from internal" }));
+      return res.status(proxyRes.status).json(json);
+    } else {
+      const txt = await proxyRes.text().catch(() => "");
+      return res.status(proxyRes.status).send(txt);
+    }
+  } catch (err) {
+    console.error("❌ SceneBot bypass proxy error:", err);
+    return res.status(500).json({ message: "SceneBot is temporarily unavailable. Please try again later." });
+  }
+});
+
+
 app.use("/api", requireDbReady);
 
  
