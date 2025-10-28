@@ -24,25 +24,41 @@ router.post("/", async (req, res) => {
   }
 
   let user;
-
-  // ---------------------------
-  // TEMPORARY: Old frontend or missing token
-  // ---------------------------
   const authHeader = req.headers.authorization || "";
   const origin = req.headers.origin || "";
   const oldFrontendAllowed = origin.includes("scenesa.com") || origin.includes("localhost:5173");
   const reviewSecret = process.env.SCENEBOT_SECRET || "supersecretstring123";
-
-  if (!authHeader || authHeader === "") {
-    if (oldFrontendAllowed) {
-      console.log("🟡 TEMP BYPASS: Old frontend calling SceneBot without token");
-      user = { _id: "scene-bot-user", username: "Old Frontend User", isReviewBypass: true };
-    } else {
-      // fallback: use review secret
-      console.log("🟡 TEMP BYPASS: No token provided, using SCENEBOT_SECRET");
-      user = { _id: "scene-bot-user", username: "Review Bypass User", isReviewBypass: true };
+  
+  // ---------------------------
+  // BYPASS: no token / invalid token / old frontend
+  // ---------------------------
+  if (!authHeader || authHeader.trim() === "" || oldFrontendAllowed) {
+    console.log("🟡 TEMP BYPASS: SceneBot called without valid token");
+    user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
+  }
+  
+  // ---------------------------
+  // Normal JWT auth
+  // ---------------------------
+  if (!user) {
+    try {
+      await new Promise((resolve) => {
+        protect(req, res, () => {
+          user = req.user;
+          resolve();
+        });
+      });
+      if (!user) {
+        // Instead of sending 401, fallback to bypass user
+        console.log("🟡 Auth failed, falling back to bypass user");
+        user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
+      }
+    } catch (err) {
+      console.log("🟡 Auth middleware error, using bypass user", err?.message);
+      user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
     }
   }
+  
 
   // ---------------------------
   // Normal JWT auth
