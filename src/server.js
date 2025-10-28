@@ -1,12 +1,12 @@
 // 🌍 0️⃣ Load environment first
 require("dotenv").config();
 
-// 🔇 Silence noisy logs in production (keep warn/error)
-if (process.env.NODE_ENV === "production") {
-  console.log = () => {};
-  console.info = () => {};
-  console.debug = () => {};
-}
+// // 🔇 Silence noisy logs in production (keep warn/error)
+// if (process.env.NODE_ENV === "production") {
+//  console.log = () => {};
+ // console.info = () => {};
+//  console.debug = () => {};
+// }
 
 // 📦 Imports
 const express = require("express");
@@ -90,6 +90,8 @@ function requireDbReady(req, res, next) {
 }
 app.use("/api", requireDbReady);
 
+ 
+
 app.use((req, res, next) => {
   console.log("🔥 Incoming request:", req.method, req.originalUrl);
   next();
@@ -119,15 +121,8 @@ app.use("/api/ai", express.json(), require("./routes/ai"));
 app.use("/api/home", express.json(), require("./routes/home"));
 app.use("/api/movies", express.json(), require("./routes/movieRoutes"));
 
-app.use("/api/scene-bot", express.json(), sceneRoute);
-
-app.use("/api/scenebot", express.json(), (req, res, next) => {
-  // If Authorization missing, inject REVIEW_SECRET
-  if (!req.headers.authorization) {
-    req.headers.authorization = `Bearer ${process.env.SCENEBOT_SECRET}`;
-  }
-  next();
-}, sceneRoute);
+app.use("/api/scene-bot", express.json(), sceneBotRouter); // existing
+app.use("/api/scenebot", express.json(), sceneBotRouter);  // catch old frontend
 
 app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
 app.use("/api/movies/daily", express.json(), require("./routes/dailyMovie"));
