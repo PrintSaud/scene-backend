@@ -17,6 +17,7 @@ router.post("/", async (req, res, next) => {
 
 
   const { message, lang } = req.body || {};
+  const userMessage = typeof message === 'string' ? message : JSON.stringify(message);
   console.log("🟢 Incoming request body:", { message, lang });
 
   // ✅ Check token: either normal auth or SCENEBOT_SECRET bypass
