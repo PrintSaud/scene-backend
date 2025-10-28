@@ -95,6 +95,12 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use("/api/scenebot", (req, res, next) => {
+  console.log("🔥 SceneBot proxy hit from old frontend:", req.method, req.originalUrl);
+  next();
+});
+
+
 // 5️⃣ API routes
 app.use("/api/auth", express.json(), require("./routes/auth"));
 app.use("/api/users", express.json(), require("./routes/user"));
@@ -107,8 +113,11 @@ app.use("/api/search", express.json(), require("./routes/search"));
 app.use("/api/ai", express.json(), require("./routes/ai"));
 app.use("/api/home", express.json(), require("./routes/home"));
 app.use("/api/movies", express.json(), require("./routes/movieRoutes"));
-app.use("/api/scene", express.json(), sceneRoute);
+
+
 app.use("/api/scene-bot", express.json(), sceneRoute);
+app.use("/api/scenebot", express.json(), sceneRoute);
+
 app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
 app.use("/api/movies/daily", express.json(), require("./routes/dailyMovie"));
 app.use("/api/logs", express.json(), require("./routes/logRoutes"));
