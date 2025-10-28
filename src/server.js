@@ -15,7 +15,7 @@ const cors = require("cors");
 const path = require("path");
 const http = require("http");
 const { Server } = require("socket.io");
-
+const sceneRoute = require("./routes/sceneBot");
 // 🐛 Mongoose debug only in development
 mongoose.set("debug", process.env.NODE_ENV !== "production");
 
@@ -102,7 +102,8 @@ app.use("/api/search", express.json(), require("./routes/search"));
 app.use("/api/ai", express.json(), require("./routes/ai"));
 app.use("/api/home", express.json(), require("./routes/home"));
 app.use("/api/movies", express.json(), require("./routes/movieRoutes"));
-app.use("/api/scene-bot", express.json(), require("./routes/sceneBot"));
+app.use("/api/scene", express.json(), sceneRoute);
+app.use("/api/scene-bot", express.json(), sceneRoute);
 app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
 app.use("/api/movies/daily", express.json(), require("./routes/dailyMovie"));
 app.use("/api/logs", express.json(), require("./routes/logRoutes"));
