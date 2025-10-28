@@ -15,7 +15,7 @@ const cors = require("cors");
 const path = require("path");
 const http = require("http");
 const { Server } = require("socket.io");
-const sceneRoute = require("./routes/sceneBot");
+const sceneBotRouter = require("./routes/sceneBot");
 // 🐛 Mongoose debug only in development
 mongoose.set("debug", process.env.NODE_ENV !== "production");
 
