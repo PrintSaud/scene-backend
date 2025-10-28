@@ -10,8 +10,6 @@ const router = express.Router();
 const userLangPrefs = {};       // 🧠 In-memory language memory per user
 const conversationMap = {};     // userId => messages[]
 
-console.log("🔥 SceneBot route hit!", req.method, req.originalUrl, "body:", req.body);
-
 // 🎬 Freeform Film Expert Mode
 router.post("/", async (req, res, next) => {
   console.log("🟢 SceneBot POST hit", req.headers.authorization, req.body);

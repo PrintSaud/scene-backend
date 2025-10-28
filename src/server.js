@@ -100,6 +100,11 @@ app.use("/api/scenebot", (req, res, next) => {
   next();
 });
 
+app.use((req, res, next) => {
+  console.log("🔥 Incoming request:", req.method, req.originalUrl, "body:", req.body);
+  next();
+});
+
 
 // 5️⃣ API routes
 app.use("/api/auth", express.json(), require("./routes/auth"));
