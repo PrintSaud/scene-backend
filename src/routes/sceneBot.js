@@ -31,15 +31,14 @@ router.post("/", async (req, res) => {
   // ---------------------------
   // REVIEW / TEMP BYPASS
   // ---------------------------
+
   if (!authHeader || authHeader.trim() === "" || oldFrontendAllowed) {
     console.log("🟡 SceneBot called without valid token, using bypass user");
     user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
   }
-
-  // ---------------------------
-  // Normal JWT auth
-  // ---------------------------
+  
   if (!user) {
+    // only now run protect for normal JWT auth
     try {
       await new Promise((resolve) => {
         protect(req, res, () => {
@@ -48,14 +47,17 @@ router.post("/", async (req, res) => {
         });
       });
       if (!user) {
-        console.log("🟡 JWT invalid or missing, falling back to bypass user");
+        console.log("🟡 Auth failed, fallback to bypass");
         user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
       }
     } catch (err) {
-      console.log("🟡 Auth middleware error, using bypass user", err?.message);
+      console.log("🟡 Protect middleware error, using bypass user", err?.message);
       user = { _id: "scene-bot-user", username: "Bypass User", isReviewBypass: true };
     }
   }
+  
+  // <- NO MORE protect() calls after this
+  
 
   try {
     // ===== Usage tracking (skip for bypass users) =====
