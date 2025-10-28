@@ -24,27 +24,18 @@ router.post("/", async (req, res, next) => {
   // ---------------------------
   // AUTH: SCENEBOT_SECRET or JWT
   // ---------------------------
-  let user;
-  const authHeader = req.headers.authorization || "";
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-  console.log("🟢 Authorization header token:", token ? "[REDACTED]" : "(none)");
 
-  if (token && process.env.SCENEBOT_SECRET && token === process.env.SCENEBOT_SECRET) {
-    console.log("🟢 Using SCENEBOT_SECRET token -> bypass normal auth (apple-review)");
-    user = { _id: "scene-bot-user", username: "Apple Reviewer", isReviewBypass: true };
-  } else if (token) {
-    try {
-      const decoded = jwt.verify(token, process.env.SCENEBOT_JWT_KEY);
-      console.log("🟢 JWT verified successfully:", decoded);
-      if (decoded && decoded.bot) {
-        user = { _id: "scene-bot-user", username: "Apple Reviewer", isReviewBypass: true };
-      } else {
-        console.warn("🟡 JWT missing expected payload; falling back to normal auth");
-      }
-    } catch (err) {
-      console.error("❌ JWT verification failed:", err.message);
-    }
-  }
+let user;
+
+// 🔹 TEMPORARY: Allow old frontend (origin check) to bypass token
+const origin = req.headers.origin || "";
+const oldFrontendAllowed = origin.includes("scenesa.com") || origin.includes("localhost:5173");
+
+if (!user && oldFrontendAllowed) {
+  console.log("🟡 TEMP BYPASS: Old frontend calling SceneBot without token");
+  user = { _id: "scene-bot-user", username: "Old Frontend User", isReviewBypass: true };
+}
+
 
   if (!user) {
     console.log("🟢 Using normal auth middleware");
