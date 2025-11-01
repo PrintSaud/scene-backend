@@ -107,27 +107,33 @@ router.get("/user/:userId", async (req, res) => {
 
 
 // ✅ GET current poster override for a single movie (per user)
+// GET /api/posters/:movieId?userId=<userId>
 router.get("/:movieId", async (req, res) => {
-  const { movieId } = req.params;
-  const { userId } = req.query;
+  const movieId = Number(req.params.movieId);
+  const userId = req.query.userId; // optional
 
-  if (!userId || !movieId) {
-    return res.status(400).json({ message: 'userId and movieId required' });
+  if (!movieId) {
+    return res.status(400).json({ message: "Invalid movieId" });
   }
 
   try {
-    const poster = await CustomPoster.findOne({
-      userId: userId,
-      movieId: { $in: [Number(movieId), String(movieId)] }
-    });
+    let poster;
+    if (userId) {
+      // ✅ Try to find a poster for this user
+      poster = await CustomPoster.findOne({ movieId, userId });
+    }
 
-    res.json({
-      posterOverride: poster ? poster.posterUrl : null
-    });
+    // fallback: no user override
+    if (!poster) {
+      poster = null; // or you can return default TMDB poster here
+    }
+
+    res.json({ posterOverride: poster?.posterUrl || null });
   } catch (err) {
     console.error("❌ Failed to fetch poster override:", err);
-    res.status(500).json({ message: "Server error fetching poster override" });
+    res.status(500).json({ message: "Server error" });
   }
 });
+
 
 module.exports = router;
