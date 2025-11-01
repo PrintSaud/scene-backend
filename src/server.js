@@ -39,6 +39,8 @@ const ORIGINS = (process.env.FRONTEND_ORIGINS || DEFAULT_ORIGINS.join(","))
   .filter(Boolean);
 const allowedOrigins = new Set(ORIGINS);
 
+ORIGINS.push("https://expo"); // add this during dev/testing
+
 const app = express();
 app.set("trust proxy", 1);
 

@@ -7,6 +7,7 @@ const protect = require("../middleware/authMiddleware"); // 🔐 to get req.user
 router.patch("/:movieId", protect, async (req, res) => {
   const { posterUrl } = req.body;
   const movieId = Number(req.params.movieId); // 🔢 force number
+  const userId = req.user._id; // ✅ use the logged-in user
 
   if (!posterUrl) {
     return res.status(400).json({ message: "Poster URL required" });
@@ -14,10 +15,10 @@ router.patch("/:movieId", protect, async (req, res) => {
 
   try {
     const updated = await CustomPoster.findOneAndUpdate(
-      { movieId },
+      { movieId, userId }, // 🔹 key change: include userId
       {
         posterUrl,
-        updatedBy: req.user._id,
+        updatedBy: userId,
         updatedAt: new Date(),
       },
       { upsert: true, new: true }
@@ -29,5 +30,6 @@ router.patch("/:movieId", protect, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 module.exports = router;
