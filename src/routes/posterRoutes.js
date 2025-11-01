@@ -44,6 +44,11 @@ router.post("/batch", protect, async (req, res) => {
 // ✅ POST or update a poster override for a movie (per user)
 // ✅ POST or update a poster override for a movie (per user)
 router.post("/:movieId", protect, async (req, res) => {
+  console.log("🔥 [BACKEND] POST /api/posters/:movieId incoming - time:", new Date().toISOString());
+  console.log("🔥 [BACKEND] params:", req.params);
+  console.log("🔥 [BACKEND] headers.authorization:", req.headers.authorization);
+  console.log("🔥 [BACKEND] content-type:", req.headers['content-type']);
+  console.log("🔥 [BACKEND] body preview:", JSON.stringify(req.body).slice(0, 1000));
   const { posterUrl } = req.body;
   const userId = req.user._id;
   const movieId = req.params.movieId;
