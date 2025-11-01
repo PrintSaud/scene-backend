@@ -45,10 +45,24 @@ app.set("trust proxy", 1);
 // 🔐 1️⃣ CORS Setup
 const corsOptions = {
   origin(origin, callback) {
+    // Allow requests with no origin (e.g. server-to-server, curl)
     if (!origin) return callback(null, true);
+
+    // Allow exact whitelisted origins
     if (allowedOrigins.has(origin)) return callback(null, true);
+
+    // Allow subdomains of scenesa.com
     const sub = /^https?:\/\/([a-z0-9-]+\.)*scenesa\.com$/i;
     if (sub.test(origin)) return callback(null, true);
+
+    // DEV: allow Expo dev clients / urls
+    // - The Expo dev client sometimes uses "https://expo" as origin
+    // - Local expo tunnels may use exp:// or http://localhost with different ports
+    if (origin.startsWith("https://expo") || origin.startsWith("exp://") || origin.startsWith("http://localhost:")) {
+      return callback(null, true);
+    }
+
+    // Otherwise reject
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
@@ -57,6 +71,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+
 
 // 2️⃣ OG routes FIRST (important for crawlers)
 const ogRoutes = require("./routes/ogRoutes");

@@ -40,8 +40,6 @@ router.post("/batch", protect, async (req, res) => {
   }
 });
 
-
-// ✅ POST or update a poster override for a movie (per user)
 // ✅ POST or update a poster override for a movie (per user)
 router.post("/:movieId", protect, async (req, res) => {
   console.log("🔥 [BACKEND] POST /api/posters/:movieId incoming - time:", new Date().toISOString());
