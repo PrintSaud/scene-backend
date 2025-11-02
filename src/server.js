@@ -19,6 +19,16 @@ const sceneBotRouter = require("./routes/sceneBot");
 // 🐛 Mongoose debug only in development
 mongoose.set("debug", process.env.NODE_ENV !== "production");
 
+const admin = require("firebase-admin");
+const serviceAccount = require("./firebase-service-account.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+app.set("firebaseAdmin", admin); // make it accessible in routes
+
+
 // 🛡 Mask sensitive values in logs
 const mask = (v) => (v ? v.slice(0, 4) + "•••" + v.slice(-4) : "(empty)");
 console.warn("🧪 ENV — NODE_ENV:", process.env.NODE_ENV);

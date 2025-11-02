@@ -12,6 +12,7 @@ const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() }); // ✅ in-memory upload
 const axios = require("axios");
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
+
 // ✅ Save recent GIF
 router.post("/gif/recent", async (req, res) => {
   const { userId, gifUrl } = req.body;

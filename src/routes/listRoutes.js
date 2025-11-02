@@ -213,7 +213,7 @@ router.get("/:id", protect, async (req, res) => {
 // like
 router.post("/:id/like", protect, async (req, res) => {
   try {
-    const list = await List.findById(req.params.id).populate('user', 'username avatar');
+    const list = await List.findById(req.params.id).populate('user', 'username avatar deviceToken');
     if (!list) return res.status(404).json({ message: "List not found" });
 
     const userId = req.user._id.toString();
@@ -237,7 +237,7 @@ router.post("/:id/like", protect, async (req, res) => {
           createdAt: new Date(),
         });
 
-        // ✅ Emit to recipient via socket
+        // Emit to recipient via socket (in-app)
         const io = req.app.get("io");
         io.to(list.user._id.toString()).emit("notification", {
           ...notif._doc,
@@ -247,6 +247,23 @@ router.post("/:id/like", protect, async (req, res) => {
             avatar: sender.avatar,
           },
         });
+
+        // ✅ Send push notification
+        if (list.user.deviceToken) {
+          const admin = req.app.get("firebaseAdmin"); // initialize Firebase Admin in your app
+          await admin.messaging().send({
+            token: list.user.deviceToken,
+            notification: {
+              title: "New Like on Your List!",
+              body: `@${sender.username} liked your list!`,
+            },
+            data: {
+              type: "list_like",
+              listId: list._id.toString(),
+              senderId: sender._id.toString(),
+            },
+          });
+        }
       }
     }
 

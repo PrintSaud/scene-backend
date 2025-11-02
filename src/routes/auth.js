@@ -182,46 +182,46 @@ router.post("/forgot-password", async (req, res) => {
 });
 
 // ✅ Verify reset code
-router.post("/verify-email-code", async (req, res) => {
-  const { email, code } = req.body;
+// router.post("/verify-email-code", async (req, res) => {
+  // const { email, code } = req.body;
 
-  try {
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) return res.status(404).json({ error: "User not found" });
+  // try {
+  //  const user = await User.findOne({ email: email.toLowerCase().trim() });
+   // if (!user) return res.status(404).json({ error: "User not found" });
 
-    if (
-      user.verificationCode !== code ||
-      !user.verificationCodeExpires ||
-      user.verificationCodeExpires < new Date()
-    ) {
-      return res.status(401).json({ error: "Invalid or expired code" });
-    }
+   // if (
+    //  user.verificationCode !== code ||
+    //  !user.verificationCodeExpires ||
+    //  user.verificationCodeExpires < new Date()
+   // ) {
+   //   return res.status(401).json({ error: "Invalid or expired code" });
+   // }
 
     // Clear verification code + mark verified
-    user.verificationCode = undefined;
-    user.verificationCodeExpires = undefined;
-    user.emailVerified = true;
-    await user.save();
+   // user.verificationCode = undefined;
+  //  user.verificationCodeExpires = undefined;
+   // user.emailVerified = true;
+   // await user.save();
 
     // Sign a token
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "90d" });
+   // const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "90d" });
 
-    res.status(200).json({
-      message: "Email verified successfully",
-      token,
-      user: {
-        _id: user._id,
-        name: user.name,
-        username: user.username,
-        email: user.email,
-        avatar: user.avatar,
-      },
-    });
-  } catch (err) {
-    console.error("❌ Verification error:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
+    //res.status(200).json({
+     // message: "Email verified successfully",
+     // token,
+     // user: {
+     //   _id: user._id,
+     //  name: user.name,
+      //  username: user.username,
+    //    email: user.email,
+     //   avatar: user.avatar,
+    //  },
+  //  });
+//  } catch (err) {
+ //   console.error("❌ Verification error:", err);
+ //   res.status(500).json({ error: "Server error" });
+ // }
+// });
 
 router.post("/resend-email-code", async (req, res) => {
   const { email } = req.body;
@@ -522,6 +522,19 @@ router.put('/profile', protect, async (req, res) => {
   }
 });
 
+// POST /api/users/save-token
+router.post("/save-token", protect, async (req, res) => {
+  try {
+    const { deviceToken } = req.body;
+    if (!deviceToken) return res.status(400).json({ error: "Device token required" });
+
+    await User.findByIdAndUpdate(req.user._id, { deviceToken });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Failed to save device token:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 
 // 🔍 Username + Email Availability Checks
