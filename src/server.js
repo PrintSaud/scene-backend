@@ -21,17 +21,13 @@ mongoose.set("debug", process.env.NODE_ENV !== "production");
 
 const admin = require("firebase-admin");
 
-// Parse the env var
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-app.set("firebaseAdmin", admin); // make it accessible in routes
-
-
-
+app.set("firebaseAdmin", admin);
 
 
 // 🛡 Mask sensitive values in logs
