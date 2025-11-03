@@ -1,24 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const protect = require("../middleware/authMiddleware");
+const sendNotification = require("../utils/sendNotification"); // updated path
 const Notification = require("../models/notification");
-const { io } = require("../server"); // ✅ LIVE socket instance
 
-// Utility: format time ago (not used here but you can keep if needed)
-const formatTimeAgo = (date) => {
-  const seconds = Math.floor((new Date() - new Date(date)) / 1000);
-  const intervals = {
-    year: 31536000, month: 2592000, day: 86400,
-    hour: 3600, minute: 60,
-  };
-  for (const [unit, value] of Object.entries(intervals)) {
-    const amount = Math.floor(seconds / value);
-    if (amount >= 1) return `${amount} ${unit}${amount > 1 ? "s" : ""} ago`;
-  }
-  return "just now";
-};
-
-// 🔵 GET → fetch all for current user
+// 🔵 GET → fetch all notifications for current user
 router.get("/", protect, async (req, res) => {
   try {
     const notifications = await Notification.find({ to: req.user._id })
@@ -31,7 +17,7 @@ router.get("/", protect, async (req, res) => {
   }
 });
 
-// 🔵 PATCH → mark ALL as read (fix: update Notification collection properly)
+// 🔵 PATCH → mark ALL as read
 router.patch("/read", protect, async (req, res) => {
   try {
     await Notification.updateMany(
@@ -73,33 +59,33 @@ router.get("/unread-count", protect, async (req, res) => {
   }
 });
 
-// 🔥 POST → testing route with live emit
-router.post("/test", async (req, res) => {
+// 🔥 POST → test route using sendNotification
+router.post("/test", protect, async (req, res) => {
   try {
-    const { type, from, to, message, relatedId, listId, movieId } = req.body;
+    const { type, toUserId, relatedId, movieId, listId, reviewId } = req.body;
 
-    const notif = await Notification.create({
+    if (!type || !toUserId) {
+      return res.status(400).json({ message: "type and toUserId are required" });
+    }
+
+    await sendNotification({
       type,
-      from,
-      to,
-      message,
+      fromUserId: req.user._id,
+      toUserId,
       relatedId,
-      listId,
       movieId,
-      read: false,
-      createdAt: new Date(),
+      listId,
+      reviewId,
     });
 
-    io.to(to).emit("notification", notif);
-
-    res.json(notif);
+    res.json({ message: "Test notification sent successfully" });
   } catch (err) {
-    console.error("❌ Failed to create test notification:", err);
-    res.status(500).json({ message: "Failed to create test notification" });
+    console.error("❌ Failed to send test notification:", err);
+    res.status(500).json({ message: err.message });
   }
 });
 
-// 🔴 DELETE → delete by id
+// 🔴 DELETE → delete notification by id
 router.delete("/:id", protect, async (req, res) => {
   try {
     const notif = await Notification.findById(req.params.id);
@@ -114,8 +100,8 @@ router.delete("/:id", protect, async (req, res) => {
   }
 });
 
-// GET /api/notifications/unread/:userId
-router.get('/unread/:userId', async (req, res) => {
+// 🔹 GET unread count for specific user (public)
+router.get("/unread/:userId", async (req, res) => {
   try {
     const count = await Notification.countDocuments({
       to: req.params.userId,
@@ -127,6 +113,5 @@ router.get('/unread/:userId', async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 module.exports = router;

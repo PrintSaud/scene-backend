@@ -12,6 +12,7 @@ const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() }); // ✅ in-memory upload
 const axios = require("axios");
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
+const sendNotification = require("../utils/sendNotification");
 
 // ✅ Save recent GIF
 router.post("/gif/recent", async (req, res) => {
@@ -101,16 +102,14 @@ router.get('/all', async (req, res) => {
   }
 });
 
-
-// followww
 // follow / unfollow
-router.post('/:userId/follow/:targetId', async (req, res) => {
+router.post("/:userId/follow/:targetId", protect, async (req, res) => {
   try {
     const user = await User.findById(req.params.userId);
     const targetUser = await User.findById(req.params.targetId);
 
     if (!user || !targetUser) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: "User not found" });
     }
 
     const isFollowing = user.following.includes(req.params.targetId);
@@ -118,9 +117,7 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
     // 🚫 Prevent new follows if blocked
     if (!isFollowing && targetUser.noNewFollowers) {
       console.log("🚨 Blocked follow attempt on", targetUser.username);
-      return res.status(403).json({
-        error: "🚫 يلا بس",
-      });
+      return res.status(403).json({ error: "🚫 يلا بس" });
     }
 
     if (isFollowing) {
@@ -132,28 +129,15 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
       user.following.push(req.params.targetId);
       targetUser.followers.push(req.params.userId);
 
-      const notif = await Notification.create({
+      // 🔥 Send notification via utility
+      await sendNotification({
         type: "follow",
-        message: `@${user.username} just followed you`,
-        from: user._id,
-        to: targetUser._id,
-        read: false,
-        createdAt: new Date(),
-      });
-
-      // Real-time notification
-      const io = req.app.get("io");
-      io.to(targetUser._id.toString()).emit("notification", {
-        ...notif._doc,
-        from: {
-          _id: user._id,
-          username: user.username,
-          avatar: user.avatar,
-        },
+        fromUserId: user._id,
+        toUserId: targetUser._id,
       });
     }
 
-    // ✅ Clean corrupted watchlist entries
+    // 🔥 Clean corrupted watchlist entries
     user.watchlist = (user.watchlist || []).filter(
       (item) => item && typeof item === "object" && typeof item.tmdbId === "number"
     );
@@ -173,6 +157,11 @@ router.post('/:userId/follow/:targetId', async (req, res) => {
     res.status(500).json({ error: "Failed to toggle follow", details: err.message });
   }
 });
+
+
+
+
+
 
   router.post('/:id/custom-poster', async (req, res) => {
     const { movieId, newPoster } = req.body;

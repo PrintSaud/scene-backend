@@ -526,15 +526,41 @@ router.put('/profile', protect, async (req, res) => {
 router.post("/save-token", protect, async (req, res) => {
   try {
     const { deviceToken } = req.body;
-    if (!deviceToken) return res.status(400).json({ error: "Device token required" });
+    if (!deviceToken || typeof deviceToken !== "string") {
+      return res.status(400).json({ error: "Device token required" });
+    }
 
-    await User.findByIdAndUpdate(req.user._id, { deviceToken });
-    res.json({ success: true });
+    // Use instance method to dedupe + save
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    await user.addDeviceToken(deviceToken.trim());
+    return res.json({ success: true, deviceTokens: user.deviceTokens });
   } catch (err) {
     console.error("❌ Failed to save device token:", err);
-    res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// DELETE /api/users/remove-token
+router.delete("/remove-token", protect, async (req, res) => {
+  try {
+    const { deviceToken } = req.body;
+    if (!deviceToken || typeof deviceToken !== "string") {
+      return res.status(400).json({ error: "Device token required" });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    await user.removeDeviceToken(deviceToken.trim());
+    return res.json({ success: true, deviceTokens: user.deviceTokens });
+  } catch (err) {
+    console.error("❌ Failed to remove device token:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 
 
 // 🔍 Username + Email Availability Checks
