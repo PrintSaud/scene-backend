@@ -19,16 +19,17 @@ const sceneBotRouter = require("./routes/sceneBot");
 // 🐛 Mongoose debug only in development
 mongoose.set("debug", process.env.NODE_ENV !== "production");
 
-const admin = require("firebase-admin");
+const admin = require('firebase-admin');
 
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+// Decode the base64 JSON from the environment variable
+const serviceAccount = JSON.parse(
+  Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8')
+);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-
-app.set("firebaseAdmin", admin);
 
 
 // 🛡 Mask sensitive values in logs
