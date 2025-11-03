@@ -1,1 +1,4 @@
 .env
+# Firebase secrets
+src/scene-f851e-firebase-adminsdk-*.json
+firebase-service-account.base64.txt
