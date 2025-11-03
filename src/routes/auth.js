@@ -526,6 +526,7 @@ router.put('/profile', protect, async (req, res) => {
 router.post("/save-token", protect, async (req, res) => {
   try {
     const { deviceToken } = req.body;
+    console.log("💡 Saving device token:", deviceToken, "for user:", req.user._id);
     if (!deviceToken || typeof deviceToken !== "string") {
       return res.status(400).json({ error: "Device token required" });
     }
