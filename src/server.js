@@ -7,6 +7,7 @@ require("dotenv").config();
  // console.info = () => {};
 //  console.debug = () => {};
 // }
+console.log("FIREBASE_SERVICE_ACCOUNT_BASE64 length:", process.env.FIREBASE_SERVICE_ACCOUNT_BASE64?.length);
 
 // 📦 Imports
 const express = require("express");
