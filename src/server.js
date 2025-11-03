@@ -27,6 +27,7 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
+
 app.set("firebaseAdmin", admin);
 
 
