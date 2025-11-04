@@ -543,6 +543,18 @@ router.post("/save-token", protect, async (req, res) => {
   }
 });
 
+router.get("/me/device-tokens", protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("deviceTokens");
+    if (!user) return res.status(404).json({ error: "User not found" });
+    return res.json({ deviceTokens: user.deviceTokens || [] });
+  } catch (err) {
+    console.error("❌ /me/device-tokens error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+
 // DELETE /api/users/remove-token
 router.delete("/remove-token", protect, async (req, res) => {
   try {
