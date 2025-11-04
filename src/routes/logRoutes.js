@@ -697,19 +697,37 @@ router.get('/movie/:id/friends', protect, async (req, res) => {
   }
 });
 
-// get all logs for this movie (any user)
+// get all logs for this movie (any user) with debug logging
 router.get("/movie/:id/all", protect, async (req, res) => {
   try {
     const movieId = parseInt(req.params.id);
+    console.log(`📌 Fetching all logs for movie ID: ${movieId}`);
+
     const logs = await Log.find({ tmdbId: movieId })
       .populate("user", "username avatar")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean(); // convert to plain objects
+
+    if (!logs || logs.length === 0) {
+      console.warn(`⚠️ No logs found for movie ${movieId}`);
+    }
+
+    // Check for missing user references
+    logs.forEach((log) => {
+      if (!log.user) {
+        console.warn(`❌ Missing user for log ${log._id}`);
+        log.user = { username: "user", avatar: FALLBACK_AVATAR }; // fallback
+      }
+    });
+
+    console.log(`✅ Returning ${logs.length} logs for movie ${movieId}`);
     res.json(logs);
   } catch (err) {
     console.error("❌ Failed to fetch all logs for movie:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 
 // POST /api/logs/full → Full-featured log (text, rating, gif, image, etc.)
