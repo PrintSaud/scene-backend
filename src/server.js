@@ -58,6 +58,8 @@ ORIGINS.push("https://expo"); // add this during dev/testing
 const app = express();
 app.set("trust proxy", 1);
 
+// Serve static files from public folder
+app.use(express.static(path.join(__dirname, "public")));
 // 🔐 1️⃣ CORS Setup
 const corsOptions = {
   origin(origin, callback) {
