@@ -677,12 +677,18 @@ router.get("/movie/:id/popular", protect, async (req, res) => {
 router.get('/movie/:id/friends', protect, async (req, res) => {
   try {
     const friends = req.user.following || [];
+
     const logs = await Log.find({
       tmdbId: parseInt(req.params.id),
       user: { $in: friends },
     })
-      .populate('user', 'username avatar')
-      .sort({ createdAt: -1 });
+      .populate('user', 'username avatar') // log author
+      .populate({
+        path: 'replies.user', // populate each reply's user
+        select: 'username avatar',
+      })
+      .sort({ createdAt: -1 })
+      .lean(); // optional, makes the objects plain JS for frontend
 
     res.json(logs);
   } catch (err) {
