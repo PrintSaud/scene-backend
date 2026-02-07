@@ -33,67 +33,76 @@ router.post('/validate-email', async (req, res) => {
 
 
 
-router.post('/register', async (req, res) => {
+// 📥 Register
+router.post("/register", async (req, res) => {
   try {
     let { name, username, email, password, avatar } = req.body;
 
-    username = (username || '').trim();
-    email = (email || '').trim().toLowerCase();
+    username = (username || "").trim();
+    email = (email || "").trim().toLowerCase();
 
     if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // ⚠️ Deliverability check — DO NOT BLOCK signup
+    // ⚠️ Email deliverability check — DO NOT block signup
     try {
       const check = await validateEmailDeliverability(email);
       if (!check.ok) {
-        console.warn('⚠️ Email deliverability warning:', email, check.reason);
+        console.warn("⚠️ Email deliverability warning:", email, check.reason);
       }
     } catch (err) {
-      console.warn('⚠️ Email deliverability check failed:', err.message);
+      console.warn("⚠️ Email deliverability check failed:", err.message);
     }
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ error: 'Email already in use' });
+    // Check duplicates
+    const [existingUser, existingUsername] = await Promise.all([
+      User.findOne({ email }),
+      User.findOne({ username: { $regex: `^${username}$`, $options: "i" } }),
+    ]);
 
-    const existingUsername = await User.findOne({
-      username: { $regex: `^${username}$`, $options: "i" }
-    });
-    if (existingUsername) return res.status(400).json({ error: 'Username already taken' });
+    if (existingUser) return res.status(400).json({ error: "Email already in use" });
+    if (existingUsername) return res.status(400).json({ error: "Username already taken" });
 
+    // Create verification code
     const verificationCode = crypto.randomInt(100000, 999999).toString();
 
     const user = new User({
       name,
       username,
       email,
-      password,
+      password, // hashed in pre-save hook
       avatar,
       verificationCode,
-      verificationCodeExpires: new Date(Date.now() + 10 * 60 * 1000),
+      verificationCodeExpires: new Date(Date.now() + 10 * 60 * 1000), // 10 mins
       emailVerified: false,
     });
 
-    await user.save();
+    await user.save(); // save user first
 
-    // 🚀 Fire-and-forget email (CRITICAL)
-   // sendEmail(
-    //  email,
-    // "Your Scene verification code",
-    //  `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
-   // ).catch(err => {
-    //  console.error('❌ Verification email failed:', err.message);
-   // });
+    // 🚀 Fire-and-forget email — wrap in try/catch so it cannot crash signup
+    (async () => {
+      try {
+        await sendEmail(
+          email,
+          "Your Scene verification code",
+          `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
+        );
+      } catch (err) {
+        console.error("❌ Verification email failed:", err.message);
+      }
+    })();
 
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: '90d' }
-    );
+    // ⚡ Issue JWT safely
+    let token = null;
+    try {
+      token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "90d" });
+    } catch (err) {
+      console.warn("⚠️ JWT signing failed:", err.message);
+    }
 
     return res.status(201).json({
-      message: 'User registered successfully.',
+      message: "User registered successfully.",
       token,
       user: {
         _id: user._id,
@@ -102,11 +111,11 @@ router.post('/register', async (req, res) => {
         email: user.email,
         avatar: user.avatar,
         emailVerified: false,
-      }
+      },
     });
   } catch (error) {
-    console.error('❌ Register Error:', error);
-    return res.status(500).json({ error: 'Registration failed' });
+    console.error("❌ Register Error:", error);
+    return res.status(500).json({ error: "Registration failed" });
   }
 });
 
