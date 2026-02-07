@@ -31,8 +31,6 @@ router.post('/validate-email', async (req, res) => {
   }
 });
 
-
-
 // 📥 Register
 router.post("/register", async (req, res) => {
   try {
@@ -80,19 +78,18 @@ router.post("/register", async (req, res) => {
 
     await user.save(); // save user first
 
-// 🚀 Fire-and-forget email — wrap in async IIFE
-(async () => {
-  try {
-    const info = await sendEmail(
-      email,
-      "Your Scene verification code",
-      `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
-    );
-    if (info) console.log("📨 Verification email sent:", email, info.messageId);
-  } catch (err) {
-    console.error("❌ Verification email failed:", err.message);
-  }
-})();
+    // ✅ Send verification email — await it so logs work
+    try {
+      const info = await sendEmail(
+        email,
+        "Your Scene verification code",
+        `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
+      );
+      if (info) console.log("📨 Verification email sent:", email, info.messageId);
+      else console.warn("⚠️ Email not sent for some reason");
+    } catch (err) {
+      console.error("❌ Verification email failed:", err.message);
+    }
 
     // ⚡ Issue JWT safely
     let token = null;
@@ -119,6 +116,7 @@ router.post("/register", async (req, res) => {
     return res.status(500).json({ error: "Registration failed" });
   }
 });
+
 
 
 
