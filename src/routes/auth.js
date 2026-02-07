@@ -80,22 +80,19 @@ router.post("/register", async (req, res) => {
 
     await user.save(); // save user first
 
-// 🚀 Send email directly and log outcome
-try {
-  const info = await sendEmail(
-    email,
-    "Your Scene verification code",
-    `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
-  );
-  if (info) {
-    console.log("📨 Verification email sent:", email, info.messageId);
-  } else {
-    console.warn("⚠️ Verification email returned null:", email);
+// 🚀 Fire-and-forget email — wrap in async IIFE
+(async () => {
+  try {
+    const info = await sendEmail(
+      email,
+      "Your Scene verification code",
+      `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
+    );
+    if (info) console.log("📨 Verification email sent:", email, info.messageId);
+  } catch (err) {
+    console.error("❌ Verification email failed:", err.message);
   }
-} catch (err) {
-  console.error("❌ Verification email failed:", err.message);
-}
-
+})();
 
     // ⚡ Issue JWT safely
     let token = null;
