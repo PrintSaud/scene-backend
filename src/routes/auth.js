@@ -84,7 +84,7 @@ router.post("/register", async (req, res) => {
         "Your Scene verification code",
         `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
       );
-      if (!info) console.warn("⚠️ Email not sent for some reason");
+      if (info) console.log("📨 Verification email sent:", email, info.id);      
     });
 
     // ⚡ Issue JWT
@@ -112,6 +112,8 @@ router.post("/register", async (req, res) => {
     return res.status(500).json({ error: "Registration failed" });
   }
 });
+
+
 
 
 

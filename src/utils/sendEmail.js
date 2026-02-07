@@ -1,30 +1,42 @@
-const nodemailer = require("nodemailer");
+// src/utils/sendEmail.js
+const mailgun = require("mailgun-js");
 
-const transporter = nodemailer.createTransport({
-  service: "Gmail", // works better in cloud envs
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  connectionTimeout: 5000, // 5s max
-  greetingTimeout: 5000,
-  socketTimeout: 5000,
+// ⚡ Make sure these are set in your environment or .env
+// MAILGUN_API_KEY = "your-mailgun-api-key"
+// MAILGUN_DOMAIN = "your-mailgun-domain"
+
+if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+  console.warn(
+    "⚠️ Mailgun API key or domain missing. Set MAILGUN_API_KEY and MAILGUN_DOMAIN in your environment."
+  );
+}
+
+const mg = mailgun({
+  apiKey: process.env.MAILGUN_API_KEY,
+  domain: process.env.MAILGUN_DOMAIN,
 });
 
 const sendEmail = async (to, subject, text) => {
   try {
-    const info = await transporter.sendMail({
-      from: `"Scene 🎬" <${process.env.EMAIL_USER}>`,
+    const data = {
+      from: `Scene 🎬 <no-reply@${process.env.MAILGUN_DOMAIN}>`,
       to,
       subject,
       text,
-    });
-    console.log("📨 Verification email sent:", to, info.messageId);
-    return info;
+    };
+
+    const body = await mg.messages().send(data);
+    console.log("📨 Verification email sent:", to, body.id);
+    return body;
   } catch (err) {
     console.error("❌ Verification email failed:", err.message);
     return null;
   }
+
+
+
+
+  
 };
 
 module.exports = sendEmail;
