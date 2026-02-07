@@ -33,8 +33,6 @@ router.post('/validate-email', async (req, res) => {
 
 
 
-// 📥 Register
-// 📥 Register
 router.post('/register', async (req, res) => {
   try {
     let { name, username, email, password, avatar } = req.body;
@@ -46,13 +44,14 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Deliverability check
-    const check = await validateEmailDeliverability(email);
-    if (!check.ok) {
-      return res.status(400).json({
-        error: 'Please use a real, deliverable email address',
-        reason: check.reason,
-      });
+    // ⚠️ Deliverability check — DO NOT BLOCK signup
+    try {
+      const check = await validateEmailDeliverability(email);
+      if (!check.ok) {
+        console.warn('⚠️ Email deliverability warning:', email, check.reason);
+      }
+    } catch (err) {
+      console.warn('⚠️ Email deliverability check failed:', err.message);
     }
 
     const existingUser = await User.findOne({ email });
@@ -63,33 +62,38 @@ router.post('/register', async (req, res) => {
     });
     if (existingUsername) return res.status(400).json({ error: 'Username already taken' });
 
-    // 6-digit code + expiry
     const verificationCode = crypto.randomInt(100000, 999999).toString();
 
     const user = new User({
       name,
       username,
       email,
-      password, // assume hashing in pre-save hook
+      password,
       avatar,
       verificationCode,
-      verificationCodeExpires: new Date(Date.now() + 10 * 60 * 1000), // 10 mins
+      verificationCodeExpires: new Date(Date.now() + 10 * 60 * 1000),
       emailVerified: false,
     });
 
     await user.save();
 
-    await sendEmail(
+    // 🚀 Fire-and-forget email (CRITICAL)
+    sendEmail(
       email,
       "Your Scene verification code",
       `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
+    ).catch(err => {
+      console.error('❌ Verification email failed:', err.message);
+    });
+
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '90d' }
     );
 
-    // ✅ Issue token immediately (but user stays emailVerified: false)
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '90d' });
-
-    res.status(201).json({
-      message: 'User registered successfully. Verification email sent.',
+    return res.status(201).json({
+      message: 'User registered successfully.',
       token,
       user: {
         _id: user._id,
@@ -102,10 +106,9 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Register Error:', error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: 'Registration failed' });
   }
 });
-
 
 
 
