@@ -78,13 +78,13 @@ router.post('/register', async (req, res) => {
     await user.save();
 
     // 🚀 Fire-and-forget email (CRITICAL)
-    sendEmail(
-      email,
-      "Your Scene verification code",
-      `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
-    ).catch(err => {
-      console.error('❌ Verification email failed:', err.message);
-    });
+   // sendEmail(
+    //  email,
+    // "Your Scene verification code",
+    //  `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
+   // ).catch(err => {
+    //  console.error('❌ Verification email failed:', err.message);
+   // });
 
     const token = jwt.sign(
       { id: user._id },
