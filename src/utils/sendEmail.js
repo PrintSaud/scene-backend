@@ -1,34 +1,29 @@
 const nodemailer = require("nodemailer");
 
 const transporter = nodemailer.createTransport({
-  service: "Gmail",
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false, // true for 465
   auth: {
-    user: process.env.EMAIL_USER,   // your Gmail address
-    pass: process.env.EMAIL_PASS,   // your Gmail app password
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false, // allows connection in server envs
   },
 });
 
 const sendEmail = async (to, subject, text) => {
-  const mailOptions = {
-    from: `"Scene 🎬" <${process.env.EMAIL_USER}>`,
-    to,
-    subject,
-    text,
-  };
-
   try {
-    const info = await transporter.sendMail(mailOptions);
-
-    // ✅ Log success
-    console.log("📨 Verification email sent:", {
+    const info = await transporter.sendMail({
+      from: `"Scene 🎬" <${process.env.EMAIL_USER}>`,
       to,
       subject,
-      messageId: info.messageId,
+      text,
     });
-
+    console.log("📨 Verification email sent:", to, info.messageId);
     return info;
   } catch (err) {
-    // ❌ Log failure but do NOT crash signup
     console.error("❌ Verification email failed:", err.message);
     return null;
   }
