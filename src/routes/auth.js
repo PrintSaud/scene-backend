@@ -80,18 +80,22 @@ router.post("/register", async (req, res) => {
 
     await user.save(); // save user first
 
-    // 🚀 Fire-and-forget email — wrap in try/catch so it cannot crash signup
-    (async () => {
-      try {
-        await sendEmail(
-          email,
-          "Your Scene verification code",
-          `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
-        );
-      } catch (err) {
-        console.error("❌ Verification email failed:", err.message);
-      }
-    })();
+// 🚀 Send email directly and log outcome
+try {
+  const info = await sendEmail(
+    email,
+    "Your Scene verification code",
+    `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
+  );
+  if (info) {
+    console.log("📨 Verification email sent:", email, info.messageId);
+  } else {
+    console.warn("⚠️ Verification email returned null:", email);
+  }
+} catch (err) {
+  console.error("❌ Verification email failed:", err.message);
+}
+
 
     // ⚡ Issue JWT safely
     let token = null;
