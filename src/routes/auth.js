@@ -31,7 +31,6 @@ router.post('/validate-email', async (req, res) => {
   }
 });
 
-// 📥 Register
 router.post("/register", async (req, res) => {
   try {
     let { name, username, email, password, avatar } = req.body;
@@ -72,26 +71,23 @@ router.post("/register", async (req, res) => {
       password, // hashed in pre-save hook
       avatar,
       verificationCode,
-      verificationCodeExpires: new Date(Date.now() + 10 * 60 * 1000), // 10 mins
+      verificationCodeExpires: new Date(Date.now() + 10 * 60 * 1000),
       emailVerified: false,
     });
 
-    await user.save(); // save user first
+    await user.save();
 
-    // ✅ Send verification email — await it so logs work
-    try {
+    // 🚀 Fire-and-forget email — logs will still appear
+    setImmediate(async () => {
       const info = await sendEmail(
         email,
         "Your Scene verification code",
         `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
       );
-      if (info) console.log("📨 Verification email sent:", email, info.messageId);
-      else console.warn("⚠️ Email not sent for some reason");
-    } catch (err) {
-      console.error("❌ Verification email failed:", err.message);
-    }
+      if (!info) console.warn("⚠️ Email not sent for some reason");
+    });
 
-    // ⚡ Issue JWT safely
+    // ⚡ Issue JWT
     let token = null;
     try {
       token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "90d" });
@@ -116,7 +112,6 @@ router.post("/register", async (req, res) => {
     return res.status(500).json({ error: "Registration failed" });
   }
 });
-
 
 
 

@@ -1,13 +1,15 @@
 const nodemailer = require("nodemailer");
 
 const transporter = nodemailer.createTransport({
-  service: "Gmail",
+  service: "Gmail", // works better in cloud envs
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  connectionTimeout: 5000, // 5s max
+  greetingTimeout: 5000,
+  socketTimeout: 5000,
 });
-
 
 const sendEmail = async (to, subject, text) => {
   try {
