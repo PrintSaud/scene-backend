@@ -42,7 +42,7 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // ⚠️ Email deliverability check — DO NOT block signup
+    // ⚠️ Email deliverability check — log only, do not block
     try {
       const check = await validateEmailDeliverability(email);
       if (!check.ok) {
@@ -52,16 +52,61 @@ router.post("/register", async (req, res) => {
       console.warn("⚠️ Email deliverability check failed:", err.message);
     }
 
-    // Check duplicates
-    const [existingUser, existingUsername] = await Promise.all([
-      User.findOne({ email }),
-      User.findOne({ username: { $regex: `^${username}$`, $options: "i" } }),
-    ]);
+    // Check for duplicates
+    const existingUser = await User.findOne({ email });
+    const existingUsername = await User.findOne({
+      username: { $regex: `^${username}$`, $options: "i" },
+    });
 
-    if (existingUser) return res.status(400).json({ error: "Email already in use" });
-    if (existingUsername) return res.status(400).json({ error: "Username already taken" });
+    if (existingUsername) {
+      return res.status(409).json({ error: "Username already taken" });
+    }
 
-    // Create verification code
+    if (existingUser) {
+      // If email exists but not verified → allow resend flow
+      if (!existingUser.emailVerified) {
+        // Generate new verification code
+        const verificationCode = crypto.randomInt(100000, 999999).toString();
+        existingUser.verificationCode = verificationCode;
+        existingUser.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
+        await existingUser.save();
+
+        // Fire-and-forget email send
+        setImmediate(async () => {
+          try {
+            await sendEmail(
+              email,
+              "Your Scene verification code",
+              `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
+            );
+            console.log("📨 Verification email resent:", email);
+          } catch (err) {
+            console.error("❌ Verification email failed (resend):", email, err.message);
+          }
+        });
+
+        // Return JWT anyway
+        const token = jwt.sign({ id: existingUser._id }, process.env.JWT_SECRET, { expiresIn: "900d" });
+
+        return res.status(200).json({
+          message: "Account already exists but not verified. Verification email resent.",
+          token,
+          user: {
+            _id: existingUser._id,
+            name: existingUser.name,
+            username: existingUser.username,
+            email: existingUser.email,
+            avatar: existingUser.avatar,
+            emailVerified: false,
+          },
+        });
+      }
+
+      // Email verified → block
+      return res.status(409).json({ error: "Email already in use" });
+    }
+
+    // Create new user
     const verificationCode = crypto.randomInt(100000, 999999).toString();
 
     const user = new User({
@@ -77,20 +122,24 @@ router.post("/register", async (req, res) => {
 
     await user.save();
 
-    // 🚀 Fire-and-forget email — logs will still appear
+    // Fire-and-forget verification email
     setImmediate(async () => {
-      const info = await sendEmail(
-        email,
-        "Your Scene verification code",
-        `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
-      );
-      if (info) console.log("📨 Verification email sent:", email, info.id);      
+      try {
+        await sendEmail(
+          email,
+          "Your Scene verification code",
+          `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
+        );
+        console.log("📨 Verification email sent:", email);
+      } catch (err) {
+        console.error("❌ Verification email failed:", email, err.message);
+      }
     });
 
-    // ⚡ Issue JWT
+    // Issue JWT
     let token = null;
     try {
-      token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "90d" });
+      token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "900d" });
     } catch (err) {
       console.warn("⚠️ JWT signing failed:", err.message);
     }
@@ -112,9 +161,6 @@ router.post("/register", async (req, res) => {
     return res.status(500).json({ error: "Registration failed" });
   }
 });
-
-
-
 
 
 router.post("/verify-email-code", async (req, res) => {
