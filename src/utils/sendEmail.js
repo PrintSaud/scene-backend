@@ -15,6 +15,10 @@ const sendEmail = async (to, subject, text) => {
     text,
   };
 
+
+
+  
+
   const body = await mg.messages().send(data);
   console.log("📨 Mailgun accepted message:", body.id);
   return body;
