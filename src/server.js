@@ -351,12 +351,6 @@ app.get("/api/scene-bot/health", (req, res) => {
 });
 
 
-// 7️⃣ SPA fallback — after OG + API
-app.get(/^\/(?!api).*/, (req, res) => {
-  res.sendFile(path.resolve(__dirname, "../dist/index.html"));
-});
-
-
 
 // ❌ Error handlers
 app.use((req, res) => res.status(404).json({ message: "Not Found", path: req.originalUrl }));
