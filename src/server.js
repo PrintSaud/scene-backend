@@ -311,7 +311,7 @@ app.use("/api/movies", express.json(),tryAuthOrBypass,  require("./routes/movieR
 
 app.use("/api/scene-bot", express.json(), sceneBotRouter); // existing
 app.use("/api/scenebot", express.json(), sceneBotRouter);  // catch old frontend
-
+const bannerRoutes = require("./routes/bannerRoutes"); app.use("/api/banners", bannerRoutes);
 app.use("/api/posters", express.json(), require("./routes/posterRoutes"));
 app.use("/api/movies/daily", express.json(), tryAuthOrBypass,  require("./routes/dailyMovie"));
 app.use("/api/tmdb", require("./routes/tmdbRoutes"));
