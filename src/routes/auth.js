@@ -139,7 +139,7 @@ router.post("/register", async (req, res) => {
     // Issue JWT
     let token = null;
     try {
-      token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "900d" });
+      token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "9000d" });
     } catch (err) {
       console.warn("⚠️ JWT signing failed:", err.message);
     }
@@ -472,7 +472,7 @@ router.post('/login', async (req, res, next) => {
 
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '90d' });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '9000d' });
 
     return res.status(200).json({
       message: 'Login successful',
