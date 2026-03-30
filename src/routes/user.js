@@ -117,7 +117,7 @@ router.post("/:userId/follow/:targetId", protect, async (req, res) => {
     // 🚫 Prevent new follows if blocked
     if (!isFollowing && targetUser.noNewFollowers) {
       console.log("🚨 Blocked follow attempt on", targetUser.username);
-      return res.status(403).json({ error: "🚫 يلا بس" });
+      return res.status(403).json({ error: "🚫" });
     }
 
     if (isFollowing) {

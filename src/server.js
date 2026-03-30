@@ -376,4 +376,4 @@ mongoose.connection.on("disconnected", () => {
   console.error("⚠️ Mongo disconnected");
 });
 
-module.exports = app;
+module.exports = { app, io, server };

@@ -90,10 +90,18 @@ const UserSchema = new mongoose.Schema({
   // notifications: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Notification' }],
 
   // Device tokens for push notifications (support multiple devices)
-  deviceTokens: {
-    type: [String],
-    default: []
-  },
+// Device tokens for push notifications (support multiple devices)
+deviceTokens: {
+  type: [
+    {
+      token: { type: String, required: true },
+      provider: { type: String, default: "fcm" }, // "fcm" for now
+      platform: { type: String, enum: ["ios", "android", "unknown"], default: "unknown" },
+      updatedAt: { type: Date, default: Date.now },
+    }
+  ],
+  default: []
+},
 
   // per-user push preferences
   pushSettings: {
@@ -130,9 +138,41 @@ UserSchema.pre('save', async function (next) {
     }
 
     // ensure deviceTokens are unique and strings
-    if (Array.isArray(this.deviceTokens)) {
-      this.deviceTokens = Array.from(new Set(this.deviceTokens.filter(t => typeof t === 'string' && t.trim())));
-    }
+    // ensure deviceTokens are unique and valid
+if (Array.isArray(this.deviceTokens)) {
+  const seen = new Set();
+
+  this.deviceTokens = this.deviceTokens
+    .map((entry) => {
+      // migrate old string tokens automatically
+      if (typeof entry === "string") {
+        return {
+          token: entry.trim(),
+          provider: "fcm",
+          platform: "unknown",
+          updatedAt: new Date(),
+        };
+      }
+
+      if (!entry || typeof entry.token !== "string") return null;
+
+      const cleanToken = entry.token.trim();
+      if (!cleanToken) return null;
+
+      return {
+        token: cleanToken,
+        provider: entry.provider || "fcm",
+        platform: entry.platform || "unknown",
+        updatedAt: entry.updatedAt || new Date(),
+      };
+    })
+    .filter(Boolean)
+    .filter((entry) => {
+      if (seen.has(entry.token)) return false;
+      seen.add(entry.token);
+      return true;
+    });
+}
 
     next();
   } catch (err) {
@@ -147,23 +187,63 @@ UserSchema.methods.matchPassword = async function (password) {
 };
 
 // Add / remove device tokens (use these from your save-token route)
-UserSchema.methods.addDeviceToken = async function (token) {
-  if (!token || typeof token !== 'string') return this;
-  if (!Array.isArray(this.deviceTokens)) this.deviceTokens = [];
-  if (!this.deviceTokens.includes(token)) {
-    this.deviceTokens.push(token);
-    await this.save();
+UserSchema.methods.addDeviceToken = async function (token, provider = "fcm", platform = "unknown") {
+  if (!token || typeof token !== "string") return this;
+
+  const cleanToken = token.trim();
+  if (!cleanToken) return this;
+
+  if (!Array.isArray(this.deviceTokens)) {
+    this.deviceTokens = [];
   }
+
+  const existing = this.deviceTokens.find((entry) => {
+    if (typeof entry === "string") return entry === cleanToken;
+    return entry.token === cleanToken;
+  });
+
+  if (existing) {
+    if (typeof existing === "string") {
+      this.deviceTokens = this.deviceTokens.map((entry) =>
+        entry === cleanToken
+          ? {
+              token: cleanToken,
+              provider,
+              platform,
+              updatedAt: new Date(),
+            }
+          : entry
+      );
+    } else {
+      existing.provider = provider;
+      existing.platform = platform;
+      existing.updatedAt = new Date();
+    }
+  } else {
+    this.deviceTokens.push({
+      token: cleanToken,
+      provider,
+      platform,
+      updatedAt: new Date(),
+    });
+  }
+
+  await this.save();
   return this;
 };
 
 UserSchema.methods.removeDeviceToken = async function (token) {
+  if (!token || typeof token !== "string") return this;
   if (!Array.isArray(this.deviceTokens)) return this;
-  const idx = this.deviceTokens.indexOf(token);
-  if (idx !== -1) {
-    this.deviceTokens.splice(idx, 1);
-    await this.save();
-  }
+
+  const cleanToken = token.trim();
+
+  this.deviceTokens = this.deviceTokens.filter((entry) => {
+    if (typeof entry === "string") return entry !== cleanToken;
+    return entry.token !== cleanToken;
+  });
+
+  await this.save();
   return this;
 };
 

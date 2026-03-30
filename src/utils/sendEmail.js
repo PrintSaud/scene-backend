@@ -13,11 +13,11 @@ const mg = mailgun({
 });
 
 const sendEmail = async (to, subject, text) => {
-  console.log("🔹 Preparing to send email");
-  console.log("   To:", to);
-  console.log("   Subject:", subject);
-  console.log("   From:", `Scene <${process.env.MAILGUN_FROM}>`);
-  console.log("   Domain used:", process.env.MAILGUN_DOMAIN);
+ // console.log("🔹 Preparing to send email");
+ // console.log("   To:", to);
+ // console.log("   Subject:", subject);
+ // console.log("   From:", `Scene <${process.env.MAILGUN_FROM}>`);
+ // console.log("   Domain used:", process.env.MAILGUN_DOMAIN);
 
   const data = {
     from: `Scene <${process.env.MAILGUN_FROM}>`,
@@ -29,14 +29,14 @@ const sendEmail = async (to, subject, text) => {
   try {
     const body = await mg.messages().send(data);
     console.log("📨 Mailgun accepted message:", body.id);
-    console.log("   Full response:", body);
+   // console.log("   Full response:", body);
     return body;
   } catch (err) {
     console.error("❌ Mailgun send FAILED!");
     console.error("   Error message:", err.message);
     console.error("   Error object:", err);
     console.error("   Attempted to send to:", to);
-    console.error("   Using domain:", process.env.MAILGUN_DOMAIN);
+   // console.error("   Using domain:", process.env.MAILGUN_DOMAIN);
     throw err; // throw so caller knows it failed
   }
 };
