@@ -1,4 +1,3 @@
-console.log(`📨 Sending push to user ${toUserId} with ${tokens.length} token(s)`);
 const Notification = require("../models/notification");
 const User = require("../models/user");
 const admin = require("firebase-admin");
