@@ -124,7 +124,7 @@ UserSchema.pre('save', async function (next) {
   try {
     // normalize username to lowercase (and remove spaces)
     if (this.isModified('username') && typeof this.username === 'string') {
-      this.username = this.username.toLowerCase().trim().replace(/\s+/g, '');
+      this.username = this.username.trim().replace(/\s+/g, '');
     }
 
     if (this.isModified('password') && this.password) {
