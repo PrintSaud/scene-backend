@@ -70,6 +70,42 @@ async function formatLogsWithPoster(logs, viewerId) {
   ).then((logs) => logs.filter(Boolean));
 }
 
+const cleanFavoriteCharacter = (favoriteCharacter) => {
+  if (!favoriteCharacter) return null;
+
+  let parsed = favoriteCharacter;
+
+  // Because /full and PATCH use multipart/form-data,
+  // favoriteCharacter may arrive as a JSON string.
+  if (typeof favoriteCharacter === "string") {
+    try {
+      parsed = JSON.parse(favoriteCharacter);
+    } catch (err) {
+      console.warn("⚠️ Failed to parse favoriteCharacter:", err.message);
+      return null;
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object") return null;
+
+  const characterName = String(parsed.characterName || "").trim();
+
+  if (!characterName) return null;
+
+  const safeNumberOrNull = (value) => {
+    if (value === undefined || value === null || value === "") return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+
+  return {
+    characterId: safeNumberOrNull(parsed.characterId),
+    actorId: safeNumberOrNull(parsed.actorId),
+    characterName,
+    actorName: String(parsed.actorName || "").trim(),
+    profilePath: String(parsed.profilePath || "").trim(),
+  };
+};
 
 router.post('/:logId/like', protect, async (req, res) => {
   try {
@@ -239,10 +275,14 @@ router.get("/debug", protect, async (req, res) => {
   }
 });
 
-router.get('/:logId', async (req, res) => {
+router.get("/:logId", async (req, res) => {
   try {
-    const log = await Log.findById(req.params.logId).populate('user', 'username avatar');
-    if (!log) return res.status(404).json({ message: 'Log not found' });
+    const log = await Log.findById(req.params.logId).populate(
+      "user",
+      "username avatar"
+    );
+
+    if (!log) return res.status(404).json({ message: "Log not found" });
 
     let backdrop_path = null;
     let movieTitle = "Untitled";
@@ -251,32 +291,48 @@ router.get('/:logId', async (req, res) => {
 
     if (tmdbId && TMDB_API_KEY) {
       try {
-        const tmdbRes = await axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}`);
+        const tmdbRes = await axios.get(
+          `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}`
+        );
+
         backdrop_path = tmdbRes.data.backdrop_path;
         movieTitle = tmdbRes.data.title;
         tmdbPosterPath = tmdbRes.data.poster_path;
 
         if (!backdrop_path) {
-          const fallbackRes = await axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/images?api_key=${TMDB_API_KEY}`);
+          const fallbackRes = await axios.get(
+            `https://api.themoviedb.org/3/movie/${tmdbId}/images?api_key=${TMDB_API_KEY}`
+          );
+
           backdrop_path = fallbackRes.data.backdrops?.[0]?.file_path || null;
         }
       } catch (err) {
-        console.warn(`⚠️ Failed to fetch TMDB for tmdbId=${tmdbId}: ${err.message}`);
+        console.warn(
+          `⚠️ Failed to fetch TMDB for tmdbId=${tmdbId}: ${err.message}`
+        );
       }
     }
 
     // Poster logic
     let poster = DEFAULT_POSTER;
-    const customPoster = await CustomPoster.findOne({ userId: log.user._id, movieId: tmdbId });
+
+    const customPoster = await CustomPoster.findOne({
+      userId: log.user._id,
+      movieId: tmdbId,
+    });
+
     if (customPoster) {
       poster = customPoster.posterUrl;
-    } else if (log.poster && log.poster.startsWith('http')) {
+    } else if (log.poster && log.poster.startsWith("http")) {
       poster = log.poster;
     } else if (tmdbPosterPath) {
       poster = `https://image.tmdb.org/t/p/w500${tmdbPosterPath}`;
     }
 
-    const backdrop = backdrop_path ? `${TMDB_BACKDROP}${backdrop_path}` : DEFAULT_BACKDROP;
+    const backdrop = backdrop_path
+      ? `${TMDB_BACKDROP}${backdrop_path}`
+      : DEFAULT_BACKDROP;
+
     const likes = log.likes || [];
 
     // ✅ Reply processing
@@ -300,21 +356,28 @@ router.get('/:logId', async (req, res) => {
             replyUser = r.user;
           } else if (r.user?._id) {
             if (r.user?.username && r.user?.avatar) {
-              // 🧠 Already populated
               replyUser = r.user;
-            } else if (r.user?._id) {
-              // 🧠 Fetch from DB
-              replyUser = await User.findById(r.user._id).select("username avatar");
+            } else {
+              replyUser = await User.findById(r.user._id).select(
+                "username avatar"
+              );
             }
-            
           }
 
           if (replyUser) {
-            const userLog = await Log.findOne({ user: replyUser._id, tmdbId });
+            const userLog = await Log.findOne({
+              user: replyUser._id,
+              tmdbId,
+            });
+
             if (userLog) ratingForThisMovie = userLog.rating || null;
           }
         } catch (err) {
-          console.warn("⚠️ Failed to process reply user:", r.user, err.message);
+          console.warn(
+            "⚠️ Failed to process reply user:",
+            r.user,
+            err.message
+          );
         }
 
         return {
@@ -344,41 +407,43 @@ router.get('/:logId', async (req, res) => {
       rewatch: true,
     });
 
-    const totalWatches = await Log.countDocuments({
-      user: log.user,
-      tmdbId: log.tmdbId,
-    });
-
     res.json({
       _id: log._id,
       user: log.user || null,
+
       movie: {
         id: log.tmdbId || null,
         title: movieTitle,
         backdrop_path: backdrop_path || null,
         poster,
       },
+
       poster,
       posterOverride: poster,
       backdrop,
       customBackdrop: log.customBackdrop || "",
+
       review: log.review || "",
       rating: log.rating || 0,
+
+      // ✅ Favorite Character feature
+      favoriteCharacter: log.favoriteCharacter || null,
+
       rewatchCount,
       likes,
+
       image: log.image || null,
       gif: log.gif || null,
+
       replies,
       createdAt: log.createdAt,
       reviewBackdrop: backdrop_path || null,
     });
-
   } catch (err) {
     console.error("🔥 Error in GET /api/logs/:logId:", err);
     res.status(500).json({ message: "Server error in /api/logs/:logId" });
   }
 });
-
 
 
 router.post('/:id/reply', protect, upload.single('image'), async (req, res) => {
@@ -728,10 +793,8 @@ router.get("/movie/:id/all", protect, async (req, res) => {
   }
 });
 
-
-
-// POST /api/logs/full → Full-featured log (text, rating, gif, image, etc.)
-router.post('/full', protect, upload.single('image'), async (req, res) => {
+// POST /api/logs/full → Full-featured log: text, rating, gif, image, favorite character, etc.
+router.post("/full", protect, upload.single("image"), async (req, res) => {
   try {
     const {
       movieId,
@@ -743,9 +806,9 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
       watchedAt,
       title,
       poster,
-      backdrop, // ✅ ADD THIS LINE
+      backdrop,
+      favoriteCharacter,
     } = req.body;
-    
 
     const uploadedImage = req.file
       ? await uploadToCloudinary(req.file.buffer, "scene/logs")
@@ -754,18 +817,22 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
     const posterValue = poster && poster !== "undefined" ? poster : "";
 
     // ✅ Step 1: Normalize and check TMDB ID
-    const tmdbId = movieId && typeof movieId === "string" ? parseInt(movieId) : movieId;
+    const tmdbId =
+      movieId && typeof movieId === "string" ? parseInt(movieId) : movieId;
+
     if (!tmdbId || isNaN(tmdbId)) {
       return res.status(400).json({ message: "Invalid movieId" });
     }
 
     // ✅ Step 2: Lookup or create Movie
     let movie = await Movie.findOne({ tmdbId });
+
     if (!movie) {
       try {
         const tmdbRes = await axios.get(
           `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}`
         );
+
         const tmdbData = tmdbRes.data;
 
         movie = await Movie.create({
@@ -783,47 +850,66 @@ router.post('/full', protect, upload.single('image'), async (req, res) => {
 
     // ✅ Final safety check
     if (!movie || !movie._id) {
-      return res.status(500).json({ message: "Movie document invalid or missing _id" });
+      return res.status(500).json({
+        message: "Movie document invalid or missing _id",
+      });
     }
 
     const combinedReview =
-    review && review.trim()
-      ? review.trim()
-      : gif || uploadedImage
-      ? "__media__"
-      : "";
-  
+      review && review.trim()
+        ? review.trim()
+        : gif || uploadedImage
+        ? "__media__"
+        : "";
 
     // ✅ Step 3: Create Log
     const newLog = await Log.create({
       user: req.user._id,
+
       tmdbId: movie.tmdbId,
-      review: combinedReview, // 👈 Important fix
+
+      review: combinedReview,
       rating: parseFloat(rating) || 0,
-      rewatch: rewatch === "true" || false,
+
+      rewatch: rewatch === "true" || rewatch === true,
       rewatchCount: parseInt(rewatchCount) || 0,
+
       gif: gif || "",
       image: uploadedImage,
+
       watchedAt: watchedAt ? new Date(watchedAt) : Date.now(),
+
       title: title || movie.title || "",
       poster: posterValue || movie.posterPath || "",
-      backdrop: backdrop || movie.backdrop_path || "",
+      backdrop: backdrop || movie.backdropPath || "",
+
+      // ✅ Favorite Character feature
+      favoriteCharacter: cleanFavoriteCharacter(favoriteCharacter),
+
       importedFrom: "manual",
     });
-    
-    
-    res.status(201).json({ message: "✅ Log saved successfully!", log: newLog });
+
+    res.status(201).json({
+      message: "✅ Log saved successfully!",
+      log: newLog,
+    });
   } catch (err) {
     console.error("❌ Failed to save full log:", err);
-    res.status(500).json({ message: "Failed to save full log", error: err.message });
+    res.status(500).json({
+      message: "Failed to save full log",
+      error: err.message,
+    });
   }
 });
 
 // PATCH /api/logs/:logId → Edit an existing log safely
-router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
+router.patch("/:logId", protect, upload.single("image"), async (req, res) => {
   try {
     const log = await Log.findById(req.params.logId);
-    if (!log) return res.status(404).json({ message: "Log not found" });
+
+    if (!log) {
+      return res.status(404).json({ message: "Log not found" });
+    }
 
     console.log("🔍 PATCH user comparison:");
     console.log("log.user:", log.user);
@@ -831,7 +917,9 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
 
     if (!log.user) {
       console.warn("⚠️ Log has no user field:", log._id);
-      return res.status(403).json({ message: "Unauthorized - log has no owner" });
+      return res.status(403).json({
+        message: "Unauthorized - log has no owner",
+      });
     }
 
     if (log.user.toString() !== req.user._id.toString()) {
@@ -842,10 +930,12 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
       review,
       rating,
       rewatch,
+      rewatchCount,
       gif,
       watchedAt,
       title,
-      poster
+      poster,
+      favoriteCharacter,
     } = req.body;
 
     const uploadedImage = req.file
@@ -853,8 +943,19 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
       : log.image;
 
     log.review = review ?? log.review;
-    log.rating = rating !== undefined ? parseFloat(rating) : log.rating;
-    log.rewatch = rewatch === "true" ? true : log.rewatch;
+
+    if (rating !== undefined) {
+      log.rating = parseFloat(rating);
+    }
+
+    if (rewatch !== undefined) {
+      log.rewatch = rewatch === "true" || rewatch === true;
+    }
+
+    if (rewatchCount !== undefined) {
+      log.rewatchCount = parseInt(rewatchCount) || 0;
+    }
+
     log.gif = gif ?? log.gif;
     log.image = uploadedImage;
     log.watchedAt = watchedAt ? new Date(watchedAt) : log.watchedAt;
@@ -864,9 +965,19 @@ router.patch('/:logId', protect, upload.single('image'), async (req, res) => {
       log.poster = poster;
     }
 
+    // ✅ Favorite Character feature
+    // Only update it if frontend sends favoriteCharacter.
+    // This prevents accidental deletion during normal edits.
+    if ("favoriteCharacter" in req.body) {
+      log.favoriteCharacter = cleanFavoriteCharacter(favoriteCharacter);
+    }
+
     await log.save();
 
-    res.json({ message: "✅ Log updated", log });
+    res.json({
+      message: "✅ Log updated",
+      log,
+    });
   } catch (err) {
     console.error("❌ PATCH failed:", err);
     res.status(500).json({ message: "Failed to update log" });
