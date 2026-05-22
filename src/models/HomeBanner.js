@@ -7,29 +7,58 @@ const homeBannerSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+
     subtitle: {
       type: String,
       default: "",
       trim: true,
     },
+
     image: {
       type: String,
       default: "",
       trim: true,
     },
+
     buttonText: {
       type: String,
       default: "",
       trim: true,
     },
 
-    // actionType examples:
-    // "screen" | "movie" | "actor" | "director" | "cinematographer" | "url"
-    actionType: {
+    // Banner visual design:
+    // "text"  = text only
+    // "image" = text + photo
+    // "link"  = text + button/link
+    // "movie" = text + movie navigation
+    designType: {
       type: String,
-      default: "screen",
+      enum: ["text", "image", "link", "movie"],
+      default: "text",
       trim: true,
     },
+
+    // actionType examples:
+    // "none" | "screen" | "movie" | "actor" | "director" | "cinematographer" | "url"
+    actionType: {
+      type: String,
+      enum: [
+        "none",
+        "screen",
+        "movie",
+        "actor",
+        "director",
+        "cinematographer",
+        "url",
+      ],
+      default: "none",
+      trim: true,
+    },
+
+    // Examples:
+    // movie: "550"
+    // url: "https://scenesa.com/post/..."
+    // screen: "Trending"
     actionValue: {
       type: String,
       default: "",
@@ -41,7 +70,20 @@ const homeBannerSchema = new mongoose.Schema(
       default: "#1a1026",
       trim: true,
     },
+
     textColor: {
+      type: String,
+      default: "#ffffff",
+      trim: true,
+    },
+
+    buttonColor: {
+      type: String,
+      default: "#7c3aed",
+      trim: true,
+    },
+
+    buttonTextColor: {
       type: String,
       default: "#ffffff",
       trim: true,
@@ -56,6 +98,7 @@ const homeBannerSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
     endAt: {
       type: Date,
       default: null,
@@ -70,3 +113,4 @@ const homeBannerSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model("HomeBanner", homeBannerSchema);
+
