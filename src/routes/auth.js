@@ -579,7 +579,7 @@ router.put('/profile', protect, async (req, res) => {
 // POST /api/users/save-token
 router.post("/save-token", protect, async (req, res) => {
   try {
-    const { deviceToken, provider = "fcm", platform = "unknown" } = req.body;
+    const { deviceToken, provider = "expo", platform = "unknown" } = req.body;
 
     console.log("💡 Saving device token:", deviceToken, "for user:", req.user._id);
 
@@ -587,10 +587,14 @@ router.post("/save-token", protect, async (req, res) => {
       return res.status(400).json({ error: "Device token required" });
     }
 
+    const cleanToken = deviceToken.trim();
+
+    if (!cleanToken) {
+      return res.status(400).json({ error: "Device token required" });
+    }
+
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ error: "User not found" });
-
-    const cleanToken = deviceToken.trim();
 
     if (!Array.isArray(user.deviceTokens)) {
       user.deviceTokens = [];
@@ -598,7 +602,7 @@ router.post("/save-token", protect, async (req, res) => {
 
     const existing = user.deviceTokens.find((t) => {
       if (typeof t === "string") return t === cleanToken;
-      return t.token === cleanToken;
+      return t?.token === cleanToken;
     });
 
     if (existing) {
@@ -629,7 +633,15 @@ router.post("/save-token", protect, async (req, res) => {
 
     await user.save();
 
-    return res.json({ success: true, deviceTokens: user.deviceTokens });
+    return res.json({
+      success: true,
+      savedToken: {
+        token: cleanToken,
+        provider,
+        platform,
+      },
+      deviceTokens: user.deviceTokens,
+    });
   } catch (err) {
     console.error("❌ Failed to save device token:", err);
     return res.status(500).json({ success: false, error: err.message });

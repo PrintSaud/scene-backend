@@ -94,7 +94,7 @@ router.delete("/:id", protect, async (req, res) => {
     if (notif.to.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Forbidden" });
     }
-    await notif.remove();
+    await notif.deleteOne();
     res.json({ message: "Notification deleted" });
   } catch (err) {
     res.status(500).json({ message: "Failed to delete notification" });
