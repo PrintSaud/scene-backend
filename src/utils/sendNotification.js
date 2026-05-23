@@ -1,12 +1,17 @@
 // /Users/saudceo/flick-backend/src/utils/sendNotification.js
 
-const { Expo } = require("expo-server-sdk");
 const Notification = require("../models/notification");
 const User = require("../models/user");
 const admin = require("firebase-admin");
 const { io } = require("../server");
 
-const expo = new Expo();
+function isExpoPushToken(token) {
+  return (
+    typeof token === "string" &&
+    (token.startsWith("ExpoPushToken[") ||
+      token.startsWith("ExponentPushToken["))
+  );
+}
 
 function normalizeTokenEntry(entry) {
   if (!entry) return null;
@@ -17,7 +22,7 @@ function normalizeTokenEntry(entry) {
 
     return {
       token,
-      provider: token.startsWith("ExpoPushToken") ? "expo" : "fcm",
+      provider: isExpoPushToken(token) ? "expo" : "fcm",
       platform: "unknown",
     };
   }
@@ -25,9 +30,11 @@ function normalizeTokenEntry(entry) {
   const token = String(entry.token || entry.deviceToken || "").trim();
   if (!token) return null;
 
+  const rawProvider = String(entry.provider || "").toLowerCase();
+
   return {
     token,
-    provider: String(entry.provider || "").toLowerCase() || (token.startsWith("ExpoPushToken") ? "expo" : "fcm"),
+    provider: rawProvider || (isExpoPushToken(token) ? "expo" : "fcm"),
     platform: entry.platform || "unknown",
   };
 }
@@ -60,7 +67,7 @@ async function sendExpoPushes({ expoEntries, message, data, badge }) {
 
   const messages = expoEntries
     .filter((entry) => {
-      if (Expo.isExpoPushToken(entry.token)) return true;
+      if (isExpoPushToken(entry.token)) return true;
 
       console.warn("⚠️ Invalid Expo push token skipped:", entry.token);
       invalidTokens.add(entry.token);
@@ -81,26 +88,65 @@ async function sendExpoPushes({ expoEntries, message, data, badge }) {
     return invalidTokens;
   }
 
-  const chunks = expo.chunkPushNotifications(messages);
-
   console.log(`📨 Sending Expo push: ${messages.length} message(s)`);
 
-  for (const chunk of chunks) {
+  const BATCH_SIZE = 100;
+
+  for (let i = 0; i < messages.length; i += BATCH_SIZE) {
+    const batch = messages.slice(i, i + BATCH_SIZE);
+
     try {
-      const tickets = await expo.sendPushNotificationsAsync(chunk);
+      const response = await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Accept-Encoding": "gzip, deflate",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(batch.length === 1 ? batch[0] : batch),
+      });
+
+      let result = null;
+
+      try {
+        result = await response.json();
+      } catch (jsonErr) {
+        console.error("❌ Expo push non-JSON response:", jsonErr?.message || jsonErr);
+      }
+
+      if (!response.ok) {
+        console.error("❌ Expo push HTTP error:", response.status, result);
+        continue;
+      }
+
+      const tickets = Array.isArray(result?.data)
+        ? result.data
+        : result?.data
+        ? [result.data]
+        : [];
 
       tickets.forEach((ticket, index) => {
+        if (!ticket) return;
+
         if (ticket.status === "ok") return;
 
-        const failedToken = chunk[index]?.to;
-        console.error("❌ Expo push failed:", failedToken, ticket.message, ticket.details);
+        const failedToken = batch[index]?.to;
+
+        console.error(
+          "❌ Expo push failed:",
+          failedToken,
+          ticket.message,
+          ticket.details
+        );
 
         if (ticket.details?.error === "DeviceNotRegistered" && failedToken) {
           invalidTokens.add(failedToken);
         }
       });
+
+      console.log(`✅ Expo push batch sent: ${batch.length}`);
     } catch (err) {
-      console.error("❌ Expo chunk send error:", err?.message || err);
+      console.error("❌ Expo push fetch error:", err?.message || err);
     }
   }
 
@@ -220,7 +266,6 @@ const sendNotification = async ({
 
     const message = buildMessage({ type, from });
 
-    // 1) Create notification in DB
     const createdNotif = await Notification.create({
       type,
       from: fromUserId,
@@ -234,12 +279,10 @@ const sendNotification = async ({
       createdAt: new Date(),
     });
 
-    // 2) Re-fetch populated version for socket/UI
     const notif = await Notification.findById(createdNotif._id)
       .populate("from", "username avatar")
       .lean();
 
-    // 3) Emit realtime socket event
     try {
       if (io) {
         io.to(String(toUserId)).emit("notification", notif);
@@ -248,7 +291,6 @@ const sendNotification = async ({
       console.warn("⚠️ Socket emit failed:", sockErr?.message || sockErr);
     }
 
-    // 4) Respect push settings
     const pushSettings = to.pushSettings || {};
 
     if (pushSettings.muteAll) {
@@ -274,7 +316,6 @@ const sendNotification = async ({
       return notif;
     }
 
-    // 5) Device tokens
     const tokenEntries = Array.isArray(to.deviceTokens)
       ? to.deviceTokens.map(normalizeTokenEntry).filter(Boolean)
       : [];
@@ -285,22 +326,17 @@ const sendNotification = async ({
     }
 
     const expoEntries = tokenEntries.filter(
-      (entry) =>
-        entry.provider === "expo" ||
-        entry.token.startsWith("ExpoPushToken")
+      (entry) => entry.provider === "expo" || isExpoPushToken(entry.token)
     );
 
     const fcmEntries = tokenEntries.filter(
-      (entry) =>
-        entry.provider === "fcm" &&
-        !entry.token.startsWith("ExpoPushToken")
+      (entry) => entry.provider === "fcm" && !isExpoPushToken(entry.token)
     );
 
     console.log(
       `📲 Push tokens for ${toUserId}: expo=${expoEntries.length}, fcm=${fcmEntries.length}`
     );
 
-    // 6) Badge count = unread notifications count
     const unreadCount = await Notification.countDocuments({
       to: toUserId,
       read: false,
@@ -316,7 +352,6 @@ const sendNotification = async ({
       fromUserId: String(fromUserId || ""),
     };
 
-    // 7) Send push
     const invalidExpoTokens = await sendExpoPushes({
       expoEntries,
       message,
@@ -331,18 +366,12 @@ const sendNotification = async ({
       badge: unreadCount,
     });
 
-    const invalidTokens = new Set([
-      ...invalidExpoTokens,
-      ...invalidFcmTokens,
-    ]);
+    const invalidTokens = new Set([...invalidExpoTokens, ...invalidFcmTokens]);
 
-    // 8) Remove dead tokens
     if (invalidTokens.size) {
       to.deviceTokens = (to.deviceTokens || []).filter((entry) => {
         const token =
-          typeof entry === "string"
-            ? entry
-            : entry?.token || entry?.deviceToken;
+          typeof entry === "string" ? entry : entry?.token || entry?.deviceToken;
 
         return token && !invalidTokens.has(token);
       });
@@ -362,3 +391,4 @@ const sendNotification = async ({
 };
 
 module.exports = sendNotification;
+
