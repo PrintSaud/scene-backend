@@ -32,6 +32,40 @@ admin.initializeApp({
 });
 
 
+const cron = require("node-cron");
+const generateSocialNews = require("./services/socialNewsGenerator");
+
+
+
+let isSocialNewsRunning = false;
+
+async function runSceneNewsRadar(reason = "cron") {
+  if (isSocialNewsRunning) {
+    console.log("⏭️ Scene news radar already running. Skipping.");
+    return;
+  }
+
+  if (mongoose.connection.readyState !== 1) {
+    console.log(`⚠️ Mongo not connected. Skipping Scene news radar. Reason: ${reason}`);
+    return;
+  }
+
+  isSocialNewsRunning = true;
+
+  try {
+    console.log(`🎬 Running Scene news radar... Reason: ${reason}`);
+    await generateSocialNews();
+  } catch (err) {
+    console.error("❌ Scene news radar failed:", err.message);
+  } finally {
+    isSocialNewsRunning = false;
+  }
+}
+
+cron.schedule("*/5 * * * *", async () => {
+  await runSceneNewsRadar("cron");
+});
+
 
 // 🛡 Mask sensitive values in logs
 const mask = (v) => (v ? v.slice(0, 4) + "•••" + v.slice(-4) : "(empty)");
@@ -268,6 +302,8 @@ app.use((req, res, next) => {
   next();
 });
 
+
+
 // 🟡 TEMP: Support old frontend calls that hit /api/scenebot without token
 app.post("/api/scenebot", express.json(), async (req, res) => {
   console.log("🔥 SceneBot proxy hit from old frontend:", req.method, req.originalUrl);
@@ -321,6 +357,8 @@ app.use("/api/letterboxd", importRoutes);
 // near other route imports
 const sceneShim = require('./routes/sceneShim');
 app.use('/api', sceneShim);
+const socialNewsRoutes = require("./routes/socialNewsRoutes");
+app.use("/api/social-news", socialNewsRoutes);
 
 // 💓 Health check
 app.get("/health", (req, res) => res.json({ ok: true }));
@@ -367,13 +405,18 @@ mongoose.connection.once("connected", () => {
   });
 });
 
-
-mongoose.connection.on("error", (err) => {
-  console.error("❌ Mongo connection error:", err?.code || err?.message || err);
+mongoose.connection.on("connected", async () => {
+  console.log("✅ Mongo connected/reconnected");
+  await runSceneNewsRadar("mongo_connected");
 });
 
 mongoose.connection.on("disconnected", () => {
-  console.error("⚠️ Mongo disconnected");
+  console.log("⚠️ Mongo disconnected");
 });
+
+mongoose.connection.on("error", (err) => {
+  console.error("❌ Mongo error:", err?.code || err?.message || err);
+});
+
 
 module.exports = { app, io, server };
