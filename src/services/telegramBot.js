@@ -3,45 +3,74 @@ const axios = require("axios");
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
+const DEBUG_TELEGRAM = process.env.TELEGRAM_DEBUG === "true";
+
+function debugLog(...args) {
+  if (DEBUG_TELEGRAM) console.log(...args);
+}
+
+function warnLog(...args) {
+  console.warn(...args);
+}
+
+function errorLog(...args) {
+  console.error(...args);
+}
+
+function clean(value) {
+  return String(value || "").trim();
+}
+
 function buildFullMessage(draft) {
+  const title = clean(draft.title);
+  const english = clean(draft.captions?.english);
+  const arabic = clean(draft.captions?.arabic);
+  const scene = clean(draft.captions?.scene);
+  const source = clean(draft.source) || "Unknown";
+  const url = clean(draft.url);
+
   return `
 🎬 Scene News Draft
 
-📰 ${draft.title}
+📰 ${title}
+
+━━━━━━━━━━━━━━
+
+✨ نسخة Scene:
+${scene}
+
+━━━━━━━━━━━━━━
+
+🇸🇦 النسخة العربية:
+${arabic}
 
 ━━━━━━━━━━━━━━
 
 🇺🇸 English:
-${draft.captions?.english || ""}
+${english}
 
 ━━━━━━━━━━━━━━
 
-🇸🇦 Arabic:
-${draft.captions?.arabic || ""}
-
-━━━━━━━━━━━━━━
-
-✨ Scene:
-${draft.captions?.scene || ""}
-
-━━━━━━━━━━━━━━
-
-Source: ${draft.source || "Unknown"}
-${draft.url ? `\nLink: ${draft.url}` : ""}
-`;
+Source: ${source}
+${url ? `\nLink: ${url}` : ""}
+`.trim();
 }
 
 function buildShortCaption(draft) {
+  const title = clean(draft.title);
+  const scene = clean(draft.captions?.scene);
+  const source = clean(draft.source) || "Unknown";
+
   return `
 🎬 Scene News Draft
 
-📰 ${draft.title}
+📰 ${title}
 
-✨ Scene:
-${draft.captions?.scene || ""}
+✨ نسخة Scene:
+${scene}
 
-Source: ${draft.source || "Unknown"}
-`;
+Source: ${source}
+`.trim();
 }
 
 async function sendTextMessage(message) {
@@ -55,10 +84,21 @@ async function sendTextMessage(message) {
   );
 }
 
+async function sendPhotoMessage(imageUrl, caption) {
+  return axios.post(
+    `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
+    {
+      chat_id: TELEGRAM_CHAT_ID,
+      photo: imageUrl,
+      caption,
+    }
+  );
+}
+
 async function sendTelegramDraft(draft) {
   try {
     if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-      console.log("⚠️ Telegram env missing. Skipping Telegram send.");
+      debugLog("Telegram env missing. Skipping Telegram send.");
       return;
     }
 
@@ -67,35 +107,30 @@ async function sendTelegramDraft(draft) {
 
     if (draft.image) {
       try {
-        await axios.post(
-          `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
-          {
-            chat_id: TELEGRAM_CHAT_ID,
-            photo: draft.image,
-            caption: shortCaption,
-          }
-        );
-
+        await sendPhotoMessage(draft.image, shortCaption);
         await sendTextMessage(fullMessage);
 
-        console.log("📨 Telegram photo draft sent");
+        debugLog("Telegram photo draft sent");
         return;
       } catch (photoErr) {
-        console.error(
-          "⚠️ Telegram photo failed, falling back to text:",
+        warnLog(
+          "Telegram photo failed, falling back to text:",
           photoErr.response?.data || photoErr.message
         );
       }
     }
 
     await sendTextMessage(fullMessage);
-    console.log("📨 Telegram text draft sent");
+    debugLog("Telegram text draft sent");
   } catch (err) {
-    console.error("❌ Telegram error full:", JSON.stringify(err.response?.data || err.message, null, 2));
+    errorLog(
+      "Telegram error:",
+      err.response?.data || err.message
+    );
+
     throw err;
   }
 }
 
-
-
 module.exports = sendTelegramDraft;
+
