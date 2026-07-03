@@ -9,31 +9,111 @@ const protect = require("../middleware/authMiddleware");  // 🔔 REQUIRED 🔔
 const CustomPoster = require("../models/customPoster");  // Ensure this is imported!
 const Notification = require('../models/notification');  // 🔔 Add this line!
 const multer = require("multer");
-const upload = multer({ storage: multer.memoryStorage() }); // ✅ in-memory upload
 const axios = require("axios");
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const sendNotification = require("../utils/sendNotification");
 
-// ✅ Save recent GIF
-router.post("/gif/recent", async (req, res) => {
-  const { userId, gifUrl } = req.body;
+const upload = multer({
+  storage: multer.memoryStorage(),
 
-  try {
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ success: false, error: "User not found" });
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
 
-    // Add gif to top, remove duplicates
-    user.recentGifs = [gifUrl, ...user.recentGifs.filter((g) => g !== gifUrl)];
-
-    // Keep only last 20
-    if (user.recentGifs.length > 20) {
-      user.recentGifs = user.recentGifs.slice(0, 20);
+  fileFilter: (req, file, callback) => {
+    if (
+      file.mimetype &&
+      file.mimetype.startsWith("image/")
+    ) {
+      return callback(null, true);
     }
 
+    return callback(
+      new multer.MulterError(
+        "LIMIT_UNEXPECTED_FILE",
+        "avatar"
+      )
+    );
+  },
+});
+
+const {
+  uploadToCloudinary,
+} = require("../utils/cloudinary");
+
+function isValidObjectId(value) {
+  return mongoose.Types.ObjectId.isValid(value);
+}
+
+function isOwner(req, userId) {
+  return String(req.user?._id) === String(userId);
+}
+
+function requireOwner(req, res, userId) {
+  if (!isOwner(req, userId)) {
+    res.status(403).json({
+      error: "Not authorized to modify this account",
+    });
+
+    return false;
+  }
+
+  return true;
+}
+
+function escapeRegex(value = "") {
+  return String(value).replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&"
+  );
+}
+
+// ✅ Save recent GIF
+router.post("/gif/recent", protect, async (req, res) => {
+  try {
+    const gifUrl =
+      typeof req.body?.gifUrl === "string"
+        ? req.body.gifUrl.trim()
+        : "";
+
+    if (!gifUrl) {
+      return res.status(400).json({
+        success: false,
+        error: "GIF URL is required",
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    const current = Array.isArray(user.recentGifs)
+      ? user.recentGifs
+      : [];
+
+    user.recentGifs = [
+      gifUrl,
+      ...current.filter((item) => item !== gifUrl),
+    ].slice(0, 20);
+
     await user.save();
-    res.status(200).json({ success: true, recentGifs: user.recentGifs });
+
+    return res.status(200).json({
+      success: true,
+      recentGifs: user.recentGifs,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error("❌ Save recent GIF error:", err);
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to save recent GIF",
+    });
   }
 });
 
@@ -51,13 +131,19 @@ router.get("/:id/recent-gifs", async (req, res) => {
 
 // 🔍 Search users by username
 router.get('/search', async (req, res) => {
-  const query = req.query.query || "";
+  const query =
+  typeof req.query.query === "string"
+    ? req.query.query.trim().slice(0, 50)
+    : "";
 
   if (!query.trim()) return res.json([]);
 
   try {
     const users = await User.find({
-      username: { $regex: query, $options: "i" },
+      username: {
+        $regex: escapeRegex(query),
+        $options: "i",
+      },
     })
       .select("username avatar _id")
       .limit(20);
@@ -92,362 +178,1142 @@ router.get('/', async (req, res) => {
 
 
 
-// ✅ PLACE THIS ABOVE any `/:id` route
-router.get('/all', async (req, res) => {
+router.get("/all", async (req, res) => {
   try {
-    const users = await User.find({}, 'username email avatar createdAt');
-    res.json(users);
+    const users = await User.find({})
+      .select("username avatar createdAt")
+      .limit(500)
+      .lean();
+
+    return res.json(users);
   } catch (err) {
-    res.status(500).json({ message: 'Error fetching users', error: err.message });
+    console.error(
+      "❌ Error fetching users:",
+      err
+    );
+
+    return res.status(500).json({
+      message: "Error fetching users",
+    });
   }
 });
 
-// follow / unfollow
-router.post("/:userId/follow/:targetId", protect, async (req, res) => {
+
+router.post("/:userId/follow/:targetId",protect,async (req, res) => {
+    try {
+      const { userId, targetId } = req.params;
+
+      if (
+        !isValidObjectId(userId) ||
+        !isValidObjectId(targetId)
+      ) {
+        return res.status(400).json({
+          error: "Invalid user ID",
+        });
+      }
+
+      if (!requireOwner(req, res, userId)) {
+        return;
+      }
+
+      if (String(userId) === String(targetId)) {
+        return res.status(400).json({
+          error: "You cannot follow yourself",
+        });
+      }
+
+      const [user, targetUser] = await Promise.all([
+        User.findById(userId),
+        User.findById(targetId),
+      ]);
+
+      if (!user || !targetUser) {
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      const isFollowing = user.following.some(
+        (id) => String(id) === String(targetId)
+      );
+
+      if (
+        !isFollowing &&
+        targetUser.noNewFollowers
+      ) {
+        return res.status(403).json({
+          error: "This user is not accepting new followers",
+        });
+      }
+
+      if (isFollowing) {
+        await Promise.all([
+          User.updateOne(
+            { _id: userId },
+            {
+              $pull: {
+                following: targetId,
+              },
+            }
+          ),
+
+          User.updateOne(
+            { _id: targetId },
+            {
+              $pull: {
+                followers: userId,
+              },
+            }
+          ),
+        ]);
+
+        return res.status(200).json({
+          following: false,
+          message: "Unfollowed user",
+        });
+      }
+
+      await Promise.all([
+        User.updateOne(
+          { _id: userId },
+          {
+            $addToSet: {
+              following: targetId,
+            },
+          }
+        ),
+
+        User.updateOne(
+          { _id: targetId },
+          {
+            $addToSet: {
+              followers: userId,
+            },
+          }
+        ),
+      ]);
+
+      try {
+        await sendNotification({
+          type: "follow",
+          fromUserId: userId,
+          toUserId: targetId,
+        });
+      } catch (notificationError) {
+        console.error(
+          "❌ Follow notification failed:",
+          notificationError
+        );
+      }
+
+      return res.status(200).json({
+        following: true,
+        message: "Now following user",
+      });
+    } catch (err) {
+      console.error(
+        "❌ Failed to toggle follow:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Failed to toggle follow",
+      });
+    }
+  }
+);
+
+// Save a custom poster for the authenticated user.
+router.post("/:id/custom-poster",protect,async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({
+          message: "Invalid user ID",
+        });
+      }
+
+      if (!requireOwner(req, res, id)) {
+        return;
+      }
+
+      const movieId =
+        req.body?.movieId !== undefined &&
+        req.body?.movieId !== null
+          ? String(req.body.movieId).trim()
+          : "";
+
+      const newPoster =
+        typeof req.body?.newPoster === "string"
+          ? req.body.newPoster.trim()
+          : "";
+
+      if (!movieId || !newPoster) {
+        return res.status(400).json({
+          message:
+            "movieId and newPoster are required",
+        });
+      }
+
+      const user = await User.findById(id);
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      if (!user.customPosters) {
+        user.customPosters = new Map();
+      }
+
+      user.customPosters.set(
+        movieId,
+        newPoster
+      );
+
+      await user.save();
+
+      return res.status(200).json({
+        message:
+          "Poster updated successfully",
+      });
+    } catch (err) {
+      console.error(
+        "❌ Custom poster update failed:",
+        err
+      );
+
+      return res.status(500).json({
+        message: "Something went wrong",
+      });
+    }
+  }
+);
+
+
+// Update the authenticated user's profile backdrop.
+router.put("/:id/backdrop",protect,async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({
+          message: "Invalid user ID",
+        });
+      }
+
+      if (!requireOwner(req, res, id)) {
+        return;
+      }
+
+      const backdropPath =
+        typeof req.body?.backdropPath ===
+        "string"
+          ? req.body.backdropPath.trim()
+          : "";
+
+      const user = await User.findById(id);
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      // Empty string intentionally clears the backdrop.
+      user.profileBackdrop = backdropPath;
+
+      await user.save();
+
+      return res.status(200).json({
+        message:
+          "Backdrop updated successfully",
+        backdrop: user.profileBackdrop,
+      });
+    } catch (err) {
+      console.error(
+        "❌ Backdrop update failed:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Error updating backdrop",
+      });
+    }
+  }
+);
+
+
+// Public backdrop lookup.
+router.get("/:id/backdrop", async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId);
-    const targetUser = await User.findById(req.params.targetId);
-
-    if (!user || !targetUser) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const isFollowing = user.following.includes(req.params.targetId);
-
-    // 🚫 Prevent new follows if blocked
-    if (!isFollowing && targetUser.noNewFollowers) {
-      console.log("🚨 Blocked follow attempt on", targetUser.username);
-      return res.status(403).json({ error: "🚫" });
-    }
-
-    if (isFollowing) {
-      // ✅ Unfollow
-      user.following.pull(req.params.targetId);
-      targetUser.followers.pull(req.params.userId);
-    } else {
-      // ✅ Follow
-      user.following.push(req.params.targetId);
-      targetUser.followers.push(req.params.userId);
-
-      // 🔥 Send notification via utility
-      await sendNotification({
-        type: "follow",
-        fromUserId: user._id,
-        toUserId: targetUser._id,
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        message: "Invalid user ID",
       });
     }
 
-    // 🔥 Clean corrupted watchlist entries
-    user.watchlist = (user.watchlist || []).filter(
-      (item) => item && typeof item === "object" && typeof item.tmdbId === "number"
-    );
-    targetUser.watchlist = (targetUser.watchlist || []).filter(
-      (item) => item && typeof item === "object" && typeof item.tmdbId === "number"
-    );
-
-    await user.save();
-    await targetUser.save();
-
-    res.status(200).json({
-      following: !isFollowing,
-      message: isFollowing ? "Unfollowed user" : "Now following user",
-    });
-  } catch (err) {
-    console.error("❌ Failed to toggle follow:", err);
-    res.status(500).json({ error: "Failed to toggle follow", details: err.message });
-  }
-});
-
-
-
-
-
-
-  router.post('/:id/custom-poster', async (req, res) => {
-    const { movieId, newPoster } = req.body;
-  
-    try {
-      const user = await User.findById(req.params.id);
-      if (!user) return res.status(404).json({ message: 'User not found' });
-  
-      // 🔔 Add this to ensure movieId stored as string key:
-      user.customPosters.set(String(movieId), newPoster);
-  
-      await user.save();
-  
-      res.status(200).json({ message: 'Poster updated successfully' });
-    } catch (err) {
-      res.status(500).json({ message: 'Something went wrong', error: err.message });
-    }
-  });
-  
-
-  router.put('/:id/backdrop', async (req, res) => {
-    const { backdropPath } = req.body;
-  
-    try {
-      const user = await User.findById(req.params.id);
-      if (!user) return res.status(404).json({ message: 'User not found' });
-  
-      user.profileBackdrop = backdropPath;
-      await user.save();
-  
-      res.status(200).json({ message: 'Backdrop updated successfully' });
-    } catch (err) {
-      res.status(500).json({ message: 'Error updating backdrop', error: err.message });
-    }
-  });
-
-  router.get('/:id/backdrop', async (req, res) => {
-    try {
-      const user = await User.findById(req.params.id);
-      if (!user) return res.status(404).json({ message: 'User not found' });
-  
-      res.status(200).json({ backdrop: user.profileBackdrop });
-    } catch (err) {
-      res.status(500).json({ message: 'Error fetching backdrop', error: err.message });
-    }
-  });
- 
-
-  router.put('/:id/top-movies', async (req, res) => {
-    const { topMovies } = req.body;
-
-  
-    if (!Array.isArray(topMovies) || topMovies.length > 4) {
-      return res.status(400).json({ message: 'Top movies must be an array with max 5 items.' });
-    }
-  
-    try {
-      const user = await User.findById(req.params.id);
-      if (!user) return res.status(404).json({ message: 'User not found' });
-  
-      user.topMovies = topMovies;
-      await user.save();
-  
-      res.status(200).json({ message: 'Top movies updated successfully' });
-    } catch (err) {
-      res.status(500).json({ message: 'Error updating top movies', error: err.message });
-    }
-  });
-
-  router.get('/:id/top-movies', async (req, res) => {
-    try {
-      const user = await User.findById(req.params.id);
-      if (!user) return res.status(404).json({ message: 'User not found' });
-  
-      res.status(200).json({ topMovies: user.topMovies });
-    } catch (err) {
-      res.status(500).json({ message: 'Error fetching top movies', error: err.message });
-    }
-  });
-
-  
-  router.get('/username/:username', async (req, res) => {
-    try {
-      const user = await User.findOne({ username: req.params.username });
-      if (!user) return res.status(404).json({ message: 'User not found' });
-  
-      // Return only public info
-      const publicProfile = {
-        username: user.username,
-        bio: user.bio,
-        favoriteCharacter: user.favoriteCharacter,
-        favoriteActor: user.favoriteActor,
-        topMovies: user.topMovies,
-        profileBackdrop: user.profileBackdrop,
-        // You can expand this with recent logs, etc. later
-      };
-  
-      res.status(200).json(publicProfile);
-    } catch (err) {
-      res.status(500).json({ message: 'Error fetching user by username', error: err.message });
-    }
-  });
-
-// ADD favorite (numeric TMDB id)
-router.post('/:userId/favorites/:tmdbId', protect, async (req, res) => {
-  try {
-    const { userId, tmdbId } = req.params;
-    const idNum = Number(tmdbId);
-    if (!/^[0-9a-fA-F]{24}$/.test(userId)) return res.status(400).json({ error: 'Invalid userId' });
-    if (!Number.isInteger(idNum)) return res.status(400).json({ error: 'tmdbId (number) required' });
-
-    await User.updateOne(
-      { _id: userId },
-      { $addToSet: { favorites: idNum } },
-      { runValidators: false } // <- critical
-    );
-
-    const fresh = await User.findById(userId).select('favorites').lean();
-    return res.status(200).json({ message: 'Added to favorites', favorites: fresh?.favorites || [] });
-  } catch (err) {
-    console.error('favorites POST error:', err);
-    return res.status(500).json({ error: err?.message || 'Server error' });
-  }
-});
-
-// REMOVE favorite
-router.delete('/:userId/favorites/:tmdbId', protect, async (req, res) => {
-  try {
-    const { userId, tmdbId } = req.params;
-    const idNum = Number(tmdbId);
-    if (!/^[0-9a-fA-F]{24}$/.test(userId)) return res.status(400).json({ error: 'Invalid userId' });
-    if (!Number.isInteger(idNum)) return res.status(400).json({ error: 'tmdbId (number) required' });
-
-    await User.updateOne(
-      { _id: userId },
-      { $pull: { favorites: idNum } },
-      { runValidators: false } // <- critical
-    );
-
-    const fresh = await User.findById(userId).select('favorites').lean();
-    return res.json({ message: 'Removed from favorites', favorites: fresh?.favorites || [] });
-  } catch (err) {
-    console.error('favorites DELETE error:', err);
-    return res.status(500).json({ error: err?.message || 'Server error' });
-  }
-});
-
-// GET /api/users/:id  (profile payload)
-router.get('/:id', async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id).select('-password').lean();
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    const customPostersDocs = await CustomPoster.find({ userId: req.params.id });
-    const customPosters = {};
-    for (const doc of customPostersDocs) customPosters[doc.movieId] = doc.posterUrl;
-
-    const uniqueFilms = await Log.distinct('movie', { user: req.params.id });
-    const totalLogs = uniqueFilms.length;
-    const followerCount = await User.countDocuments({ following: req.params.id });
-    const recentLogs = await Log.find({ user: req.params.id })
-      .sort({ createdAt: -1 })
-      .limit(4)
-      .select('movie title poster rating rewatch createdAt review')
+    const user = await User.findById(
+      req.params.id
+    )
+      .select("profileBackdrop")
       .lean();
 
-    // ✅ Keep Top-4 as objects
-    const favoriteFilms = Array.isArray(user.favoriteFilms) ? user.favoriteFilms : [];
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
 
-    // ✅ Hearts/likes list as numbers (if you have this field)
-    const favorites = (user.favorites || [])
-      .map((n) => Number(n))
-      .filter(Number.isFinite);
+    return res.status(200).json({
+      backdrop: user.profileBackdrop || "",
+    });
+  } catch (err) {
+    console.error(
+      "❌ Backdrop fetch failed:",
+      err
+    );
 
-    res.json({
-      ...user,
-      favoriteFilms,           // used by ProfileTabProfile top-4 grid
-      favorites,               // used by heart/like UI across the app
-      customPosters,
-      totalLogs,
+    return res.status(500).json({
+      message: "Error fetching backdrop",
+    });
+  }
+});
+
+
+// Update the authenticated user's top movies.
+router.put("/:id/top-movies",protect,async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({
+          message: "Invalid user ID",
+        });
+      }
+
+      if (!requireOwner(req, res, id)) {
+        return;
+      }
+
+      const { topMovies } = req.body || {};
+
+      if (
+        !Array.isArray(topMovies) ||
+        topMovies.length > 4
+      ) {
+        return res.status(400).json({
+          message:
+            "Top movies must be an array with a maximum of 4 items.",
+        });
+      }
+
+      const normalizedTopMovies =
+        topMovies
+          .filter(
+            (movie) =>
+              typeof movie === "string"
+          )
+          .map((movie) => movie.trim())
+          .filter(Boolean)
+          .slice(0, 4);
+
+      const user =
+        await User.findByIdAndUpdate(
+          id,
+          {
+            $set: {
+              topMovies:
+                normalizedTopMovies,
+            },
+          },
+          {
+            new: true,
+            runValidators: true,
+          }
+        ).select("topMovies");
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        message:
+          "Top movies updated successfully",
+        topMovies: user.topMovies,
+      });
+    } catch (err) {
+      console.error(
+        "❌ Top movies update failed:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Error updating top movies",
+      });
+    }
+  }
+);
+
+
+// Public top-movies lookup.
+router.get("/:id/top-movies",async (req, res) => {
+    try {
+      if (
+        !isValidObjectId(req.params.id)
+      ) {
+        return res.status(400).json({
+          message: "Invalid user ID",
+        });
+      }
+
+      const user = await User.findById(
+        req.params.id
+      )
+        .select("topMovies")
+        .lean();
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        topMovies: user.topMovies || [],
+      });
+    } catch (err) {
+      console.error(
+        "❌ Top movies fetch failed:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Error fetching top movies",
+      });
+    }
+  }
+);
+
+
+// Add a favorite movie for the authenticated user.
+router.post("/:userId/favorites/:tmdbId",protect,async (req, res) => {
+    try {
+      const { userId, tmdbId } =
+        req.params;
+
+      if (!isValidObjectId(userId)) {
+        return res.status(400).json({
+          error: "Invalid userId",
+        });
+      }
+
+      if (
+        !requireOwner(
+          req,
+          res,
+          userId
+        )
+      ) {
+        return;
+      }
+
+      const idNum = Number(tmdbId);
+
+      if (
+        !Number.isInteger(idNum) ||
+        idNum <= 0
+      ) {
+        return res.status(400).json({
+          error:
+            "tmdbId must be a positive integer",
+        });
+      }
+
+      const user =
+        await User.findByIdAndUpdate(
+          userId,
+          {
+            $addToSet: {
+              favorites: idNum,
+            },
+          },
+          {
+            new: true,
+            runValidators: false,
+          }
+        )
+          .select("favorites")
+          .lean();
+
+      if (!user) {
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        message: "Added to favorites",
+        favorites:
+          user.favorites || [],
+      });
+    } catch (err) {
+      console.error(
+        "❌ Favorites POST error:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Server error",
+      });
+    }
+  }
+);
+
+
+// Remove a favorite movie for the authenticated user.
+router.delete("/:userId/favorites/:tmdbId",protect,async (req, res) => {
+    try {
+      const { userId, tmdbId } =
+        req.params;
+
+      if (!isValidObjectId(userId)) {
+        return res.status(400).json({
+          error: "Invalid userId",
+        });
+      }
+
+      if (
+        !requireOwner(
+          req,
+          res,
+          userId
+        )
+      ) {
+        return;
+      }
+
+      const idNum = Number(tmdbId);
+
+      if (
+        !Number.isInteger(idNum) ||
+        idNum <= 0
+      ) {
+        return res.status(400).json({
+          error:
+            "tmdbId must be a positive integer",
+        });
+      }
+
+      const user =
+        await User.findByIdAndUpdate(
+          userId,
+          {
+            $pull: {
+              favorites: idNum,
+            },
+          },
+          {
+            new: true,
+            runValidators: false,
+          }
+        )
+          .select("favorites")
+          .lean();
+
+      if (!user) {
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        message:
+          "Removed from favorites",
+        favorites:
+          user.favorites || [],
+      });
+    } catch (err) {
+      console.error(
+        "❌ Favorites DELETE error:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Server error",
+      });
+    }
+  }
+);
+  
+router.get("/username/:username",async (req, res) => {
+    try {
+      const username =
+        typeof req.params.username ===
+        "string"
+          ? req.params.username
+              .trim()
+              .slice(0, 50)
+          : "";
+
+      if (!username) {
+        return res.status(400).json({
+          message:
+            "Username is required",
+        });
+      }
+
+      const user = await User.findOne({
+        username: {
+          $regex: `^${escapeRegex(
+            username
+          )}$`,
+          $options: "i",
+        },
+      })
+        .select(
+          [
+            "username",
+            "avatar",
+            "bio",
+            "favoriteCharacter",
+            "favoriteActor",
+            "topMovies",
+            "favoriteFilms",
+            "profileBackdrop",
+            "socials",
+          ].join(" ")
+        )
+        .lean();
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      return res.status(200).json(
+        user
+      );
+    } catch (err) {
+      console.error(
+        "❌ Username lookup failed:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Error fetching user by username",
+      });
+    }
+  }
+);
+
+
+router.get("/mutuals", protect, async (req, res) => {
+  try {
+    const currentUser = await User.findById(
+      req.user._id
+    )
+      .select("following")
+      .lean();
+
+    if (!currentUser) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const mutuals = await User.find({
+      _id: {
+        $in: currentUser.following || [],
+      },
+      following: req.user._id,
+    })
+      .select("username avatar")
+      .lean();
+
+    return res.status(200).json(mutuals);
+  } catch (err) {
+    console.error(
+      "❌ Failed to fetch mutual followers:",
+      err
+    );
+
+    return res.status(500).json({
+      message: "Server error",
+    });
+  }
+});
+
+
+// GET /api/users/:id — public profile payload
+router.get("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        message: "Invalid user ID",
+      });
+    }
+
+    /*
+     * Never expose private authentication or notification data
+     * through a public profile endpoint.
+     */
+    const user = await User.findById(id)
+      .select(
+        [
+          "-password",
+          "-email",
+          "-googleId",
+          "-resetCode",
+          "-resetCodeExpires",
+          "-verificationCode",
+          "-verificationCodeExpires",
+          "-deviceTokens",
+          "-pushSettings",
+        ].join(" ")
+      )
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const [
+      customPosterDocs,
+      uniqueFilms,
       followerCount,
-      followingCount: user.following?.length || 0,
+      recentLogs,
+    ] = await Promise.all([
+      CustomPoster.find({
+        userId: id,
+      }).lean(),
+
+      Log.distinct("movie", {
+        user: id,
+      }),
+
+      User.countDocuments({
+        following: id,
+      }),
+
+      Log.find({
+        user: id,
+      })
+        .sort({
+          createdAt: -1,
+        })
+        .limit(4)
+        .select(
+          "movie title poster rating rewatch createdAt review"
+        )
+        .lean(),
+    ]);
+
+    const customPosters = {};
+
+    for (const document of customPosterDocs) {
+      customPosters[String(document.movieId)] =
+        document.posterUrl;
+    }
+
+    const favoriteFilms = Array.isArray(
+      user.favoriteFilms
+    )
+      ? user.favoriteFilms
+      : [];
+
+    const favorites = Array.isArray(
+      user.favorites
+    )
+      ? user.favorites
+          .map(Number)
+          .filter(Number.isFinite)
+      : [];
+
+    return res.status(200).json({
+      ...user,
+
+      favoriteFilms,
+
+      /*
+       * Temporary compatibility alias.
+       * Some existing frontend code may still read favoriteMovies.
+       */
+      favoriteMovies: favoriteFilms,
+
+      favorites,
+      customPosters,
+      totalLogs: uniqueFilms.length,
+      followerCount,
+      followingCount: Array.isArray(
+        user.following
+      )
+        ? user.following.length
+        : 0,
       recentLogs,
     });
   } catch (err) {
-    console.error('❌ Failed to get user profile:', err);
-    res.status(500).json({ message: 'Failed to fetch user', error: err.message });
+    console.error(
+      "❌ Failed to get user profile:",
+      err
+    );
+
+    return res.status(500).json({
+      message: "Failed to fetch user",
+    });
   }
 });
 
 // PATCH /api/users/:id — update user profile (safe merge)
-router.patch("/:id", protect, upload.single("avatar"), async (req, res) => {
-  try {
-    const TMDB_API_KEY = process.env.TMDB_API_KEY;
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ message: "User not found" });
+// PATCH /api/users/:id — update authenticated user's profile
+router.patch("/:id",protect,upload.single("avatar"),async (req, res) => {
+    try {
+      const { id } = req.params;
 
-    const patch = {};
-
-    // avatar (optional)
-    if (req.file) {
-      const cloudUrl = await uploadToCloudinary(
-        req.file.buffer,
-        "scene/avatars"
-      );
-      patch.avatar = cloudUrl;
-    }
-
-    if ("name" in req.body) patch.name = req.body.name?.trim() || user.name;
-    if ("bio" in req.body) patch.bio = req.body.bio ?? user.bio;
-
-    // ✅ use profileBackdrop consistently
-    if ("profileBackdrop" in req.body) {
-      patch.profileBackdrop = req.body.profileBackdrop ?? user.profileBackdrop;
-    }
-
-    // ✅ favorite films: normalize + enrich with TMDB poster_path
-    if ("favoriteFilms" in req.body) {
-      const fav = Array.isArray(req.body.favoriteFilms)
-        ? req.body.favoriteFilms
-        : safeJson(req.body.favoriteFilms, []);
-
-      const enriched = await Promise.all(
-        fav.map(async (m) => {
-          const tmdbId = Number(m?.tmdbId || m?.id || m);
-          if (!tmdbId || Number.isNaN(tmdbId)) return null;
-
-          if (m?.poster_path || m?.poster) {
-            return {
-              tmdbId,
-              title: m.title || m?.original_title || "",
-              poster_path: m.poster_path || m.poster,
-            };
-          }
-
-          try {
-            const { data } = await axios.get(
-              `https://api.themoviedb.org/3/movie/${tmdbId}`,
-              { params: { api_key: TMDB_API_KEY, language: "en-US" } }
-            );
-
-            return {
-              tmdbId,
-              title: m.title || data.title,
-              poster_path: data.poster_path,
-            };
-          } catch (err) {
-            console.warn("⚠️ TMDB fetch failed for", tmdbId, err.message);
-            return { tmdbId, title: m.title || "Unknown", poster_path: null };
-          }
-        })
-      );
-
-      const seen = new Set();
-      patch.favoriteFilms = enriched
-        .filter(Boolean)
-        .filter((f) => {
-          if (seen.has(f.tmdbId)) return false;
-          seen.add(f.tmdbId);
-          return true;
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({
+          error: "Invalid user ID",
         });
+      }
+
+      if (!requireOwner(req, res, id)) {
+        return;
+      }
+
+      const user = await User.findById(id);
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      const patch = {};
+
+      /*
+       * This route previously called uploadToCloudinary without
+       * importing or defining it.
+       */
+      if (req.file) {
+        if (
+          typeof uploadToCloudinary !==
+          "function"
+        ) {
+          return res.status(500).json({
+            error:
+              "Avatar upload service is not configured",
+          });
+        }
+
+        patch.avatar =
+          await uploadToCloudinary(
+            req.file.buffer,
+            "scene/avatars"
+          );
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          req.body,
+          "name"
+        )
+      ) {
+        patch.name =
+          typeof req.body.name === "string"
+            ? req.body.name.trim().slice(0, 100)
+            : "";
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          req.body,
+          "bio"
+        )
+      ) {
+        patch.bio =
+          typeof req.body.bio === "string"
+            ? req.body.bio.trim().slice(0, 1000)
+            : "";
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          req.body,
+          "profileBackdrop"
+        )
+      ) {
+        patch.profileBackdrop =
+          typeof req.body.profileBackdrop ===
+          "string"
+            ? req.body.profileBackdrop.trim()
+            : "";
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          req.body,
+          "favoriteFilms"
+        )
+      ) {
+        const incomingFavorites =
+          Array.isArray(
+            req.body.favoriteFilms
+          )
+            ? req.body.favoriteFilms
+            : safeJson(
+                req.body.favoriteFilms,
+                []
+              );
+
+        if (
+          !Array.isArray(
+            incomingFavorites
+          )
+        ) {
+          return res.status(400).json({
+            error:
+              "favoriteFilms must be an array",
+          });
+        }
+
+        if (
+          incomingFavorites.length > 4
+        ) {
+          return res.status(400).json({
+            error:
+              "A maximum of four favorite films is allowed",
+          });
+        }
+
+        const enrichedFavorites =
+          await Promise.all(
+            incomingFavorites.map(
+              async (movie) => {
+                const tmdbId = Number(
+                  movie?.tmdbId ||
+                    movie?.id ||
+                    movie
+                );
+
+                if (
+                  !Number.isInteger(
+                    tmdbId
+                  ) ||
+                  tmdbId <= 0
+                ) {
+                  return null;
+                }
+
+                const suppliedPoster =
+                  movie?.poster_path ||
+                  movie?.poster ||
+                  "";
+
+                if (suppliedPoster) {
+                  return {
+                    tmdbId,
+                    title:
+                      movie?.title ||
+                      movie?.original_title ||
+                      "",
+                    poster_path:
+                      suppliedPoster,
+                  };
+                }
+
+                try {
+                  const { data } =
+                    await axios.get(
+                      `https://api.themoviedb.org/3/movie/${tmdbId}`,
+                      {
+                        params: {
+                          api_key:
+                            TMDB_API_KEY,
+                          language:
+                            "en-US",
+                        },
+                        timeout: 8000,
+                      }
+                    );
+
+                  return {
+                    tmdbId,
+                    title:
+                      movie?.title ||
+                      data?.title ||
+                      "",
+                    poster_path:
+                      data?.poster_path ||
+                      "",
+                  };
+                } catch (error) {
+                  console.warn(
+                    "⚠️ TMDB favorite-film fetch failed:",
+                    tmdbId,
+                    error.message
+                  );
+
+                  return {
+                    tmdbId,
+                    title:
+                      movie?.title ||
+                      "",
+                    poster_path: "",
+                  };
+                }
+              }
+            )
+          );
+
+        const seenMovieIds =
+          new Set();
+
+        patch.favoriteFilms =
+          enrichedFavorites
+            .filter(Boolean)
+            .filter((movie) => {
+              if (
+                seenMovieIds.has(
+                  movie.tmdbId
+                )
+              ) {
+                return false;
+              }
+
+              seenMovieIds.add(
+                movie.tmdbId
+              );
+
+              return true;
+            })
+            .slice(0, 4);
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          req.body,
+          "socials"
+        )
+      ) {
+        const incomingSocials =
+          typeof req.body.socials ===
+          "string"
+            ? safeJson(
+                req.body.socials,
+                null
+              )
+            : req.body.socials;
+
+        if (
+          !incomingSocials ||
+          typeof incomingSocials !==
+            "object" ||
+          Array.isArray(
+            incomingSocials
+          )
+        ) {
+          return res.status(400).json({
+            error:
+              "socials must be an object",
+          });
+        }
+
+        const allowedSocialFields =
+          new Set([
+            "X",
+            "youtube",
+            "instagram",
+            "tiktok",
+            "imdb",
+            "tmdb",
+            "website",
+          ]);
+
+        const sanitizedSocials = {};
+
+        for (const [
+          key,
+          value,
+        ] of Object.entries(
+          incomingSocials
+        )) {
+          if (
+            !allowedSocialFields.has(
+              key
+            )
+          ) {
+            continue;
+          }
+
+          sanitizedSocials[key] =
+            typeof value === "string"
+              ? value
+                  .trim()
+                  .slice(0, 500)
+              : "";
+        }
+
+        patch.socials = {
+          ...(user.socials?.toObject?.() ||
+            user.socials ||
+            {}),
+          ...sanitizedSocials,
+        };
+      }
+
+      Object.assign(user, patch);
+
+      await user.save();
+
+      return res.status(200).json({
+        message: "Profile updated",
+        user: {
+          _id: user._id,
+          name: user.name,
+          username: user.username,
+          bio: user.bio,
+          avatar: user.avatar,
+          profileBackdrop:
+            user.profileBackdrop,
+          favoriteFilms:
+            user.favoriteFilms,
+          socials: user.socials,
+        },
+      });
+    } catch (err) {
+      console.error(
+        "❌ Profile update failed:",
+        err
+      );
+
+      if (
+        err?.name ===
+        "MulterError"
+      ) {
+        return res.status(400).json({
+          error: "Invalid avatar upload",
+        });
+      }
+
+      return res.status(500).json({
+        error: "Server error",
+      });
     }
-
-    // ✅ merge socials (your schema)
-    if ("socials" in req.body) {
-      const incoming =
-        typeof req.body.socials === "string"
-          ? safeJson(req.body.socials, {})
-          : req.body.socials || {};
-      patch.socials = { ...(user.socials || {}), ...(incoming || {}) };
-    }
-
-    Object.assign(user, patch);
-    await user.save();
-
-    return res.json({ message: "✅ Profile updated", user });
-  } catch (err) {
-    console.error("❌ Update failed:", err);
-    return res.status(500).json({ error: "Server error" });
   }
-});
-
-
-
-
-
+);
 
 function safeJson(str, fallback) {
   try {
@@ -457,116 +1323,286 @@ function safeJson(str, fallback) {
   }
 }
 
-
-
-router.get('/:id', async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id)
-      .select('-password')
-      .lean();
-
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    // ✅ Get custom posters from separate collection
-    const customPostersDocs = await CustomPoster.find({ userId: req.params.id });
-    const customPosters = {};
-    customPostersDocs.forEach((doc) => {
-      customPosters[doc.movieId] = doc.posterUrl;
-    });
-
-    // ✅ Get total logs (unique movies)
-    const uniqueFilms = await Log.distinct('movie', { user: req.params.id });
-    const totalLogs = uniqueFilms.length;
-
-    // ✅ Get follower count
-    const followerCount = await User.countDocuments({ following: req.params.id });
-
-    // ✅ Get last 4 logs
-    const recentLogs = await Log.find({ user: req.params.id })
-      .sort({ createdAt: -1 })
-      .limit(4)
-      .select('movie title poster rating rewatch createdAt review')
-      .lean();
-
-    res.json({
-      ...user,
-      favoriteMovies: user.favoriteFilms || [], // ✅ Pulls from the correct field
-      customPosters, // ✅ FROM database, not User model
-      totalLogs,
-      followerCount,
-      followingCount: user.following?.length || 0,
-      recentLogs,
-    });
-  } catch (err) {
-    console.error("❌ Failed to get user profile:", err);
-    res.status(500).json({ message: 'Failed to fetch user', error: err.message });
-  }
-});
-
-
-
 // routes/userRoutes.js
+router.get("/:id/followers",async (req, res) => {
+    try {
+      const { id } = req.params;
 
-router.get("/:id/followers", async (req, res) => {
-  try {
-    const followers = await User.find({ following: req.params.id }).select("username avatar");
-    const user = await User.findById(req.params.id).select("username");
-    res.json({ user, followers });
-  } catch (err) {
-    res.status(500).json({ message: "❌ Failed to fetch followers", error: err });
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({
+          message: "Invalid user ID",
+        });
+      }
+
+      const [user, followers] =
+        await Promise.all([
+          User.findById(id)
+            .select("username")
+            .lean(),
+
+          User.find({
+            following: id,
+          })
+            .select(
+              "username avatar"
+            )
+            .lean(),
+        ]);
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        user,
+        followers,
+      });
+    } catch (err) {
+      console.error(
+        "❌ Failed to fetch followers:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to fetch followers",
+      });
+    }
   }
-});
+);
 
 
+router.get("/:id/following",async (req, res) => {
+    try {
+      const { id } = req.params;
 
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({
+          message: "Invalid user ID",
+        });
+      }
 
-// Get users that a user is following
-router.get("/:id/following", async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id).populate("following", "username avatar");
-    res.json({ user: { username: user.username }, following: user.following });
-  } catch (err) {
-    res.status(500).json({ message: "❌ Failed to fetch following", error: err });
+      const user = await User.findById(
+        id
+      )
+        .select("username following")
+        .populate(
+          "following",
+          "username avatar"
+        )
+        .lean();
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        user: {
+          username: user.username,
+        },
+        following:
+          user.following || [],
+      });
+    } catch (err) {
+      console.error(
+        "❌ Failed to fetch following:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to fetch following",
+      });
+    }
   }
-});
+);
+
+
+router.patch("/:id/language",protect,async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({
+          error: "Invalid user ID",
+        });
+      }
+
+      if (!requireOwner(req, res, id)) {
+        return;
+      }
+
+      const language =
+        typeof req.body?.language ===
+        "string"
+          ? req.body.language
+              .trim()
+              .toLowerCase()
+          : "";
+
+      if (
+        !["en", "ar"].includes(
+          language
+        )
+      ) {
+        return res.status(400).json({
+          error: "Invalid language",
+        });
+      }
+
+      const user =
+        await User.findByIdAndUpdate(
+          id,
+          {
+            $set: {
+              language,
+            },
+          },
+          {
+            new: true,
+            runValidators: true,
+          }
+        )
+          .select(
+            "_id username language"
+          )
+          .lean();
+
+      if (!user) {
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        message: "Language updated",
+        user,
+      });
+    } catch (err) {
+      console.error(
+        "❌ Update language error:",
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to update language",
+      });
+    }
+  }
+);
+
 
 // POST /api/users/:id/notify/share
-router.post('/:id/notify/share', async (req, res) => {
-  try {
-    const { fromUserId, movieId } = req.body;
+// Send a movie suggestion notification.
+router.post("/:id/notify/share",protect,async (req, res) => {
+    try {
+      const recipientId = req.params.id;
+      const senderId = req.user._id;
 
-    const recipient = await User.findById(req.params.id);
-    if (!recipient) return res.status(404).json({ message: "Recipient not found" });
+      if (!isValidObjectId(recipientId)) {
+        return res.status(400).json({
+          message: "Invalid recipient ID",
+        });
+      }
 
-    const fromUser = await User.findById(fromUserId);
-    if (!fromUser) return res.status(404).json({ message: "Sender not found" });
+      const movieId = Number(
+        req.body?.movieId
+      );
 
-    const notif = await Notification.create({
-      type: "suggest_movie", // ✅ match frontend
-      message: "suggested you check out this film!", // ✅ polished
-      from: fromUserId,
-      to: recipient._id,
-      movieId,
-      read: false,
-      createdAt: new Date(),
-    });
+      if (
+        !Number.isInteger(movieId) ||
+        movieId <= 0
+      ) {
+        return res.status(400).json({
+          message:
+            "A valid movieId is required",
+        });
+      }
 
-    // ✅ Real-time emit
-    const io = req.app.get("io");
-    io.to(recipient._id.toString()).emit("notification", {
-      ...notif._doc,
-      from: {
-        _id: fromUser._id,
-        username: fromUser.username,
-        avatar: fromUser.avatar,
-      },
-    });
+      if (
+        String(recipientId) ===
+        String(senderId)
+      ) {
+        return res.status(400).json({
+          message:
+            "You cannot suggest a movie to yourself",
+        });
+      }
 
-    res.json({ message: "✅ Notification sent" });
-  } catch (err) {
-    res.status(500).json({ message: "❌ Failed to send notification", error: err.message });
+      const [recipient, fromUser] =
+        await Promise.all([
+          User.findById(recipientId)
+            .select(
+              "username deviceTokens pushSettings"
+            ),
+
+          User.findById(senderId)
+            .select(
+              "username avatar"
+            ),
+        ]);
+
+      if (!recipient) {
+        return res.status(404).json({
+          message: "Recipient not found",
+        });
+      }
+
+      if (!fromUser) {
+        return res.status(404).json({
+          message: "Sender not found",
+        });
+      }
+
+      const notification =
+        await Notification.create({
+          type: "suggest_movie",
+          message:
+            "suggested you check out this film!",
+          from: senderId,
+          to: recipientId,
+          movieId,
+          read: false,
+        });
+
+      const io = req.app.get("io");
+
+      if (io) {
+        io.to(
+          String(recipientId)
+        ).emit("notification", {
+          ...notification.toObject(),
+
+          from: {
+            _id: fromUser._id,
+            username:
+              fromUser.username,
+            avatar: fromUser.avatar,
+          },
+        });
+      }
+
+      return res.status(200).json({
+        message: "Notification sent",
+      });
+    } catch (err) {
+      console.error(
+        "❌ Failed to send movie suggestion:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to send notification",
+      });
+    }
   }
-});
+);
 
 // ✅ Fast Watchlist (no TMDB calls)
 router.get("/:userId/watchlist", async (req, res) => {
@@ -704,103 +1740,91 @@ router.get("/:userId/watchlist", async (req, res) => {
   }
 });
 
-router.get('/mutuals', protect, async (req, res) => {
-  try {
-    const currentUser = await User.findById(req.user._id).lean();
-    if (!currentUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    const mutuals = await User.find({
-      _id: { $in: currentUser.following },  // I am following them
-      followers: req.user._id              // AND they follow me back
-    }).select('username avatar');
-
-    res.json(mutuals);
-  } catch (err) {
-    console.error("❌ Failed to fetch mutual followers", err);
-    res.status(500).json({ message: "Server error", error: err.message });
-  }
-});
 
 // routes/userRoutes.js
-router.post('/:id/remove-follower/:followerId', protect, async (req, res) => {
-  try {
-    await User.findByIdAndUpdate(req.params.id, {
-      $pull: { followers: req.params.followerId },
-    });
-    await User.findByIdAndUpdate(req.params.followerId, {
-      $pull: { following: req.params.id },
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.error("❌ Failed to remove follower", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+router.post("/:id/remove-follower/:followerId",protect,async (req, res) => {
+    try {
+      const { id, followerId } =
+        req.params;
 
-// PATCH /api/users/:id/language
-router.patch("/:id/language", protect, async (req, res) => {
-  try {
-    if (String(req.user._id) !== req.params.id) {
-      return res.status(403).json({ error: "Not authorized" });
+      if (
+        !isValidObjectId(id) ||
+        !isValidObjectId(followerId)
+      ) {
+        return res.status(400).json({
+          error: "Invalid user ID",
+        });
+      }
+
+      if (!requireOwner(req, res, id)) {
+        return;
+      }
+
+      if (
+        String(id) ===
+        String(followerId)
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid follower ID",
+        });
+      }
+
+      const [user, follower] =
+        await Promise.all([
+          User.findByIdAndUpdate(
+            id,
+            {
+              $pull: {
+                followers: followerId,
+              },
+            },
+            {
+              new: true,
+            }
+          ).select("followers"),
+
+          User.findByIdAndUpdate(
+            followerId,
+            {
+              $pull: {
+                following: id,
+              },
+            },
+            {
+              new: true,
+            }
+          ).select("_id"),
+        ]);
+
+      if (!user) {
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      if (!follower) {
+        return res.status(404).json({
+          error: "Follower not found",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+      });
+    } catch (err) {
+      console.error(
+        "❌ Failed to remove follower:",
+        err
+      );
+
+      return res.status(500).json({
+        message: "Server error",
+      });
     }
-
-    const { language } = req.body;
-    const validLangs = ["en", "ar"]; // add more later
-    if (!validLangs.includes(language)) {
-      return res.status(400).json({ error: "Invalid language" });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { language },
-      { new: true }
-    );
-
-    res.json({ message: "Language updated", user });
-  } catch (err) {
-    console.error("❌ Update language error:", err);
-    res.status(500).json({ error: "Failed to update language" });
   }
-});
+);
 
-// admin: force A to unfollow B
-router.post("/admin/force-unfollow", protect, async (req, res) => {
-  try {
-    const { aId, bId } = req.body;
-
-    await User.findByIdAndUpdate(aId, { $pull: { following: bId } });
-    await User.findByIdAndUpdate(bId, { $pull: { followers: aId } });
-
-    res.json({ message: "✅ Forced unfollow successful" });
-  } catch (err) {
-    console.error("❌ Force unfollow failed:", err);
-    res.status(500).json({ error: "Failed to force unfollow" });
-  }
-});
-
-// ✅ Admin toggle block/unblock following
-router.post("/admin/block-follow/:id", protect, async (req, res) => {
-  try {
-    const { block } = req.body; // send { block: true } or { block: false }
-
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    user.noNewFollowers = !!block; // 🚫 true = block, false = allow
-    await user.save();
-
-    res.json({
-      message: `User ${user.username} is now ${
-        user.noNewFollowers ? "blocked from new followers 🚫" : "open to followers ✅"
-      }`,
-    });
-  } catch (err) {
-    console.error("❌ Block follow failed:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
 
 
 module.exports = router;
