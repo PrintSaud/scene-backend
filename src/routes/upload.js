@@ -1,80 +1,175 @@
+// src/routes/upload.js
+
 const express = require("express");
-const router = express.Router();
 const multer = require("multer");
-const streamifier = require("streamifier");
-const cloudinary = require("cloudinary").v2;
+const mongoose = require("mongoose");
+
+const router = express.Router();
+
 const protect = require("../middleware/authMiddleware");
 const User = require("../models/user");
+const {
+  uploadToCloudinary,
+} = require("../utils/cloudinary");
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+const upload = multer({
+  storage: multer.memoryStorage(),
+
+  limits: {
+    fileSize: 8 * 1024 * 1024,
+  },
+
+  fileFilter: (req, file, callback) => {
+    if (
+      file.mimetype &&
+      file.mimetype.startsWith("image/")
+    ) {
+      return callback(null, true);
+    }
+
+    return callback(
+      new multer.MulterError(
+        "LIMIT_UNEXPECTED_FILE",
+        file.fieldname
+      )
+    );
+  },
 });
 
-// Use memory storage for multer (we don't save locally)
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
+function isValidObjectId(value) {
+  return mongoose.Types.ObjectId.isValid(value);
+}
 
-// ✅ List Cover Upload
-router.post("/list-cover", protect, upload.single("image"), async (req, res) => {
-  try {
-    const b64 = Buffer.from(req.file.buffer).toString("base64");
-    const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-    const uploadResult = await cloudinary.uploader.upload(dataURI, {
-      folder: "scene/list-covers",
+function handleUploadError(error, res) {
+  if (error instanceof multer.MulterError) {
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({
+        message:
+          "Image must be smaller than 8 MB",
+      });
+    }
+
+    return res.status(400).json({
+      message:
+        "Only valid image uploads are allowed",
     });
-    res.json({ url: uploadResult.secure_url });
-  } catch (err) {
-    res.status(500).json({ message: "Upload failed", error: err.message });
   }
-});
 
-// ✅ Avatar Upload
-router.post("/avatar/:id", protect, upload.single("avatar"), async (req, res) => {
-  console.log("🔥 Avatar upload route hit");
+  console.error("❌ Upload failed:", error);
 
-  try {
-    if (!req.file) {
-      console.log("❌ No file received");
-      return res.status(400).json({ message: "No file received" });
+  return res.status(500).json({
+    message: "Upload failed",
+  });
+}
+
+
+// POST /api/upload/list-cover
+// Upload a list cover for the authenticated user.
+router.post(
+  "/list-cover",
+  protect,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          message: "No image received",
+        });
+      }
+
+      const url = await uploadToCloudinary(
+        req.file.buffer,
+        "scene/list-covers"
+      );
+
+      return res.status(200).json({
+        url,
+      });
+    } catch (error) {
+      return handleUploadError(
+        error,
+        res
+      );
     }
+  }
+);
 
-    const user = await User.findById(req.params.id);
-    if (!user) {
-      console.log("❌ User not found");
-      return res.status(404).json({ message: "User not found" });
-    }
 
-    const streamUpload = (fileBuffer) => {
-      return new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          {
-            folder: "avatars",
-            public_id: `${user._id}-${Date.now()}`,
-          },
-          (error, result) => {
-            if (result) resolve(result);
-            else reject(error);
-          }
+// POST /api/upload/avatar/:id
+// Upload an avatar for the authenticated user's own account.
+router.post(
+  "/avatar/:id",
+  protect,
+  upload.single("avatar"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({
+          message: "Invalid user ID",
+        });
+      }
+
+      if (
+        String(req.user._id) !== String(id)
+      ) {
+        return res.status(403).json({
+          message:
+            "Not authorized to update this avatar",
+        });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({
+          message: "No file received",
+        });
+      }
+
+      const user = await User.findById(id);
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      const avatarUrl =
+        await uploadToCloudinary(
+          req.file.buffer,
+          "scene/avatars"
         );
 
-        streamifier.createReadStream(fileBuffer).pipe(stream);
+      user.avatar = avatarUrl;
+      await user.save();
+
+      return res.status(200).json({
+        message:
+          "Avatar uploaded successfully",
+        avatar: avatarUrl,
       });
-    };
-
-    const result = await streamUpload(req.file.buffer);
-
-    console.log("✅ Cloudinary upload success", result.secure_url);
-
-    user.avatar = result.secure_url;
-    await user.save();
-
-    res.status(200).json({ message: "Avatar uploaded successfully", avatar: result.secure_url });
-  } catch (err) {
-    console.error("❌ Upload failed:", err);
-    res.status(500).json({ error: err.message });
+    } catch (error) {
+      return handleUploadError(
+        error,
+        res
+      );
+    }
   }
+);
+
+
+// Handle Multer errors raised before route handlers execute.
+router.use((error, req, res, next) => {
+  if (error) {
+    return handleUploadError(
+      error,
+      res
+    );
+  }
+
+  return next();
 });
 
+
 module.exports = router;
+
