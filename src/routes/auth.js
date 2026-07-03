@@ -14,6 +14,82 @@ const Log = require('../models/log');
 const CustomPoster = require('../models/customPoster');
 const Notification = require('../models/notification');
 
+const Session = require("../models/session");
+
+const {
+  signAccessToken,
+  generateRefreshToken,
+  hashRefreshToken,
+  getRefreshTokenExpiry,
+} = require("../utils/authTokens");
+
+const ALLOWED_SESSION_PLATFORMS = new Set([
+  "ios",
+  "android",
+  "web",
+  "unknown",
+]);
+
+function cleanSessionText(value, maxLength) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim().slice(0, maxLength);
+}
+
+function getSessionPlatform(req) {
+  const platform = String(
+    req.body?.platform || "unknown"
+  )
+    .trim()
+    .toLowerCase();
+
+  return ALLOWED_SESSION_PLATFORMS.has(platform)
+    ? platform
+    : "unknown";
+}
+
+async function createAuthSession(userId, req) {
+  const refreshToken = generateRefreshToken();
+
+  const session = await Session.create({
+    user: userId,
+    refreshTokenHash: hashRefreshToken(refreshToken),
+
+    // The frontend can begin supplying deviceId later.
+    // It is safe for it to remain empty during migration.
+    deviceId: cleanSessionText(req.body?.deviceId, 200),
+
+    platform: getSessionPlatform(req),
+
+    userAgent: cleanSessionText(
+      req.get("user-agent") || "",
+      500
+    ),
+
+    expiresAt: getRefreshTokenExpiry(),
+    lastUsedAt: new Date(),
+  });
+
+  try {
+    const token = signAccessToken(
+      userId,
+      session._id
+    );
+
+    return {
+      token,
+      refreshToken,
+      refreshTokenExpiresAt: session.expiresAt,
+    };
+  } catch (error) {
+    // Avoid leaving a useless session if JWT creation fails.
+    await Session.deleteOne({ _id: session._id });
+    throw error;
+  }
+}
+
 router.post('/validate-email', async (req, res) => {
   try {
     const { email } = req.body || {};
@@ -33,68 +109,157 @@ router.post('/validate-email', async (req, res) => {
 
 router.post("/register", async (req, res) => {
   try {
-    let { name, username, email, password, avatar } = req.body;
+    let {
+      name,
+      username,
+      email,
+      password,
+      avatar,
+    } = req.body || {};
 
-    username = (username || "").trim();
-    email = (email || "").trim().toLowerCase();
+    name =
+      typeof name === "string"
+        ? name.trim()
+        : "";
+
+    username =
+      typeof username === "string"
+        ? username.trim()
+        : "";
+
+    email =
+      typeof email === "string"
+        ? email.trim().toLowerCase()
+        : "";
 
     if (!username || !email || !password) {
-      return res.status(400).json({ error: "Missing required fields" });
+      return res.status(400).json({
+        error: "Missing required fields",
+      });
     }
 
-    // ⚠️ Email deliverability check — log only, do not block
+    // Email deliverability check — warning only for now.
     try {
-      const check = await validateEmailDeliverability(email);
+      const check =
+        await validateEmailDeliverability(email);
+
       if (!check.ok) {
-        console.warn("⚠️ Email deliverability warning:", email, check.reason);
+        console.warn(
+          "⚠️ Email deliverability warning:",
+          email,
+          check.reason
+        );
       }
     } catch (err) {
-      console.warn("⚠️ Email deliverability check failed:", err.message);
+      console.warn(
+        "⚠️ Email deliverability check failed:",
+        err.message
+      );
     }
 
-    // Check for duplicates
-    const existingUser = await User.findOne({ email });
-    const existingUsername = await User.findOne({
-      username: { $regex: `^${username}$`, $options: "i" },
-    });
-
-    if (existingUsername) {
-      return res.status(409).json({ error: "Username already taken" });
-    }
+    /*
+     * Check email first.
+     *
+     * This allows an unverified account to go through the
+     * resend-verification flow instead of immediately returning
+     * "Username already taken" for its own username.
+     */
+    const existingUser = await User.findOne({
+      email,
+    }).select("+password");
 
     if (existingUser) {
-      // If email exists but not verified → allow resend flow
-      if (!existingUser.emailVerified) {
-        // Generate new verification code
-        const verificationCode = crypto.randomInt(100000, 999999).toString();
-        existingUser.verificationCode = verificationCode;
-        existingUser.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
+      /*
+       * Only accounts explicitly marked false enter this flow.
+       * This prevents older accounts with an undefined value
+       * from accidentally being treated as unverified.
+       */
+      if (existingUser.emailVerified === false) {
+        let passwordMatches = false;
+
+        if (
+          typeof existingUser.matchPassword ===
+          "function"
+        ) {
+          passwordMatches =
+            await existingUser.matchPassword(
+              password
+            );
+        }
+
+        /*
+         * Never return an authenticated token merely because
+         * someone knows the email address of an unverified user.
+         */
+        if (!passwordMatches) {
+          return res.status(409).json({
+            error:
+              "Account already exists. Please log in or reset your password.",
+          });
+        }
+
+        const verificationCode =
+          crypto
+            .randomInt(100000, 1000000)
+            .toString();
+
+        existingUser.verificationCode =
+          verificationCode;
+
+        existingUser.verificationCodeExpires =
+          new Date(
+            Date.now() + 10 * 60 * 1000
+          );
+
         await existingUser.save();
 
-        // Fire-and-forget email send
         setImmediate(async () => {
           try {
             await sendEmail(
-              email,
+              existingUser.email,
               "Your Scene verification code",
               `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
             );
-            console.log("📨 Verification email resent:", email);
+
+            console.log(
+              "📨 Verification email resent:",
+              existingUser.email
+            );
           } catch (err) {
-            console.error("❌ Verification email failed (resend):", email, err.message);
+            console.error(
+              "❌ Verification email failed (resend):",
+              existingUser.email,
+              err.message
+            );
           }
         });
 
-        // Return JWT anyway
-        const token = jwt.sign({ id: existingUser._id }, process.env.JWT_SECRET, { expiresIn: "900d" });
+        const authSession =
+          await createAuthSession(
+            existingUser._id,
+            req
+          );
 
         return res.status(200).json({
-          message: "Account already exists but not verified. Verification email resent.",
-          token,
+          message:
+            "Account already exists but not verified. Verification email resent.",
+
+          // Existing app continues reading token.
+          token: authSession.token,
+
+          // The current app may safely ignore these until
+          // refresh-token support is added on the frontend.
+          refreshToken:
+            authSession.refreshToken,
+
+          refreshTokenExpiresAt:
+            authSession.refreshTokenExpiresAt,
+
           user: {
             _id: existingUser._id,
             name: existingUser.name,
-            username: existingUser.username,
+            username:
+              existingUser.username,
             email: existingUser.email,
             avatar: existingUser.avatar,
             emailVerified: false,
@@ -102,51 +267,95 @@ router.post("/register", async (req, res) => {
         });
       }
 
-      // Email verified → block
-      return res.status(409).json({ error: "Email already in use" });
+      return res.status(409).json({
+        error: "Email already in use",
+      });
     }
 
-    // Create new user
-    const verificationCode = crypto.randomInt(100000, 999999).toString();
+    /*
+     * Escape characters that have special meaning inside a
+     * regular expression before checking the username.
+     */
+    const escapedUsername =
+      username.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+
+    const existingUsername =
+      await User.findOne({
+        username: {
+          $regex: `^${escapedUsername}$`,
+          $options: "i",
+        },
+      });
+
+    if (existingUsername) {
+      return res.status(409).json({
+        error: "Username already taken",
+      });
+    }
+
+    const verificationCode =
+      crypto
+        .randomInt(100000, 1000000)
+        .toString();
 
     const user = new User({
       name,
       username,
       email,
-      password, // hashed in pre-save hook
+      password,
       avatar,
       verificationCode,
-      verificationCodeExpires: new Date(Date.now() + 10 * 60 * 1000),
+      verificationCodeExpires: new Date(
+        Date.now() + 10 * 60 * 1000
+      ),
       emailVerified: false,
     });
 
     await user.save();
 
-    // Fire-and-forget verification email
     setImmediate(async () => {
       try {
         await sendEmail(
-          email,
+          user.email,
           "Your Scene verification code",
           `Welcome to Scene! 🎬\n\nYour verification code:\n\n${verificationCode}\n\nIt expires in 10 minutes.`
         );
-        console.log("📨 Verification email sent:", email);
+
+        console.log(
+          "📨 Verification email sent:",
+          user.email
+        );
       } catch (err) {
-        console.error("❌ Verification email failed:", email, err.message);
+        console.error(
+          "❌ Verification email failed:",
+          user.email,
+          err.message
+        );
       }
     });
 
-    // Issue JWT
-    let token = null;
-    try {
-      token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "9000d" });
-    } catch (err) {
-      console.warn("⚠️ JWT signing failed:", err.message);
-    }
+    const authSession =
+      await createAuthSession(
+        user._id,
+        req
+      );
 
     return res.status(201).json({
-      message: "User registered successfully.",
-      token,
+      message:
+        "User registered successfully.",
+
+      // Existing app continues reading token.
+      token: authSession.token,
+
+      refreshToken:
+        authSession.refreshToken,
+
+      refreshTokenExpiresAt:
+        authSession.refreshTokenExpiresAt,
+
       user: {
         _id: user._id,
         name: user.name,
@@ -157,56 +366,147 @@ router.post("/register", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("❌ Register Error:", error);
-    return res.status(500).json({ error: "Registration failed" });
+    console.error(
+      "❌ Register Error:",
+      error
+    );
+
+    /*
+     * Protect against two registration requests reaching
+     * MongoDB at almost exactly the same time.
+     */
+    if (error?.code === 11000) {
+      const duplicateField =
+        Object.keys(
+          error.keyPattern ||
+            error.keyValue ||
+            {}
+        )[0] || "";
+
+      if (duplicateField === "email") {
+        return res.status(409).json({
+          error: "Email already in use",
+        });
+      }
+
+      if (
+        duplicateField === "username"
+      ) {
+        return res.status(409).json({
+          error: "Username already taken",
+        });
+      }
+
+      return res.status(409).json({
+        error: "Account already exists",
+      });
+    }
+
+    return res.status(500).json({
+      error: "Registration failed",
+    });
   }
 });
 
 
 router.post("/verify-email-code", async (req, res) => {
-  const { email, code } = req.body;
+    try {
+      const email =
+        typeof req.body?.email === "string"
+          ? req.body.email
+              .trim()
+              .toLowerCase()
+          : "";
 
-  try {
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) return res.status(404).json({ error: "User not found" });
+      const code =
+        req.body?.code !== undefined &&
+        req.body?.code !== null
+          ? String(req.body.code).trim()
+          : "";
 
-    if (
-      user.verificationCode !== code ||
-      !user.verificationCodeExpires ||
-      user.verificationCodeExpires < new Date()
-    ) {
-      return res.status(401).json({ error: "Invalid or expired code" });
+      if (!email || !code) {
+        return res.status(400).json({
+          error:
+            "Email and verification code are required",
+        });
+      }
+
+      const user = await User.findOne({
+        email,
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      const storedCode = String(
+        user.verificationCode || ""
+      );
+
+      const codeExpired =
+        !user.verificationCodeExpires ||
+        user.verificationCodeExpires.getTime() <=
+          Date.now();
+
+      if (
+        storedCode !== code ||
+        codeExpired
+      ) {
+        return res.status(401).json({
+          error:
+            "Invalid or expired code",
+        });
+      }
+
+      user.verificationCode = null;
+      user.verificationCodeExpires =
+        null;
+      user.emailVerified = true;
+
+      await user.save();
+
+      const authSession =
+        await createAuthSession(
+          user._id,
+          req
+        );
+
+      return res.status(200).json({
+        message:
+          "Email verified successfully",
+
+        // Existing app continues reading token.
+        token: authSession.token,
+
+        refreshToken:
+          authSession.refreshToken,
+
+        refreshTokenExpiresAt:
+          authSession.refreshTokenExpiresAt,
+
+        user: {
+          _id: user._id,
+          name: user.name,
+          username: user.username,
+          email: user.email,
+          avatar: user.avatar,
+          emailVerified: true,
+        },
+      });
+    } catch (err) {
+      console.error(
+        "❌ Verification error:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Server error",
+      });
     }
-
-    // Clear verification code + mark verified
-    user.verificationCode = undefined;
-    user.verificationCodeExpires = undefined;
-    user.emailVerified = true;
-    await user.save();
-
-    // Sign a token
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "90d",
-    });
-
-    res.status(200).json({
-      message: "Email verified successfully",
-      token,
-      user: {
-        _id: user._id,
-        name: user.name,
-        username: user.username,
-        email: user.email,
-        avatar: user.avatar,
-        emailVerified: true,
-      },
-    });
-  } catch (err) {
-    console.error("❌ Verification error:", err);
-    res.status(500).json({ error: "Server error" });
   }
-});
-
+);
 
 // 📩 Forgot Password
 router.post("/forgot-password", async (req, res) => {
@@ -331,6 +631,18 @@ router.post("/reset-password", async (req, res) => {
     user.resetCodeExpires = undefined;
 
     await user.save();
+
+    await Session.updateMany(
+      {
+        user: user._id,
+        revokedAt: null,
+      },
+      {
+        $set: {
+          revokedAt: new Date(),
+        },
+      }
+    );
 
     res.status(200).json({ message: "Password has been reset successfully." });
   } catch (err) {
@@ -472,11 +784,22 @@ router.post('/login', async (req, res, next) => {
 
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '9000d' });
+    const authSession = await createAuthSession(
+      user._id,
+      req
+    );
 
     return res.status(200).json({
-      message: 'Login successful',
-      token,
+      message: "Login successful",
+    
+      // Existing app still receives the same field.
+      token: authSession.token,
+    
+      // The updated app will store this securely.
+      refreshToken: authSession.refreshToken,
+      refreshTokenExpiresAt:
+        authSession.refreshTokenExpiresAt,
+    
       user: {
         _id: user._id,
         username: user.username,
@@ -489,6 +812,193 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
+// Refresh an authenticated session.
+// The refresh token is rotated every time it is used.
+router.post("/refresh", async (req, res) => {
+  try {
+    const refreshToken =
+      typeof req.body?.refreshToken === "string"
+        ? req.body.refreshToken.trim()
+        : "";
+
+    if (!refreshToken) {
+      return res.status(400).json({
+        error: "Refresh token is required",
+      });
+    }
+
+    const now = new Date();
+    const currentHash =
+      hashRefreshToken(refreshToken);
+
+    const session = await Session.findOne({
+      refreshTokenHash: currentHash,
+      revokedAt: null,
+      expiresAt: { $gt: now },
+    });
+
+    if (!session) {
+      return res.status(401).json({
+        error: "Session is invalid or expired",
+      });
+    }
+
+    const userExists = await User.exists({
+      _id: session.user,
+    });
+
+    if (!userExists) {
+      await Session.updateOne(
+        { _id: session._id },
+        { $set: { revokedAt: now } }
+      );
+
+      return res.status(401).json({
+        error: "Session is invalid or expired",
+      });
+    }
+
+    const nextRefreshToken =
+      generateRefreshToken();
+
+    const nextRefreshTokenHash =
+      hashRefreshToken(nextRefreshToken);
+
+    const nextExpiresAt =
+      getRefreshTokenExpiry();
+
+    // The old refresh token must still match.
+    // This prevents two successful uses of the same token.
+    const updatedSession =
+      await Session.findOneAndUpdate(
+        {
+          _id: session._id,
+          refreshTokenHash: currentHash,
+          revokedAt: null,
+          expiresAt: { $gt: now },
+        },
+        {
+          $set: {
+            refreshTokenHash:
+              nextRefreshTokenHash,
+
+            expiresAt: nextExpiresAt,
+            lastUsedAt: now,
+
+            userAgent: cleanSessionText(
+              req.get("user-agent") || "",
+              500
+            ),
+          },
+        },
+        {
+          new: true,
+        }
+      );
+
+    if (!updatedSession) {
+      return res.status(401).json({
+        error: "Session is invalid or expired",
+      });
+    }
+
+    const token = signAccessToken(
+      updatedSession.user,
+      updatedSession._id
+    );
+
+    return res.status(200).json({
+      token,
+      refreshToken: nextRefreshToken,
+      refreshTokenExpiresAt:
+        updatedSession.expiresAt,
+    });
+  } catch (error) {
+    console.error(
+      "❌ Refresh session error:",
+      error.message
+    );
+
+    return res.status(500).json({
+      error: "Failed to refresh session",
+    });
+  }
+});
+
+// Log out one device/session.
+// Always returns success so logout remains idempotent.
+router.post("/logout", async (req, res) => {
+  try {
+    const refreshToken =
+      typeof req.body?.refreshToken === "string"
+        ? req.body.refreshToken.trim()
+        : "";
+
+    if (refreshToken) {
+      await Session.updateOne(
+        {
+          refreshTokenHash:
+            hashRefreshToken(refreshToken),
+          revokedAt: null,
+        },
+        {
+          $set: {
+            revokedAt: new Date(),
+          },
+        }
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+    });
+  } catch (error) {
+    console.error(
+      "❌ Logout error:",
+      error.message
+    );
+
+    return res.status(500).json({
+      error: "Failed to log out",
+    });
+  }
+});
+
+// Log out every device belonging to this user.
+router.post(
+  "/logout-all",
+  protect,
+  async (req, res) => {
+    try {
+      const result = await Session.updateMany(
+        {
+          user: req.user._id,
+          revokedAt: null,
+        },
+        {
+          $set: {
+            revokedAt: new Date(),
+          },
+        }
+      );
+
+      return res.status(200).json({
+        success: true,
+        revokedSessions:
+          result.modifiedCount || 0,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Logout-all error:",
+        error.message
+      );
+
+      return res.status(500).json({
+        error: "Failed to log out all sessions",
+      });
+    }
+  }
+);
 
 
 // 🧾 Profile
@@ -730,9 +1240,29 @@ router.delete('/account', protect, async (req, res) => {
     // Delete related docs (extend as needed)
     await Promise.all([
       Log.deleteMany({ user: userId }),
-      Notification.deleteMany({ $or: [{ to: userId }, { from: userId }] }),
+    
+      Notification.deleteMany({
+        $or: [
+          { to: userId },
+          { from: userId },
+        ],
+      }),
+    
       CustomPoster.deleteMany({ userId }),
-      User.updateMany({}, { $pull: { followers: userId, following: userId } }),
+    
+      Session.deleteMany({
+        user: userId,
+      }),
+    
+      User.updateMany(
+        {},
+        {
+          $pull: {
+            followers: userId,
+            following: userId,
+          },
+        }
+      ),
     ]);
 
     await User.deleteOne({ _id: userId });

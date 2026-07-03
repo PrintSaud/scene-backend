@@ -1,204 +1,645 @@
 // src/models/user.js
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 
-const UserSchema = new mongoose.Schema({
-  googleId: { type: String },
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 
-  // Keep username normalized to lowercase for uniqueness checks
-  username: { type: String, required: true, index: true },
+const UserSchema = new mongoose.Schema(
+  {
+    googleId: {
+      type: String,
+      default: null,
+    },
 
-  email: { type: String, required: true, unique: true, index: true },
+    // Existing usernames are left case-preserving to avoid breaking accounts.
+    // Spaces are removed in the pre-save hook.
+    username: {
+      type: String,
+      required: true,
+      index: true,
+      trim: true,
+    },
 
-  password: {
-    type: String,
-    required: function () {
-      return !this.googleId;
-    }
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+      trim: true,
+      lowercase: true,
+    },
+
+    name: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    
+    emailVerified: {
+      type: Boolean,
+    
+      // Preserve established accounts that existed before this field.
+      // New registration explicitly sets this to false.
+      default: true,
+      index: true,
+    },
+
+    password: {
+      type: String,
+      required: function () {
+        return !this.googleId;
+      },
+    },
+
+    bio: {
+      type: String,
+      default: "",
+    },
+
+    language: {
+      type: String,
+      default: "en",
+    },
+
+    avatar: {
+      type: String,
+      default: "",
+    },
+
+    // =========================
+    // Scene mode
+    // =========================
+
+    preferredMode: {
+      type: String,
+      enum: ["movies", "tv"],
+      default: "movies",
+    },
+
+    // =========================
+    // Movie profile
+    // =========================
+
+    watchlist: {
+      type: [
+        {
+          tmdbId: {
+            type: Number,
+            required: true,
+          },
+          title: {
+            type: String,
+            default: "",
+          },
+          posterPath: {
+            type: String,
+            default: "",
+          },
+          addedAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+      default: [],
+    },
+
+    favorites: {
+      type: [Number],
+      default: [],
+    },
+
+    favoriteFilms: {
+      type: [
+        {
+          tmdbId: {
+            type: Number,
+            required: true,
+          },
+          title: {
+            type: String,
+            default: "",
+          },
+
+          // Keep the existing field name for frontend compatibility.
+          poster_path: {
+            type: String,
+            default: "",
+          },
+        },
+      ],
+      default: [],
+      validate: {
+        validator: function (films) {
+          return Array.isArray(films) && films.length <= 4;
+        },
+        message: "A user can have no more than four favorite films.",
+      },
+    },
+
+    customPosters: {
+      type: Map,
+      of: String,
+      default: {},
+    },
+
+    profileBackdrop: {
+      type: String,
+      default: "",
+    },
+
+    favoriteCharacter: {
+      type: String,
+      default: "",
+    },
+
+    favoriteActor: {
+      type: String,
+      default: "",
+    },
+
+    topMovies: {
+      type: [String],
+      default: [],
+    },
+
+    totalLogs: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // =========================
+    // Scene TV profile
+    // =========================
+
+    tvWatchlist: {
+      type: [
+        {
+          tmdbId: {
+            type: Number,
+            required: true,
+          },
+          name: {
+            type: String,
+            default: "",
+          },
+          posterPath: {
+            type: String,
+            default: "",
+          },
+          firstAirDate: {
+            type: String,
+            default: "",
+          },
+          addedAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+      default: [],
+    },
+
+    favoriteShows: {
+      type: [
+        {
+          tmdbId: {
+            type: Number,
+            required: true,
+          },
+          name: {
+            type: String,
+            default: "",
+          },
+          posterPath: {
+            type: String,
+            default: "",
+          },
+        },
+      ],
+      default: [],
+      validate: {
+        validator: function (shows) {
+          return Array.isArray(shows) && shows.length <= 4;
+        },
+        message: "A user can have no more than four favorite shows.",
+      },
+    },
+
+    tvProfileBackdrop: {
+      type: String,
+      default: "",
+    },
+
+    totalEpisodeWatches: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalShowsStarted: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalShowsCompleted: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    tvImportStatus: {
+      hasImported: {
+        type: Boolean,
+        default: false,
+      },
+
+      lastImportedAt: {
+        type: Date,
+        default: null,
+      },
+
+      latestImportJob: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "TVImportJob",
+        default: null,
+      },
+    },
+
+    // =========================
+    // Social graph
+    // =========================
+
+    following: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "User",
+      default: [],
+    },
+
+    followers: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "User",
+      default: [],
+    },
+
+    noNewFollowers: {
+      type: Boolean,
+      default: false,
+    },
+
+    socials: {
+      X: {
+        type: String,
+        default: "",
+      },
+      youtube: {
+        type: String,
+        default: "",
+      },
+      instagram: {
+        type: String,
+        default: "",
+      },
+      tiktok: {
+        type: String,
+        default: "",
+      },
+      imdb: {
+        type: String,
+        default: "",
+      },
+      tmdb: {
+        type: String,
+        default: "",
+      },
+      website: {
+        type: String,
+        default: "",
+      },
+    },
+
+    recentGifs: {
+      type: [String],
+      default: [],
+    },
+
+    // =========================
+    // Password reset and verification
+    // =========================
+
+    resetCode: {
+      type: String,
+      default: null,
+    },
+
+    resetCodeExpires: {
+      type: Date,
+      default: null,
+    },
+
+    verificationCode: {
+      type: String,
+      default: null,
+    },
+
+    verificationCodeExpires: {
+      type: Date,
+      default: null,
+    },
+
+    // =========================
+    // Push notifications
+    // =========================
+
+    deviceTokens: {
+      type: [
+        {
+          token: {
+            type: String,
+            required: true,
+          },
+
+          provider: {
+            type: String,
+            default: "fcm",
+          },
+
+          platform: {
+            type: String,
+            enum: ["ios", "android", "unknown"],
+            default: "unknown",
+          },
+
+          updatedAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+      default: [],
+    },
+
+    pushSettings: {
+      muteAll: {
+        type: Boolean,
+        default: false,
+      },
+
+      muteFollow: {
+        type: Boolean,
+        default: false,
+      },
+
+      muteReplies: {
+        type: Boolean,
+        default: false,
+      },
+
+      muteLikes: {
+        type: Boolean,
+        default: false,
+      },
+
+      // Scene TV notification settings
+      muteNewEpisodes: {
+        type: Boolean,
+        default: false,
+      },
+
+      muteSeasonPremieres: {
+        type: Boolean,
+        default: false,
+      },
+
+      muteShowActivity: {
+        type: Boolean,
+        default: false,
+      },
+    },
   },
+  {
+    timestamps: true,
+  }
+);
 
-  bio: { type: String, default: '' },
+// =========================
+// Indexes
+// =========================
 
-  watchlist: [
-    {
-      tmdbId: { type: Number, index: true },  // indexed for quick lookups
-      title: String,
-      posterPath: String,
-      addedAt: Date,
-    }
-  ],
+// Email already has unique/index in the field definition.
+UserSchema.index({ username: 1 });
 
-  language: { type: String, default: "en" },
+// Multikey indexes for quick watchlist checks.
+UserSchema.index({ _id: 1, "watchlist.tmdbId": 1 });
+UserSchema.index({ _id: 1, "tvWatchlist.tmdbId": 1 });
 
-  noNewFollowers: { type: Boolean, default: false },
-  favorites: { type: [Number], default: [] },
+// =========================
+// Pre-save cleanup
+// =========================
 
-  favoriteFilms: {
-    type: [
-      {
-        tmdbId: { type: Number },
-        title: String,
-        poster_path: String,
-      }
-    ],
-    default: []
-  },
-
-  following: {
-    type: [mongoose.Schema.Types.ObjectId],
-    ref: 'User',
-    default: []
-  },
-  followers: {
-    type: [mongoose.Schema.Types.ObjectId],
-    ref: 'User',
-    default: []
-  },
-
-  customPosters: {
-    type: Map,
-    of: String,
-    default: {}
-  },
-
-  totalLogs: { type: Number, default: 0 },
-
-  profileBackdrop: { type: String, default: '' },
-  favoriteCharacter: { type: String, default: '' },
-  favoriteActor: { type: String, default: '' },
-  topMovies: { type: [String], default: [] },
-  recentGifs: [{ type: String }],
-
-  socials: {
-    X: { type: String, default: "" },
-    youtube: { type: String, default: "" },
-    instagram: { type: String, default: "" },
-    tiktok: { type: String, default: "" },
-    imdb: { type: String, default: "" },
-    tmdb: { type: String, default: "" },
-    website: { type: String, default: "" },
-  },
-
-  resetCode: { type: String, default: null },
-  resetCodeExpires: { type: Date, default: null },
-
-  verificationCode: { type: String },
-  verificationCodeExpires: { type: Date },
-
-  // ---- notifications: removed in favor of Notification collection ----
-  // If you still want an embedded cache, you can add a small lightweight array here.
-  // notifications: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Notification' }],
-
-  // Device tokens for push notifications (support multiple devices)
-// Device tokens for push notifications (support multiple devices)
-deviceTokens: {
-  type: [
-    {
-      token: { type: String, required: true },
-      provider: { type: String, default: "fcm" }, // "fcm" for now
-      platform: { type: String, enum: ["ios", "android", "unknown"], default: "unknown" },
-      updatedAt: { type: Date, default: Date.now },
-    }
-  ],
-  default: []
-},
-
-  // per-user push preferences
-  pushSettings: {
-    muteAll: { type: Boolean, default: false },         // quick global opt-out
-    muteFollow: { type: Boolean, default: false },
-    muteReplies: { type: Boolean, default: false },
-    muteLikes: { type: Boolean, default: false },
-  },
-
-  // small profile fields:
-  avatar: { type: String, default: "" }
-
-}, { timestamps: true });
-
-// Indexes: compound or additional can be added if needed
-UserSchema.index({ email: 1 }, { unique: true });
-
-// 🔒 Pre-save hook: hash password if changed + normalize username + clean watchlist
-UserSchema.pre('save', async function (next) {
+UserSchema.pre("save", async function (next) {
   try {
-    // normalize username to lowercase (and remove spaces)
-    if (this.isModified('username') && typeof this.username === 'string') {
-      this.username = this.username.trim().replace(/\s+/g, '');
+    // Preserve username capitalization for existing frontend behavior,
+    // but remove whitespace.
+    if (
+      this.isModified("username") &&
+      typeof this.username === "string"
+    ) {
+      this.username = this.username
+        .trim()
+        .replace(/\s+/g, "");
     }
 
-    if (this.isModified('password') && this.password) {
+    if (
+      this.isModified("email") &&
+      typeof this.email === "string"
+    ) {
+      this.email = this.email
+        .trim()
+        .toLowerCase();
+    }
+
+    if (this.isModified("password") && this.password) {
       const salt = await bcrypt.genSalt(10);
       this.password = await bcrypt.hash(this.password, salt);
     }
 
-    // defensive cleanup: remove invalid watchlist items before save
+    // Remove invalid and duplicate movie watchlist entries.
     if (Array.isArray(this.watchlist)) {
-      this.watchlist = this.watchlist.filter(item => typeof item.tmdbId === 'number');
+      const seenMovieIds = new Set();
+
+      this.watchlist = this.watchlist.filter((item) => {
+        if (!item || typeof item.tmdbId !== "number") {
+          return false;
+        }
+
+        if (seenMovieIds.has(item.tmdbId)) {
+          return false;
+        }
+
+        seenMovieIds.add(item.tmdbId);
+        return true;
+      });
     }
 
-    // ensure deviceTokens are unique and strings
-    // ensure deviceTokens are unique and valid
-if (Array.isArray(this.deviceTokens)) {
-  const seen = new Set();
+    // Remove invalid and duplicate TV watchlist entries.
+    if (Array.isArray(this.tvWatchlist)) {
+      const seenShowIds = new Set();
 
-  this.deviceTokens = this.deviceTokens
-    .map((entry) => {
-      // migrate old string tokens automatically
-      if (typeof entry === "string") {
-        return {
-          token: entry.trim(),
-          provider: "fcm",
-          platform: "unknown",
-          updatedAt: new Date(),
-        };
-      }
+      this.tvWatchlist = this.tvWatchlist.filter((item) => {
+        if (!item || typeof item.tmdbId !== "number") {
+          return false;
+        }
 
-      if (!entry || typeof entry.token !== "string") return null;
+        if (seenShowIds.has(item.tmdbId)) {
+          return false;
+        }
 
-      const cleanToken = entry.token.trim();
-      if (!cleanToken) return null;
+        seenShowIds.add(item.tmdbId);
+        return true;
+      });
+    }
 
-      return {
-        token: cleanToken,
-        provider: entry.provider || "fcm",
-        platform: entry.platform || "unknown",
-        updatedAt: entry.updatedAt || new Date(),
-      };
-    })
-    .filter(Boolean)
-    .filter((entry) => {
-      if (seen.has(entry.token)) return false;
-      seen.add(entry.token);
-      return true;
-    });
-}
+    // Keep only four unique favorite films.
+    if (Array.isArray(this.favoriteFilms)) {
+      const seenFavoriteFilmIds = new Set();
+
+      this.favoriteFilms = this.favoriteFilms
+        .filter((film) => {
+          if (!film || typeof film.tmdbId !== "number") {
+            return false;
+          }
+
+          if (seenFavoriteFilmIds.has(film.tmdbId)) {
+            return false;
+          }
+
+          seenFavoriteFilmIds.add(film.tmdbId);
+          return true;
+        })
+        .slice(0, 4);
+    }
+
+    // Keep only four unique favorite shows.
+    if (Array.isArray(this.favoriteShows)) {
+      const seenFavoriteShowIds = new Set();
+
+      this.favoriteShows = this.favoriteShows
+        .filter((show) => {
+          if (!show || typeof show.tmdbId !== "number") {
+            return false;
+          }
+
+          if (seenFavoriteShowIds.has(show.tmdbId)) {
+            return false;
+          }
+
+          seenFavoriteShowIds.add(show.tmdbId);
+          return true;
+        })
+        .slice(0, 4);
+    }
+
+    // Ensure device tokens are valid and unique.
+    if (Array.isArray(this.deviceTokens)) {
+      const seenTokens = new Set();
+
+      this.deviceTokens = this.deviceTokens
+        .map((entry) => {
+          // Migrate old string tokens automatically.
+          if (typeof entry === "string") {
+            const cleanToken = entry.trim();
+
+            if (!cleanToken) {
+              return null;
+            }
+
+            return {
+              token: cleanToken,
+              provider: "fcm",
+              platform: "unknown",
+              updatedAt: new Date(),
+            };
+          }
+
+          if (
+            !entry ||
+            typeof entry.token !== "string"
+          ) {
+            return null;
+          }
+
+          const cleanToken = entry.token.trim();
+
+          if (!cleanToken) {
+            return null;
+          }
+
+          return {
+            token: cleanToken,
+            provider: entry.provider || "fcm",
+            platform: entry.platform || "unknown",
+            updatedAt: entry.updatedAt || new Date(),
+          };
+        })
+        .filter(Boolean)
+        .filter((entry) => {
+          if (seenTokens.has(entry.token)) {
+            return false;
+          }
+
+          seenTokens.add(entry.token);
+          return true;
+        });
+    }
 
     next();
-  } catch (err) {
-    next(err);
+  } catch (error) {
+    next(error);
   }
 });
 
-// Password compare helper
+// =========================
+// Password helper
+// =========================
+
 UserSchema.methods.matchPassword = async function (password) {
-  if (!this.password) return false;
-  return await bcrypt.compare(password, this.password);
+  if (!this.password) {
+    return false;
+  }
+
+  return bcrypt.compare(password, this.password);
 };
 
-// Add / remove device tokens (use these from your save-token route)
-UserSchema.methods.addDeviceToken = async function (token, provider = "fcm", platform = "unknown") {
-  if (!token || typeof token !== "string") return this;
+// =========================
+// Device token helpers
+// =========================
+
+UserSchema.methods.addDeviceToken = async function (
+  token,
+  provider = "fcm",
+  platform = "unknown"
+) {
+  if (!token || typeof token !== "string") {
+    return this;
+  }
 
   const cleanToken = token.trim();
-  if (!cleanToken) return this;
+
+  if (!cleanToken) {
+    return this;
+  }
 
   if (!Array.isArray(this.deviceTokens)) {
     this.deviceTokens = [];
   }
 
   const existing = this.deviceTokens.find((entry) => {
-    if (typeof entry === "string") return entry === cleanToken;
+    if (typeof entry === "string") {
+      return entry === cleanToken;
+    }
+
     return entry.token === cleanToken;
   });
 
@@ -229,22 +670,34 @@ UserSchema.methods.addDeviceToken = async function (token, provider = "fcm", pla
   }
 
   await this.save();
+
   return this;
 };
 
 UserSchema.methods.removeDeviceToken = async function (token) {
-  if (!token || typeof token !== "string") return this;
-  if (!Array.isArray(this.deviceTokens)) return this;
+  if (!token || typeof token !== "string") {
+    return this;
+  }
+
+  if (!Array.isArray(this.deviceTokens)) {
+    return this;
+  }
 
   const cleanToken = token.trim();
 
   this.deviceTokens = this.deviceTokens.filter((entry) => {
-    if (typeof entry === "string") return entry !== cleanToken;
+    if (typeof entry === "string") {
+      return entry !== cleanToken;
+    }
+
     return entry.token !== cleanToken;
   });
 
   await this.save();
+
   return this;
 };
 
-module.exports = mongoose.models.User || mongoose.model('User', UserSchema);
+module.exports =
+  mongoose.models.User ||
+  mongoose.model("User", UserSchema);
