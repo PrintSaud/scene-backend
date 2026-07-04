@@ -40,7 +40,6 @@ const upload = multer({
     );
   },
 });
-
 const cleanFavoriteCharacter = (favoriteCharacter) => {
   if (!favoriteCharacter) return null;
 

@@ -133,4 +133,34 @@ async function handleReview(req, res) {
 router.get("/review/:id", handleReview);
 router.head("/review/:id", handleReview);
 
+router.get("/og/review/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const { status, html } = await buildReviewHtml(id);
+
+    res
+      .set("Cache-Control", "public, max-age=300")
+      .status(status)
+      .type("text/html; charset=utf-8")
+      .send(html);
+  } catch (error) {
+    console.warn("❌ OG review route error:", error?.message || error);
+
+    res
+      .status(200)
+      .type("text/html; charset=utf-8")
+      .send(`<!doctype html><html><head>
+        <meta charset="UTF-8" />
+        <meta property="og:title" content="Error loading review" />
+        <meta property="og:description" content="Something went wrong." />
+        <meta property="og:image" content="${FALLBACK_IMAGE}" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Error loading review" />
+        <meta name="twitter:description" content="Something went wrong." />
+        <meta name="twitter:image" content="${FALLBACK_IMAGE}" />
+      </head><body></body></html>`);
+  }
+});
+
 module.exports = router;

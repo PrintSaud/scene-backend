@@ -1280,5 +1280,6 @@ router.get('/ping', (req, res) => {
   res.send('Auth route is working!');
 });
 
+
 console.log('✅ auth.js is loaded');
 module.exports = router;
