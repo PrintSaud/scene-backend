@@ -86,20 +86,66 @@ const UserSchema = new mongoose.Schema(
             type: Number,
             required: true,
           },
+    
           title: {
             type: String,
             default: "",
           },
+    
+          // Current normalized field.
           posterPath: {
             type: String,
             default: "",
           },
+    
+          // Preserve compatibility with existing clients/imports.
+          poster_path: {
+            type: String,
+            default: "",
+          },
+    
+          release_date: {
+            type: String,
+            default: "",
+          },
+    
+          runtime: {
+            type: Number,
+            default: null,
+            min: 0,
+          },
+    
+          vote_average: {
+            type: Number,
+            default: null,
+            min: 0,
+            max: 10,
+          },
+    
+          genres: {
+            type: [
+              {
+                id: {
+                  type: Number,
+                  default: null,
+                },
+    
+                name: {
+                  type: String,
+                  default: "",
+                },
+              },
+            ],
+            default: [],
+          },
+    
           addedAt: {
             type: Date,
             default: Date.now,
           },
         },
       ],
+    
       default: [],
     },
 
@@ -427,12 +473,20 @@ const UserSchema = new mongoose.Schema(
 // Indexes
 // =========================
 
-// Email already has unique/index in the field definition.
-UserSchema.index({ username: 1 });
+// `email` and `username` already declare indexes
+// directly in their field definitions.
 
-// Multikey indexes for quick watchlist checks.
-UserSchema.index({ _id: 1, "watchlist.tmdbId": 1 });
-UserSchema.index({ _id: 1, "tvWatchlist.tmdbId": 1 });
+UserSchema.index({ googleId: 1 }, {
+  sparse: true,
+});
+
+UserSchema.index({
+  "deviceTokens.token": 1,
+});
+
+UserSchema.index({
+  createdAt: -1,
+});
 
 // =========================
 // Pre-save cleanup
@@ -465,38 +519,61 @@ UserSchema.pre("save", async function (next) {
       this.password = await bcrypt.hash(this.password, salt);
     }
 
-    // Remove invalid and duplicate movie watchlist entries.
     if (Array.isArray(this.watchlist)) {
       const seenMovieIds = new Set();
-
+    
       this.watchlist = this.watchlist.filter((item) => {
-        if (!item || typeof item.tmdbId !== "number") {
+        if (!item) {
           return false;
         }
-
-        if (seenMovieIds.has(item.tmdbId)) {
+    
+        const tmdbId = Number(item.tmdbId);
+    
+        if (
+          !Number.isInteger(tmdbId) ||
+          tmdbId <= 0 ||
+          seenMovieIds.has(tmdbId)
+        ) {
           return false;
         }
-
-        seenMovieIds.add(item.tmdbId);
+    
+        item.tmdbId = tmdbId;
+    
+        if (!item.posterPath && item.poster_path) {
+          item.posterPath = item.poster_path;
+        }
+    
+        if (!item.poster_path && item.posterPath) {
+          item.poster_path = item.posterPath;
+        }
+    
+        seenMovieIds.add(tmdbId);
+    
         return true;
       });
     }
 
-    // Remove invalid and duplicate TV watchlist entries.
     if (Array.isArray(this.tvWatchlist)) {
       const seenShowIds = new Set();
-
+    
       this.tvWatchlist = this.tvWatchlist.filter((item) => {
-        if (!item || typeof item.tmdbId !== "number") {
+        if (!item) {
           return false;
         }
-
-        if (seenShowIds.has(item.tmdbId)) {
+    
+        const tmdbId = Number(item.tmdbId);
+    
+        if (
+          !Number.isInteger(tmdbId) ||
+          tmdbId <= 0 ||
+          seenShowIds.has(tmdbId)
+        ) {
           return false;
         }
-
-        seenShowIds.add(item.tmdbId);
+    
+        item.tmdbId = tmdbId;
+        seenShowIds.add(tmdbId);
+    
         return true;
       });
     }
@@ -507,9 +584,20 @@ UserSchema.pre("save", async function (next) {
 
       this.favoriteFilms = this.favoriteFilms
         .filter((film) => {
-          if (!film || typeof film.tmdbId !== "number") {
+          if (!film) {
             return false;
           }
+          
+          const tmdbId = Number(film.tmdbId);
+          
+          if (
+            !Number.isInteger(tmdbId) ||
+            tmdbId <= 0
+          ) {
+            return false;
+          }
+          
+          film.tmdbId = tmdbId;
 
           if (seenFavoriteFilmIds.has(film.tmdbId)) {
             return false;
