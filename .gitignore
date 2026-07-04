@@ -3,3 +3,10 @@
 src/scene-f851e-firebase-adminsdk-*.json
 firebase-service-account.base64.txt
 src/serviceAccountKey.json
+
+# Dependencies
+node_modules/
+
+# macOS
+.DS_Store
+**/.DS_Store
