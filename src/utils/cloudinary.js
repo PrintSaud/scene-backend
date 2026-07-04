@@ -1,3 +1,4 @@
+//Users/saudceo/flick-backend/src/utils/cloudinary.js
 const cloudinary = require("cloudinary").v2;
 
 cloudinary.config({
