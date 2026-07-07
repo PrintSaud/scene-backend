@@ -1,3 +1,5 @@
+// /Users/saudceo/flick-backend/src/services/tmdbService.js
+
 const axios = require('axios');
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const apiKey = process.env.TMDB_API_KEY;

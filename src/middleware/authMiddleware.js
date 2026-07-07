@@ -1,3 +1,4 @@
+// /Users/saudceo/flick-backend/src/middleware/authMiddleware.js
 const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const Session = require("../models/session");

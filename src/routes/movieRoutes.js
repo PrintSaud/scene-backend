@@ -15,7 +15,7 @@ const protect = require("../middleware/authMiddleware");
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
-const protect = require("../middleware/authMiddleware");
+
 
 function isMovieAdmin(req) {
   return (

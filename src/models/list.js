@@ -2,82 +2,146 @@
 
 const mongoose = require("mongoose");
 
-// =========================
+const { Schema } = mongoose;
+
+// ======================================================
 // Movie item
-// =========================
+// ======================================================
 
-const movieItemSchema = new mongoose.Schema({
-  // Keep "id" as a string for compatibility with current movie routes.
-  id: {
-    type: String,
-    required: true,
-    trim: true,
+const movieItemSchema = new Schema(
+  {
+    /**
+     * TMDB movie ID.
+     *
+     * Kept as a string for compatibility with the existing
+     * Scene movie-list routes.
+     */
+    id: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    titleAr: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    originalTitle: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    poster: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    backdrop: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    releaseDate: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    addedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
+  {
+    // Preserve item _id values because existing Movie routes
+    // may already use them when editing or removing list items.
+    _id: true,
+  }
+);
 
-  title: {
-    type: String,
-    required: true,
-    trim: true,
-  },
-
-  poster: {
-    type: String,
-    default: "",
-  },
-
-  releaseDate: {
-    type: String,
-    default: "",
-  },
-
-  addedAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
-
-// =========================
+// ======================================================
 // TV show item
-// =========================
+// ======================================================
 
-const showItemSchema = new mongoose.Schema({
-  // TMDB show ID stored as a string to match the movie-list structure.
-  id: {
-    type: String,
-    required: true,
-    trim: true,
+const showItemSchema = new Schema(
+  {
+    /**
+     * TMDB show ID.
+     *
+     * Stored as a string to match the existing Movie-list
+     * structure and route behavior.
+     */
+    id: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    nameAr: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    originalName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    poster: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    backdrop: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    firstAirDate: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    addedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
+  {
+    _id: true,
+  }
+);
 
-  name: {
-    type: String,
-    required: true,
-    trim: true,
-  },
+// ======================================================
+// Scene list
+// ======================================================
 
-  poster: {
-    type: String,
-    default: "",
-  },
-
-  firstAirDate: {
-    type: String,
-    default: "",
-  },
-
-  addedAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
-
-// =========================
-// List
-// =========================
-
-const ListSchema = new mongoose.Schema(
+const listSchema = new Schema(
   {
     user: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
       index: true,
@@ -100,10 +164,15 @@ const ListSchema = new mongoose.Schema(
     coverImage: {
       type: String,
       default: "",
+      trim: true,
+      maxlength: 2000,
     },
 
-    // Every list belongs to one Scene world.
-    // Existing lists remain movie lists by default.
+    /**
+     * Scene keeps Movie and TV lists separate.
+     *
+     * Existing lists remain Movie lists by default.
+     */
     mediaType: {
       type: String,
       enum: ["movies", "tv"],
@@ -118,92 +187,121 @@ const ListSchema = new mongoose.Schema(
       index: true,
     },
 
+    /**
+     * Array order is the ranking order when true.
+     *
+     * No separate rank field is required because moving items
+     * inside the array changes their displayed rank.
+     */
     isRanked: {
       type: Boolean,
       default: false,
+      index: true,
     },
 
-    // Movie lists use this array.
+    // Movie lists use only this array.
     movies: {
       type: [movieItemSchema],
       default: [],
     },
 
-    // Scene TV lists use this array.
+    // TV lists use only this array.
     shows: {
       type: [showItemSchema],
       default: [],
     },
 
     likes: {
-      type: [mongoose.Schema.Types.ObjectId],
+      type: [Schema.Types.ObjectId],
       ref: "User",
       default: [],
     },
 
     savedBy: {
-      type: [mongoose.Schema.Types.ObjectId],
+      type: [Schema.Types.ObjectId],
       ref: "User",
       default: [],
     },
 
-    // Allows imported TV lists to be identified safely later.
+    // ==================================================
+    // Import information
+    // ==================================================
+
     source: {
       type: String,
       enum: ["manual", "tv_time_import", "scene_import"],
       default: "manual",
+      index: true,
     },
 
     importJob: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "TVImportJob",
       default: null,
+      index: true,
     },
 
     externalImportId: {
       type: String,
       default: null,
+      trim: true,
     },
   },
   {
     timestamps: true,
+    minimize: false,
   }
 );
 
-// =========================
+// ======================================================
 // Indexes
-// =========================
+// ======================================================
 
-// Load a user's movie or TV lists in newest-first order.
-ListSchema.index({
+// Load a user's Movie or TV lists.
+listSchema.index({
   user: 1,
   mediaType: 1,
-  createdAt: -1,
+  updatedAt: -1,
 });
 
-// Public list discovery.
-ListSchema.index({
+// Public Movie/TV list discovery.
+listSchema.index({
   mediaType: 1,
   isPrivate: 1,
-  createdAt: -1,
+  updatedAt: -1,
 });
 
-// Lists a user has saved.
-ListSchema.index({
+// Ranked-list discovery.
+listSchema.index({
+  mediaType: 1,
+  isPrivate: 1,
+  isRanked: 1,
+  updatedAt: -1,
+});
+
+// Lists saved by a user.
+listSchema.index({
   savedBy: 1,
   mediaType: 1,
-  createdAt: -1,
+  updatedAt: -1,
 });
 
-// Lists a user has liked.
-ListSchema.index({
+// Lists liked by a user.
+listSchema.index({
   likes: 1,
   mediaType: 1,
-  createdAt: -1,
+  updatedAt: -1,
 });
 
-// Prevent duplicate imported lists when an external ID is available.
-ListSchema.index(
+// Search a user's own lists by title.
+listSchema.index({
+  user: 1,
+  mediaType: 1,
+  title: 1,
+});
+
+// Prevent duplicate imported lists when an external ID exists.
+listSchema.index(
   {
     user: 1,
     source: 1,
@@ -211,6 +309,7 @@ ListSchema.index(
   },
   {
     unique: true,
+    name: "unique_imported_scene_list",
     partialFilterExpression: {
       externalImportId: {
         $type: "string",
@@ -219,11 +318,11 @@ ListSchema.index(
   }
 );
 
-// =========================
+// ======================================================
 // Virtual values
-// =========================
+// ======================================================
 
-ListSchema.virtual("itemCount").get(function () {
+listSchema.virtual("itemCount").get(function getItemCount() {
   if (this.mediaType === "tv") {
     return Array.isArray(this.shows)
       ? this.shows.length
@@ -235,35 +334,90 @@ ListSchema.virtual("itemCount").get(function () {
     : 0;
 });
 
-// Include virtual values when converting to JSON.
-ListSchema.set("toJSON", {
+listSchema.virtual("likeCount").get(function getLikeCount() {
+  return Array.isArray(this.likes)
+    ? this.likes.length
+    : 0;
+});
+
+listSchema.virtual("saveCount").get(function getSaveCount() {
+  return Array.isArray(this.savedBy)
+    ? this.savedBy.length
+    : 0;
+});
+
+listSchema.virtual("items").get(function getItems() {
+  return this.mediaType === "tv"
+    ? this.shows
+    : this.movies;
+});
+
+listSchema.set("toJSON", {
   virtuals: true,
 });
 
-ListSchema.set("toObject", {
+listSchema.set("toObject", {
   virtuals: true,
 });
 
-// =========================
-// Validation and cleanup
-// =========================
+// ======================================================
+// Validation and normalization
+// ======================================================
 
-ListSchema.pre("validate", function (next) {
+listSchema.pre("validate", function normalizeList(next) {
   try {
-    if (typeof this.title === "string") {
-      this.title = this.title.trim();
+    const trimString = (value) => {
+      return typeof value === "string"
+        ? value.trim()
+        : "";
+    };
+
+    this.title = trimString(this.title);
+    this.description = trimString(this.description);
+    this.coverImage = trimString(this.coverImage);
+
+    if (!this.title) {
+      this.invalidate(
+        "title",
+        "A list title is required."
+      );
     }
 
-    if (typeof this.description === "string") {
-      this.description = this.description.trim();
-    }
-
-    // Existing lists created before Scene TV are movie lists.
+    // Lists created before Scene TV remain Movie lists.
     if (!this.mediaType) {
       this.mediaType = "movies";
     }
 
-    // Remove invalid and duplicate movies while preserving list order.
+    // Empty import IDs must become null so the partial unique
+    // index does not treat every empty value as the same import.
+    if (
+      this.externalImportId === undefined ||
+      this.externalImportId === null ||
+      trimString(this.externalImportId) === ""
+    ) {
+      this.externalImportId = null;
+    } else {
+      this.externalImportId =
+        trimString(this.externalImportId);
+    }
+
+    // Imported lists should identify their import relationship.
+    if (
+      this.source === "tv_time_import" ||
+      this.source === "scene_import"
+    ) {
+      if (!this.externalImportId && !this.importJob) {
+        this.invalidate(
+          "externalImportId",
+          "Imported lists require an import job or external import ID."
+        );
+      }
+    }
+
+    // ==================================================
+    // Normalize Movie items
+    // ==================================================
+
     if (Array.isArray(this.movies)) {
       const seenMovieIds = new Set();
 
@@ -276,16 +430,30 @@ ListSchema.pre("validate", function (next) {
           return false;
         }
 
-        const normalizedId = String(movie.id).trim();
+        const normalizedId =
+          String(movie.id).trim();
 
-        if (!normalizedId || seenMovieIds.has(normalizedId)) {
+        if (
+          !normalizedId ||
+          seenMovieIds.has(normalizedId)
+        ) {
           return false;
         }
 
         movie.id = normalizedId;
+        movie.title = trimString(movie.title);
+        movie.titleAr = trimString(movie.titleAr);
+        movie.originalTitle = trimString(
+          movie.originalTitle
+        );
+        movie.poster = trimString(movie.poster);
+        movie.backdrop = trimString(movie.backdrop);
+        movie.releaseDate = trimString(
+          movie.releaseDate
+        );
 
-        if (typeof movie.title === "string") {
-          movie.title = movie.title.trim();
+        if (!movie.title) {
+          return false;
         }
 
         seenMovieIds.add(normalizedId);
@@ -293,7 +461,10 @@ ListSchema.pre("validate", function (next) {
       });
     }
 
-    // Remove invalid and duplicate shows while preserving list order.
+    // ==================================================
+    // Normalize TV-show items
+    // ==================================================
+
     if (Array.isArray(this.shows)) {
       const seenShowIds = new Set();
 
@@ -306,16 +477,30 @@ ListSchema.pre("validate", function (next) {
           return false;
         }
 
-        const normalizedId = String(show.id).trim();
+        const normalizedId =
+          String(show.id).trim();
 
-        if (!normalizedId || seenShowIds.has(normalizedId)) {
+        if (
+          !normalizedId ||
+          seenShowIds.has(normalizedId)
+        ) {
           return false;
         }
 
         show.id = normalizedId;
+        show.name = trimString(show.name);
+        show.nameAr = trimString(show.nameAr);
+        show.originalName = trimString(
+          show.originalName
+        );
+        show.poster = trimString(show.poster);
+        show.backdrop = trimString(show.backdrop);
+        show.firstAirDate = trimString(
+          show.firstAirDate
+        );
 
-        if (typeof show.name === "string") {
-          show.name = show.name.trim();
+        if (!show.name) {
+          return false;
         }
 
         seenShowIds.add(normalizedId);
@@ -323,7 +508,10 @@ ListSchema.pre("validate", function (next) {
       });
     }
 
-    // Protect Scene's two-world separation.
+    // ==================================================
+    // Enforce Movie/TV separation
+    // ==================================================
+
     if (
       this.mediaType === "movies" &&
       Array.isArray(this.shows) &&
@@ -346,45 +534,37 @@ ListSchema.pre("validate", function (next) {
       );
     }
 
-    // Remove duplicate likes.
-    if (Array.isArray(this.likes)) {
-      const seenLikes = new Set();
+    // ==================================================
+    // Remove duplicate social references
+    // ==================================================
 
-      this.likes = this.likes.filter((userId) => {
-        if (!userId) {
+    const deduplicateObjectIds = (values) => {
+      if (!Array.isArray(values)) {
+        return [];
+      }
+
+      const seen = new Set();
+
+      return values.filter((value) => {
+        if (!value) {
           return false;
         }
 
-        const value = String(userId);
+        const normalizedValue = String(value);
 
-        if (seenLikes.has(value)) {
+        if (seen.has(normalizedValue)) {
           return false;
         }
 
-        seenLikes.add(value);
+        seen.add(normalizedValue);
         return true;
       });
-    }
+    };
 
-    // Remove duplicate saves.
-    if (Array.isArray(this.savedBy)) {
-      const seenSaves = new Set();
-
-      this.savedBy = this.savedBy.filter((userId) => {
-        if (!userId) {
-          return false;
-        }
-
-        const value = String(userId);
-
-        if (seenSaves.has(value)) {
-          return false;
-        }
-
-        seenSaves.add(value);
-        return true;
-      });
-    }
+    this.likes = deduplicateObjectIds(this.likes);
+    this.savedBy = deduplicateObjectIds(
+      this.savedBy
+    );
 
     next();
   } catch (error) {
@@ -392,8 +572,10 @@ ListSchema.pre("validate", function (next) {
   }
 });
 
+// ======================================================
+// Export
+// ======================================================
+
 module.exports =
   mongoose.models.List ||
-  mongoose.model("List", ListSchema);
-
-  
+  mongoose.model("List", listSchema);

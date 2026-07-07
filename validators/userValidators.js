@@ -19,3 +19,10 @@ module.exports = {
   registerValidation,
   loginValidation,
 };
+
+// saudceo@MacBook-Air-Saud flick-backend % curl -X POST \  http://localhost:4001/api/auth/login \
+// -H "Content-Type: application/json" \
+ // -d '{
+ //  "email": "sauduk01@gmail.com",
+  // "password": "SAUD11Saud"
+  // }'
