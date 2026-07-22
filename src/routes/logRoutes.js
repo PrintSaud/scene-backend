@@ -439,29 +439,88 @@ router.post("/:logId/like",protect,async (req, res) => {
         String(logOwnerId) !==
           String(userId)
       ) {
-        const fromUser =
-          await User.findById(userId)
-            .select("username avatar")
-            .lean();
+        /*
+         * Use Scene's unified notification pipeline.
+         *
+         * This creates the in-app notification, emits the Socket.IO
+         * event, sends the Expo/FCM device push, respects muteLikes,
+         * and stores the exact Movie review navigation target.
+         */
+        try {
+          const movieId =
+            String(
+              log.movie?.id ||
+              log.movie?._id ||
+              log.movie ||
+              log.movieId ||
+              log.tmdbId ||
+              ""
+            );
 
-        const notification =
-          await Notification.create({
-            type: "review_like",
-            message: "liked your review",
-            from: userId,
-            to: logOwnerId,
-            relatedId: log._id,
-            read: false,
+          const movieTitle =
+            String(
+              log.title ||
+              log.movieTitle ||
+              log.movie?.title ||
+              log.movie?.name ||
+              ""
+            );
+
+          const moviePoster =
+            String(
+              log.poster ||
+              log.posterPath ||
+              log.poster_path ||
+              log.movie?.poster ||
+              log.movie?.posterPath ||
+              log.movie?.poster_path ||
+              ""
+            );
+
+          await sendNotification({
+            type:
+              "movie_review_like",
+
+            fromUserId:
+              userId,
+
+            toUserId:
+              logOwnerId,
+
+            mediaType:
+              "movie",
+
+            targetType:
+              "movieReview",
+
+            relatedId:
+              String(log._id),
+
+            reviewId:
+              String(log._id),
+
+            movieLogId:
+              log._id,
+
+            movieId,
+            movieTitle,
+            moviePoster,
+
+            deduplicationKey:
+              `movie-review-like:${String(
+                log._id
+              )}:${String(userId)}`,
           });
-
-        const io = req.app.get("io");
-
-        io
-          ?.to(String(logOwnerId))
-          .emit("notification", {
-            ...notification.toObject(),
-            from: fromUser,
-          });
+        } catch (notificationError) {
+          /*
+           * A notification failure must never undo a successful like.
+           */
+          console.error(
+            "❌ Movie review-like notification failed:",
+            notificationError?.message ||
+            notificationError
+          );
+        }
       }
 
       return res.json({

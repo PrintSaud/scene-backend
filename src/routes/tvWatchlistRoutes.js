@@ -767,7 +767,7 @@ router.post(
         snapshot
       );
 
-      await user.save();
+      await user.save({ validateModifiedOnly: true });
 
       const addedItem =
         user.tvWatchlist.find(
@@ -900,7 +900,7 @@ router.patch(
         originalAddedAt ||
         new Date();
 
-      await user.save();
+      await user.save({ validateModifiedOnly: true });
 
       return res.status(200).json({
         message:
@@ -973,7 +973,7 @@ router.delete(
         previousCount;
 
       if (removed) {
-        await user.save();
+        await user.save({ validateModifiedOnly: true });
       }
 
       return res.status(200).json({

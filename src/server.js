@@ -498,9 +498,34 @@ async function connectWithRetry(
 
     console.error(
       `❌ MongoDB connection failed, attempt ${attempt}:`,
-      error.code ||
-        error.message
+      {
+        name: error?.name || null,
+        code: error?.code || null,
+        codeName: error?.codeName || null,
+        message: error?.message || null,
+        causeName: error?.cause?.name || null,
+        causeCode: error?.cause?.code || null,
+        causeMessage: error?.cause?.message || null,
+      }
     );
+
+    if (error?.reason?.servers) {
+      const serverErrors = {};
+
+      for (const [address, description] of error.reason.servers) {
+        serverErrors[address] = {
+          type: description?.type || null,
+          errorName: description?.error?.name || null,
+          errorCode: description?.error?.code || null,
+          errorMessage: description?.error?.message || null,
+        };
+      }
+
+      console.error(
+        "❌ MongoDB topology details:",
+        serverErrors
+      );
+    }
 
     clearTimeout(
       mongoRetryTimer
@@ -736,6 +761,10 @@ app.use(
 const importRoutes =
   require("./routes/importRoutes");
 
+const tvTimeImportRoutes = require(
+  "./routes/tvTimeImportRoutes"
+);
+
 app.use(
   "/api/import",
   importRoutes
@@ -744,6 +773,11 @@ app.use(
 app.use(
   "/api/letterboxd",
   importRoutes
+);
+
+app.use(
+  "/api/tv-time-import",
+  tvTimeImportRoutes
 );
 
 /*

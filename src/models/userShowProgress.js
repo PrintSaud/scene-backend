@@ -52,7 +52,7 @@ const nextEpisodeSchema = new Schema(
   },
   {
     _id: false,
-  }
+  },
 );
 
 // ======================================================
@@ -158,7 +158,7 @@ const userShowProgressSchema = new Schema(
     /**
      * Number of currently aired regular episodes.
      *
-     * This is the denominator used for show progress.
+     * Informational and useful for release-aware experiences.
      */
     airedEpisodeCount: {
       type: Number,
@@ -169,8 +169,7 @@ const userShowProgressSchema = new Schema(
     /**
      * All known regular episodes, including future episodes.
      *
-     * Informational only. Do not use this as the progress
-     * denominator.
+     * This is the denominator used for full-series progress.
      */
     totalEpisodeCount: {
       type: Number,
@@ -376,7 +375,7 @@ const userShowProgressSchema = new Schema(
   {
     timestamps: true,
     minimize: false,
-  }
+  },
 );
 
 // ======================================================
@@ -392,7 +391,7 @@ userShowProgressSchema.index(
   {
     unique: true,
     name: "unique_user_show_progress",
-  }
+  },
 );
 
 // TV profile Shows tab and recent activity ordering.
@@ -467,41 +466,23 @@ userShowProgressSchema.pre(
         return Math.floor(count);
       };
 
-      this.watchedEpisodeCount = normalizeCount(
-        this.watchedEpisodeCount
-      );
+      this.watchedEpisodeCount = normalizeCount(this.watchedEpisodeCount);
 
-      this.watchedSpecialCount = normalizeCount(
-        this.watchedSpecialCount
-      );
+      this.watchedSpecialCount = normalizeCount(this.watchedSpecialCount);
 
-      this.airedEpisodeCount = normalizeCount(
-        this.airedEpisodeCount
-      );
+      this.airedEpisodeCount = normalizeCount(this.airedEpisodeCount);
 
-      this.totalEpisodeCount = normalizeCount(
-        this.totalEpisodeCount
-      );
+      this.totalEpisodeCount = normalizeCount(this.totalEpisodeCount);
 
-      this.completedSeasonCount = normalizeCount(
-        this.completedSeasonCount
-      );
+      this.completedSeasonCount = normalizeCount(this.completedSeasonCount);
 
-      this.airedSeasonCount = normalizeCount(
-        this.airedSeasonCount
-      );
+      this.airedSeasonCount = normalizeCount(this.airedSeasonCount);
 
-      this.totalWatchCount = normalizeCount(
-        this.totalWatchCount
-      );
+      this.totalWatchCount = normalizeCount(this.totalWatchCount);
 
-      this.rewatchCount = normalizeCount(
-        this.rewatchCount
-      );
+      this.rewatchCount = normalizeCount(this.rewatchCount);
 
-      this.totalWatchMinutes = normalizeCount(
-        this.totalWatchMinutes
-      );
+      this.totalWatchMinutes = normalizeCount(this.totalWatchMinutes);
 
       if (
         this.totalEpisodeCount > 0 &&
@@ -511,10 +492,10 @@ userShowProgressSchema.pre(
       }
 
       if (
-        this.airedEpisodeCount > 0 &&
-        this.watchedEpisodeCount > this.airedEpisodeCount
+        this.totalEpisodeCount > 0 &&
+        this.watchedEpisodeCount > this.totalEpisodeCount
       ) {
-        this.watchedEpisodeCount = this.airedEpisodeCount;
+        this.watchedEpisodeCount = this.totalEpisodeCount;
       }
 
       if (
@@ -528,36 +509,26 @@ userShowProgressSchema.pre(
         this.rewatchCount = this.totalWatchCount;
       }
 
-      if (
-        !Number.isInteger(this.lastWatchNumber) ||
-        this.lastWatchNumber < 1
-      ) {
+      if (!Number.isInteger(this.lastWatchNumber) || this.lastWatchNumber < 1) {
         this.lastWatchNumber = 1;
       }
 
       this.lastWasRewatch = this.lastWatchNumber > 1;
 
-      if (this.airedEpisodeCount > 0) {
+      if (this.totalEpisodeCount > 0) {
         this.progressPercentage = Math.min(
           100,
-          Math.round(
-            (this.watchedEpisodeCount /
-              this.airedEpisodeCount) *
-              100
-          )
+          Math.round((this.watchedEpisodeCount / this.totalEpisodeCount) * 100),
         );
       } else {
         this.progressPercentage = 0;
       }
 
       const isCompleted =
-        this.airedEpisodeCount > 0 &&
-        this.watchedEpisodeCount >=
-          this.airedEpisodeCount;
+        this.totalEpisodeCount > 0 &&
+        this.watchedEpisodeCount >= this.totalEpisodeCount;
 
-      this.status = isCompleted
-        ? "completed"
-        : "watching";
+      this.status = isCompleted ? "completed" : "watching";
 
       this.isCaughtUp = isCompleted;
 
@@ -565,13 +536,8 @@ userShowProgressSchema.pre(
         this.firstCompletedAt = new Date();
       }
 
-      if (
-        this.watchedEpisodeCount > 0 &&
-        !this.startedAt
-      ) {
-        this.startedAt =
-          this.lastWatchedAt ||
-          new Date();
+      if (this.watchedEpisodeCount > 0 && !this.startedAt) {
+        this.startedAt = this.lastWatchedAt || new Date();
       }
 
       // A caught-up show cannot have an aired next-unwatched episode.
@@ -585,37 +551,28 @@ userShowProgressSchema.pre(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 // ======================================================
 // Helpful virtuals
 // ======================================================
 
-userShowProgressSchema.virtual("hasStarted").get(
-  function getHasStarted() {
-    return this.watchedEpisodeCount > 0;
-  }
-);
+userShowProgressSchema.virtual("hasStarted").get(function getHasStarted() {
+  return this.watchedEpisodeCount > 0;
+});
 
-userShowProgressSchema.virtual("uniqueEpisodeCount").get(
-  function getUniqueEpisodeCount() {
-    return (
-      this.watchedEpisodeCount +
-      this.watchedSpecialCount
-    );
-  }
-);
+userShowProgressSchema
+  .virtual("uniqueEpisodeCount")
+  .get(function getUniqueEpisodeCount() {
+    return this.watchedEpisodeCount + this.watchedSpecialCount;
+  });
 
-userShowProgressSchema.virtual("remainingEpisodeCount").get(
-  function getRemainingEpisodeCount() {
-    return Math.max(
-      0,
-      this.airedEpisodeCount -
-        this.watchedEpisodeCount
-    );
-  }
-);
+userShowProgressSchema
+  .virtual("remainingEpisodeCount")
+  .get(function getRemainingEpisodeCount() {
+    return Math.max(0, this.totalEpisodeCount - this.watchedEpisodeCount);
+  });
 
 userShowProgressSchema.set("toJSON", {
   virtuals: true,
@@ -631,7 +588,4 @@ userShowProgressSchema.set("toObject", {
 
 module.exports =
   mongoose.models.UserShowProgress ||
-  mongoose.model(
-    "UserShowProgress",
-    userShowProgressSchema
-  );
+  mongoose.model("UserShowProgress", userShowProgressSchema);

@@ -465,6 +465,115 @@ router.get(
         });
       }
 
+      /*
+       * Cache-first season response.
+       *
+       * Opening the picker should not require three TMDB requests every
+       * single time. If this season and its episodes already exist locally,
+       * return them immediately. Use ?refresh=true only when an explicit
+       * metadata refresh is required.
+       */
+      const forceRefresh =
+        req.query.refresh === "true";
+
+      if (!forceRefresh) {
+        const [
+          cachedSeason,
+          cachedEpisodes,
+        ] = await Promise.all([
+          Season.findOne({
+            showTmdbId,
+            seasonNumber,
+          }).lean(),
+
+          Episode.find({
+            showTmdbId,
+            seasonNumber,
+          })
+            .sort({
+              episodeNumber: 1,
+            })
+            .lean(),
+        ]);
+
+        if (
+          cachedSeason &&
+          cachedEpisodes.length > 0
+        ) {
+          return res.status(200).json({
+            showTmdbId,
+
+            season: {
+              id:
+                cachedSeason.tmdbId,
+
+              localId:
+                cachedSeason._id,
+
+              seasonNumber:
+                cachedSeason.seasonNumber,
+
+              nameEn:
+                cachedSeason.name || "",
+
+              nameAr:
+                cachedSeason.nameAr || "",
+
+              overviewEn:
+                cachedSeason.overview || "",
+
+              overviewAr:
+                cachedSeason.overviewAr || "",
+
+              posterPath:
+                cachedSeason.posterPath ||
+                null,
+
+              poster:
+                imageUrl(
+                  cachedSeason.posterPath,
+                  "w500"
+                ),
+
+              airDate:
+                cachedSeason.airDate,
+
+              episodeCount:
+                cachedSeason.episodeCount,
+
+              airedEpisodeCount:
+                cachedSeason
+                  .airedEpisodeCount,
+
+              airedRuntimeMinutes:
+                cachedSeason
+                  .airedRuntimeMinutes,
+
+              voteAverage:
+                cachedSeason.voteAverage,
+
+              isSpecials:
+                cachedSeason.seasonNumber ===
+                0,
+
+              viewer: {
+                watchedEpisodeCount: 0,
+                progressPercentage: 0,
+                completed: false,
+              },
+            },
+
+            episodes:
+              cachedEpisodes.map(
+                formatEpisode
+              ),
+
+            source:
+              "cache",
+          });
+        }
+      }
+
       const [
         season,
         detailsEnResult,

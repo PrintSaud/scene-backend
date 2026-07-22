@@ -519,7 +519,7 @@ router.put("/:id/top-movies",protect,async (req, res) => {
           )
           .map((movie) => movie.trim())
           .filter(Boolean)
-          .slice(0, 4);
+          .slice(0, 8);
 
       const user =
         await User.findByIdAndUpdate(
@@ -1065,6 +1065,149 @@ router.patch("/:id",protect,upload.single("avatar"),async (req, res) => {
       if (
         Object.prototype.hasOwnProperty.call(
           req.body,
+          "tvProfileBackdrop"
+        )
+      ) {
+        patch.tvProfileBackdrop =
+          typeof req.body.tvProfileBackdrop ===
+          "string"
+            ? req.body.tvProfileBackdrop.trim()
+            : "";
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          req.body,
+          "topShows"
+        )
+      ) {
+        const incomingTopShows =
+          Array.isArray(
+            req.body.topShows
+          )
+            ? req.body.topShows
+            : safeJson(
+                req.body.topShows,
+                []
+              );
+
+        if (
+          !Array.isArray(
+            incomingTopShows
+          )
+        ) {
+          return res.status(400).json({
+            error:
+              "topShows must be an array",
+          });
+        }
+
+        if (
+          incomingTopShows.length > 8
+        ) {
+          return res.status(400).json({
+            error:
+              "A maximum of eight top shows is allowed.",
+          });
+        }
+
+        const seenShowIds =
+          new Set();
+
+        patch.topShows =
+          incomingTopShows
+            .map((show) => {
+              const tmdbId = Number(
+                show?.tmdbId ||
+                show?.showTmdbId ||
+                show?.id ||
+                show
+              );
+
+              if (
+                !Number.isInteger(
+                  tmdbId
+                ) ||
+                tmdbId <= 0 ||
+                seenShowIds.has(
+                  tmdbId
+                )
+              ) {
+                return null;
+              }
+
+              seenShowIds.add(
+                tmdbId
+              );
+
+              return {
+                tmdbId,
+
+                name:
+                  typeof show?.name ===
+                  "string"
+                    ? show.name.trim()
+                    : typeof show?.nameEn ===
+                      "string"
+                    ? show.nameEn.trim()
+                    : "",
+
+                nameAr:
+                  typeof show?.nameAr ===
+                  "string"
+                    ? show.nameAr.trim()
+                    : "",
+
+                originalName:
+                  typeof show?.originalName ===
+                  "string"
+                    ? show.originalName.trim()
+                    : typeof show?.original_name ===
+                      "string"
+                    ? show.original_name.trim()
+                    : "",
+
+                posterPath:
+                  typeof show?.posterPath ===
+                  "string"
+                    ? show.posterPath.trim()
+                    : typeof show?.poster_path ===
+                      "string"
+                    ? show.poster_path.trim()
+                    : typeof show?.poster ===
+                      "string"
+                    ? show.poster.trim()
+                    : "",
+
+                backdropPath:
+                  typeof show?.backdropPath ===
+                  "string"
+                    ? show.backdropPath.trim()
+                    : typeof show?.backdrop_path ===
+                      "string"
+                    ? show.backdrop_path.trim()
+                    : typeof show?.backdrop ===
+                      "string"
+                    ? show.backdrop.trim()
+                    : "",
+
+                firstAirDate:
+                  typeof show?.firstAirDate ===
+                  "string"
+                    ? show.firstAirDate.trim()
+                    : typeof show?.first_air_date ===
+                      "string"
+                    ? show.first_air_date.trim()
+                    : "",
+              };
+            })
+            .filter(Boolean)
+            .slice(0, 8);
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          req.body,
           "favoriteFilms"
         )
       ) {
@@ -1199,7 +1342,7 @@ router.patch("/:id",protect,upload.single("avatar"),async (req, res) => {
 
               return true;
             })
-            .slice(0, 4);
+            .slice(0, 8);
       }
 
       if (
@@ -1288,8 +1431,19 @@ router.patch("/:id",protect,upload.single("avatar"),async (req, res) => {
           avatar: user.avatar,
           profileBackdrop:
             user.profileBackdrop,
+
+          tvProfileBackdrop:
+            user.tvProfileBackdrop,
+
           favoriteFilms:
             user.favoriteFilms,
+
+          topShows:
+            user.topShows,
+
+          favoriteShows:
+            user.favoriteShows,
+
           socials: user.socials,
         },
       });
@@ -1498,6 +1652,326 @@ router.patch("/:id/language",protect,async (req, res) => {
 
 
 
+
+
+// ======================================================
+// GET /api/users/:userId/favorite-shows/status/:showTmdbId
+//
+// Checks whether one show is in the user's Favorite Shows.
+// ======================================================
+
+router.get(
+  "/:userId/favorite-shows/status/:showTmdbId",
+  protect,
+  async (req, res) => {
+    try {
+      const { userId, showTmdbId } = req.params;
+
+      if (!isValidObjectId(userId)) {
+        return res.status(400).json({
+          error: "Invalid userId",
+        });
+      }
+
+      if (!requireOwner(req, res, userId)) {
+        return;
+      }
+
+      const tmdbId = Number(showTmdbId);
+
+      if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
+        return res.status(400).json({
+          error: "showTmdbId must be a positive integer",
+        });
+      }
+
+      const user = await User.findById(userId)
+        .select("favoriteShows")
+        .lean();
+
+      if (!user) {
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      const favoriteShows = Array.isArray(user.favoriteShows)
+        ? user.favoriteShows
+        : [];
+
+      const item =
+        favoriteShows.find(
+          (show) => Number(show.tmdbId) === tmdbId
+        ) || null;
+
+      return res.status(200).json({
+        showTmdbId: tmdbId,
+        saved: Boolean(item),
+        item,
+        count: favoriteShows.length,
+        maximum: null,
+      });
+    } catch (err) {
+      console.error("❌ Favorite Shows status error:", err);
+
+      return res.status(500).json({
+        error: "Failed to fetch Favorite Shows status",
+      });
+    }
+  }
+);
+
+
+// ======================================================
+// POST /api/users/:userId/favorite-shows/:showTmdbId
+//
+// Adds one show to the user's Favorite Shows.
+// ======================================================
+
+router.post(
+  "/:userId/favorite-shows/:showTmdbId",
+  protect,
+  async (req, res) => {
+    try {
+      const {
+        userId,
+        showTmdbId,
+      } = req.params;
+
+      if (!isValidObjectId(userId)) {
+        return res.status(400).json({
+          error: "Invalid userId",
+        });
+      }
+
+      if (
+        !requireOwner(
+          req,
+          res,
+          userId
+        )
+      ) {
+        return;
+      }
+
+      const tmdbId =
+        Number(showTmdbId);
+
+      if (
+        !Number.isInteger(tmdbId) ||
+        tmdbId <= 0
+      ) {
+        return res.status(400).json({
+          error:
+            "showTmdbId must be a positive integer",
+        });
+      }
+
+      const user =
+        await User.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      if (
+        !Array.isArray(
+          user.favoriteShows
+        )
+      ) {
+        user.favoriteShows = [];
+      }
+
+      const existingIndex =
+        user.favoriteShows.findIndex(
+          (show) =>
+            Number(show.tmdbId) ===
+            tmdbId
+        );
+
+      const snapshot = {
+        tmdbId,
+
+        name:
+          typeof req.body?.name ===
+          "string"
+            ? req.body.name.trim()
+            : "",
+
+        nameAr:
+          typeof req.body?.nameAr ===
+          "string"
+            ? req.body.nameAr.trim()
+            : "",
+
+        originalName:
+          typeof req.body
+            ?.originalName ===
+          "string"
+            ? req.body.originalName.trim()
+            : "",
+
+        posterPath:
+          typeof req.body
+            ?.posterPath ===
+          "string"
+            ? req.body.posterPath.trim()
+            : "",
+
+        backdropPath:
+          typeof req.body
+            ?.backdropPath ===
+          "string"
+            ? req.body.backdropPath.trim()
+            : "",
+      };
+
+      if (existingIndex >= 0) {
+        user.favoriteShows[
+          existingIndex
+        ] = {
+          ...user.favoriteShows[
+            existingIndex
+          ].toObject?.(),
+          ...snapshot,
+        };
+
+        await user.save({ validateModifiedOnly: true });
+
+        return res.status(200).json({
+          message:
+            "Favorite show updated",
+
+          added: false,
+
+          favoriteShows:
+            user.favoriteShows,
+        });
+      }
+
+      user.favoriteShows.push(
+        snapshot
+      );
+
+      await user.save({ validateModifiedOnly: true });
+
+      return res.status(201).json({
+        message:
+          "Show added to Favorite Shows",
+
+        added: true,
+
+        favoriteShows:
+          user.favoriteShows,
+      });
+    } catch (err) {
+      console.error(
+        "❌ Favorite Shows POST error:",
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to update Favorite Shows",
+      });
+    }
+  }
+);
+
+
+// ======================================================
+// DELETE /api/users/:userId/favorite-shows/:showTmdbId
+//
+// Removes one show from the user's Favorite Shows.
+// ======================================================
+
+router.delete(
+  "/:userId/favorite-shows/:showTmdbId",
+  protect,
+  async (req, res) => {
+    try {
+      const {
+        userId,
+        showTmdbId,
+      } = req.params;
+
+      if (!isValidObjectId(userId)) {
+        return res.status(400).json({
+          error: "Invalid userId",
+        });
+      }
+
+      if (
+        !requireOwner(
+          req,
+          res,
+          userId
+        )
+      ) {
+        return;
+      }
+
+      const tmdbId =
+        Number(showTmdbId);
+
+      if (
+        !Number.isInteger(tmdbId) ||
+        tmdbId <= 0
+      ) {
+        return res.status(400).json({
+          error:
+            "showTmdbId must be a positive integer",
+        });
+      }
+
+      const user =
+        await User.findByIdAndUpdate(
+          userId,
+          {
+            $pull: {
+              favoriteShows: {
+                tmdbId,
+              },
+            },
+          },
+          {
+            new: true,
+            runValidators: true,
+          }
+        )
+          .select("favoriteShows")
+          .lean();
+
+      if (!user) {
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        message:
+          "Show removed from Favorite Shows",
+
+        favoriteShows:
+          user.favoriteShows || [],
+      });
+    } catch (err) {
+      console.error(
+        "❌ Favorite Shows DELETE error:",
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to update Favorite Shows",
+      });
+    }
+  }
+);
+
+
 // POST /api/users/:id/notify/share
 // Send a movie suggestion notification.
 router.post("/:id/notify/share",protect,async (req, res) => {
@@ -1605,6 +2079,182 @@ router.post("/:id/notify/share",protect,async (req, res) => {
     }
   }
 );
+
+
+// ======================================================
+// POST /api/users/:id/notify/share-show
+//
+// Sends a show suggestion notification.
+// ======================================================
+
+router.post(
+  "/:id/notify/share-show",
+  protect,
+  async (req, res) => {
+    try {
+      const recipientId =
+        req.params.id;
+
+      const senderId =
+        req.user?._id ||
+        req.user?.id;
+
+      if (
+        !isValidObjectId(
+          recipientId
+        )
+      ) {
+        return res.status(400).json({
+          message:
+            "Invalid recipient ID",
+        });
+      }
+
+      if (
+        String(recipientId) ===
+        String(senderId)
+      ) {
+        return res.status(400).json({
+          message:
+            "You cannot suggest a show to yourself",
+        });
+      }
+
+      const showTmdbId =
+        Number(
+          req.body?.showTmdbId ??
+          req.body?.showId
+        );
+
+      if (
+        !Number.isInteger(
+          showTmdbId
+        ) ||
+        showTmdbId <= 0
+      ) {
+        return res.status(400).json({
+          message:
+            "A valid showTmdbId is required",
+        });
+      }
+
+      const [
+        recipient,
+        fromUser,
+      ] = await Promise.all([
+        User.findById(
+          recipientId
+        ).select(
+          "username deviceTokens pushSettings"
+        ),
+
+        User.findById(
+          senderId
+        ).select(
+          "username avatar"
+        ),
+      ]);
+
+      if (!recipient) {
+        return res.status(404).json({
+          message:
+            "Recipient not found",
+        });
+      }
+
+      if (!fromUser) {
+        return res.status(404).json({
+          message:
+            "Sender not found",
+        });
+      }
+
+      const notification =
+        await Notification.create({
+          type: "show_shared",
+
+          message:
+            "suggested you check out this show!",
+
+          from:
+            senderId,
+
+          to:
+            recipientId,
+
+          mediaType: "tv",
+
+          targetType: "show",
+
+          showId:
+            String(showTmdbId),
+
+          showTitle:
+            typeof req.body
+              ?.showTitle ===
+            "string"
+              ? req.body.showTitle.trim()
+              : "",
+
+          showPoster:
+            typeof req.body
+              ?.showPoster ===
+            "string"
+              ? req.body.showPoster.trim()
+              : "",
+
+          showBackdrop:
+            typeof req.body
+              ?.showBackdrop ===
+            "string"
+              ? req.body.showBackdrop.trim()
+              : "",
+
+          read: false,
+        });
+
+      const io =
+        req.app.get("io");
+
+      if (io) {
+        io.to(
+          String(recipientId)
+        ).emit("notification", {
+          ...notification.toObject(),
+
+          from: {
+            _id:
+              fromUser._id,
+
+            username:
+              fromUser.username,
+
+            avatar:
+              fromUser.avatar,
+          },
+        });
+      }
+
+      return res.status(200).json({
+        message:
+          "Show notification sent",
+
+        notification,
+      });
+    } catch (err) {
+      console.error(
+        "❌ Failed to send show suggestion:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to send notification",
+      });
+    }
+  }
+);
+
 
 // ✅ Fast Watchlist (no TMDB calls)
 router.get("/:userId/watchlist", async (req, res) => {

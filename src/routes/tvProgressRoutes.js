@@ -8,6 +8,8 @@ const protect = require(
   "../middleware/authMiddleware"
 );
 
+const UserShowProgress = require("../models/userShowProgress");
+
 const {
   rebuildUserShowProgress,
   rebuildAllUserShowProgress,
@@ -436,6 +438,189 @@ router.post(
 );
 
 // ======================================================
+
+// GET /api/tv-progress/user/:userId
+// Returns all shows where the user has watched at least one episode.
+// Used by TV Career Progress on Actor/Director/Cinematographer pages.
+router.get(
+  "/user/:userId",
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      if (!userId) {
+        return res.status(400).json({
+          message: "userId is required",
+        });
+      }
+
+      const progressItems =
+        await UserShowProgress.find({
+          user: userId,
+          watchedEpisodeCount: {
+            $gt: 0,
+          },
+        })
+          .populate(
+            "show",
+            "tmdbId name originalName nameAr posterPath backdropPath firstAirDate numberOfEpisodes airedEpisodeCount"
+          )
+          .sort({
+            updatedAt: -1,
+          })
+          .lean();
+
+      const serialized = progressItems.map((progress) => {
+        const show = progress.show || {};
+
+        const showTmdbId =
+          progress.showTmdbId ||
+          show.tmdbId ||
+          null;
+
+        const watchedEpisodeCount =
+          Number(progress.watchedEpisodeCount || 0);
+
+        // For people pages / career progress, completion should mean
+        // whole-show completion, not current season/chunk completion.
+        const totalEpisodeCount =
+          Number(
+            show.numberOfEpisodes ||
+            progress.totalEpisodeCount ||
+            show.airedEpisodeCount ||
+            progress.airedEpisodeCount ||
+            0
+          );
+
+        const progressPercentage =
+          totalEpisodeCount > 0
+            ? Math.min(
+                100,
+                Math.round(
+                  (watchedEpisodeCount / totalEpisodeCount) * 100
+                )
+              )
+            : Number(progress.progressPercentage || 0);
+
+        return {
+          _id: String(progress._id),
+
+          showId:
+            progress.show?._id
+              ? String(progress.show._id)
+              : progress.show
+              ? String(progress.show)
+              : null,
+
+          showTmdbId,
+          tmdbId: showTmdbId,
+
+          title:
+            show.name ||
+            progress.showName ||
+            "Untitled Show",
+
+          name:
+            show.name ||
+            progress.showName ||
+            "Untitled Show",
+
+          originalName:
+            show.originalName ||
+            "",
+
+          nameAr:
+            show.nameAr ||
+            "",
+
+          posterPath:
+            show.posterPath ||
+            progress.posterPath ||
+            "",
+
+          backdropPath:
+            show.backdropPath ||
+            progress.backdropPath ||
+            "",
+
+          firstAirDate:
+            show.firstAirDate ||
+            progress.firstAirDate ||
+            null,
+
+          watchedEpisodeCount,
+          watchedEpisodesCount: watchedEpisodeCount,
+
+          totalEpisodeCount,
+          totalEpisodesCount: totalEpisodeCount,
+
+          progressPercentage,
+          progressPercent: progressPercentage,
+          completionPercent: progressPercentage,
+          percent: progressPercentage,
+
+          status:
+            progress.status ||
+            "",
+
+          lastWatchedAt:
+            progress.lastWatchedAt ||
+            progress.updatedAt ||
+            null,
+
+          updatedAt:
+            progress.updatedAt ||
+            null,
+
+          show: {
+            tmdbId: showTmdbId,
+            id: showTmdbId,
+            name:
+              show.name ||
+              progress.showName ||
+              "Untitled Show",
+            title:
+              show.name ||
+              progress.showName ||
+              "Untitled Show",
+            posterPath:
+              show.posterPath ||
+              progress.posterPath ||
+              "",
+            backdropPath:
+              show.backdropPath ||
+              progress.backdropPath ||
+              "",
+            firstAirDate:
+              show.firstAirDate ||
+              progress.firstAirDate ||
+              null,
+          },
+
+          progress: {
+            percentage: progressPercentage,
+            completionPercent: progressPercentage,
+            watchedEpisodeCount,
+            totalEpisodeCount,
+          },
+        };
+      });
+
+      return res.json(serialized);
+    } catch (error) {
+      console.error(
+        "❌ Failed to fetch user TV progress:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Failed to fetch user TV progress",
+      });
+    }
+  }
+);
+
+
 // GET /api/tv-progress/show/:showTmdbId
 //
 // Current user's progress for one show.

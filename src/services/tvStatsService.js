@@ -80,40 +80,136 @@ function buildDateMatch({
 function minutesToReadableTime(minutes) {
   const safeMinutes = Math.max(
     0,
-    Math.floor(Number(minutes) || 0)
+    Math.floor(
+      Number(minutes) || 0
+    )
   );
 
-  const days = Math.floor(
-    safeMinutes / 1440
+  const minutesPerHour =
+    60;
+
+  const minutesPerDay =
+    24 * minutesPerHour;
+
+  // A display month is intentionally treated
+  // as 30 days for readable profile statistics.
+  const minutesPerMonth =
+    30 * minutesPerDay;
+
+  const months = Math.floor(
+    safeMinutes /
+      minutesPerMonth
   );
 
-  const remainingAfterDays =
-    safeMinutes % 1440;
+  const afterMonths =
+    safeMinutes %
+    minutesPerMonth;
 
-  const hours = Math.floor(
-    remainingAfterDays / 60
+  const wholeDays = Math.floor(
+    afterMonths /
+      minutesPerDay
+  );
+
+  const afterDays =
+    afterMonths %
+    minutesPerDay;
+
+  const wholeHours = Math.floor(
+    afterDays /
+      minutesPerHour
   );
 
   const remainingMinutes =
-    remainingAfterDays % 60;
+    afterDays %
+    minutesPerHour;
+
+  const formattedLong = [
+    months > 0
+      ? `${months} ${
+          months === 1
+            ? "month"
+            : "months"
+        }`
+      : null,
+
+    wholeDays > 0
+      ? `${wholeDays} ${
+          wholeDays === 1
+            ? "day"
+            : "days"
+        }`
+      : null,
+
+    wholeHours > 0
+      ? `${wholeHours} ${
+          wholeHours === 1
+            ? "hour"
+            : "hours"
+        }`
+      : null,
+
+    remainingMinutes > 0
+      ? `${remainingMinutes} ${
+          remainingMinutes === 1
+            ? "minute"
+            : "minutes"
+        }`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return {
-    minutes: safeMinutes,
-    hours: Math.round(
-      (safeMinutes / 60) * 10
-    ) / 10,
-    days: Math.round(
-      (safeMinutes / 1440) * 10
-    ) / 10,
-    formatted: [
-      days > 0 ? `${days}d` : null,
-      hours > 0 ? `${hours}h` : null,
-      remainingMinutes > 0
-        ? `${remainingMinutes}m`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" ") || "0m",
+    minutes:
+      safeMinutes,
+
+    hours:
+      Math.round(
+        (
+          safeMinutes /
+          minutesPerHour
+        ) * 10
+      ) / 10,
+
+    days:
+      Math.round(
+        (
+          safeMinutes /
+          minutesPerDay
+        ) * 10
+      ) / 10,
+
+    months,
+
+    wholeDays,
+    wholeHours,
+    remainingMinutes,
+
+    formatted:
+      [
+        months > 0
+          ? `${months}mo`
+          : null,
+
+        wholeDays > 0
+          ? `${wholeDays}d`
+          : null,
+
+        wholeHours > 0
+          ? `${wholeHours}h`
+          : null,
+
+        remainingMinutes > 0
+          ? `${remainingMinutes}m`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" ") ||
+      "0m",
+
+    formattedLong:
+      formattedLong ||
+      "0 minutes",
   };
 }
 

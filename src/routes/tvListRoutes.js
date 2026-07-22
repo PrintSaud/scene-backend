@@ -1140,6 +1140,110 @@ router.patch(
           );
       }
 
+      if (
+        Object.prototype.hasOwnProperty.call(
+          req.body,
+          "shows"
+        )
+      ) {
+        const inputShows =
+          Array.isArray(
+            req.body?.shows
+          )
+            ? req.body.shows
+            : [];
+
+        const existingShows =
+          new Map(
+            (
+              Array.isArray(
+                list.shows
+              )
+                ? list.shows
+                : []
+            ).map(
+              (show) => [
+                Number(
+                  show?.id
+                ),
+                show,
+              ]
+            )
+          );
+
+        const seen =
+          new Set();
+
+        list.shows =
+          inputShows
+            .map((show) => {
+              const tmdbId =
+                Number(
+                  show?.id ??
+                  show?.tmdbId ??
+                  show?.showTmdbId
+                );
+
+              if (
+                !Number.isInteger(
+                  tmdbId
+                ) ||
+                tmdbId < 1 ||
+                seen.has(
+                  tmdbId
+                )
+              ) {
+                return null;
+              }
+
+              seen.add(
+                tmdbId
+              );
+
+              const existing =
+                existingShows.get(
+                  tmdbId
+                );
+
+              return {
+                id:
+                  tmdbId,
+
+                name:
+                  normalizeString(
+                    show?.name ??
+                    show?.title ??
+                    show?.showName,
+                    500
+                  ),
+
+                poster:
+                  normalizeString(
+                    show?.poster ??
+                    show?.posterPath ??
+                    show?.poster_path ??
+                    show?.posterOverride,
+                    2000
+                  ),
+
+                firstAirDate:
+                  normalizeString(
+                    show?.firstAirDate ??
+                    show?.first_air_date,
+                    100
+                  ),
+
+                addedAt:
+                  existing?.addedAt ||
+                  show?.addedAt ||
+                  new Date(),
+              };
+            })
+            .filter(
+              Boolean
+            );
+      }
+
       await list.save();
 
       await list.populate(

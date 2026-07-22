@@ -13,6 +13,11 @@ const TVLog = require(
   "../models/tvLog"
 );
 
+
+const User = require(
+  "../models/user"
+);
+
 const Notification = require(
   "../models/notification"
 );
@@ -27,6 +32,7 @@ const {
   createEpisodeLog,
   createQuickEpisodeLog,
   bulkLogAiredSeasonEpisodes,
+  bulkLogAiredShowEpisodes,
 
   updateEpisodeLog,
   deleteEpisodeLog,
@@ -151,6 +157,20 @@ function serializeReply(
     image:
       reply.image || "",
 
+    rating:
+      reply.rating ??
+      null,
+
+    favoriteCharacter:
+      reply.favoriteCharacter ||
+      null,
+
+    teamTag:
+      reply.teamTag ||
+      getEpisodeTeamTag(
+        reply.favoriteCharacter
+      ),
+
     parentComment:
       reply.parentComment
         ? String(
@@ -180,6 +200,428 @@ function serializeReply(
     updatedAt:
       reply.updatedAt ||
       null,
+  };
+}
+
+function getEpisodeTeamTag(
+  favoriteCharacter
+) {
+  const characterName =
+    favoriteCharacter
+      ?.characterName;
+
+  if (
+    typeof characterName !==
+      "string" ||
+    !characterName.trim()
+  ) {
+    return null;
+  }
+
+  const cleaned =
+    characterName
+      .trim()
+      .replace(/\s+/g, "");
+
+  return cleaned
+    ? `#Team${cleaned}`
+    : null;
+}
+
+async function enrichEpisodeRepliesWithReviewerData(
+  logs
+) {
+  const logList =
+    Array.isArray(logs)
+      ? logs
+      : logs
+      ? [logs]
+      : [];
+
+  if (!logList.length) {
+    return logs;
+  }
+
+  const groups =
+    new Map();
+
+  for (const log of logList) {
+    const showTmdbId =
+      Number(log?.showTmdbId);
+
+    const seasonNumber =
+      Number(log?.seasonNumber);
+
+    const episodeNumber =
+      Number(log?.episodeNumber);
+
+    if (
+      !Number.isInteger(showTmdbId) ||
+      showTmdbId < 1 ||
+      !Number.isInteger(seasonNumber) ||
+      seasonNumber < 0 ||
+      !Number.isInteger(episodeNumber) ||
+      episodeNumber < 1
+    ) {
+      continue;
+    }
+
+    const replyUserIds = [
+      ...new Set(
+        (
+          Array.isArray(log?.replies)
+            ? log.replies
+            : []
+        )
+          .map(
+            (reply) =>
+              reply?.user?._id ||
+              reply?.user?.id ||
+              reply?.user
+          )
+          .filter(Boolean)
+          .map(String)
+      ),
+    ];
+
+    if (!replyUserIds.length) {
+      continue;
+    }
+
+    const key =
+      `${showTmdbId}:${seasonNumber}:${episodeNumber}`;
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        showTmdbId,
+        seasonNumber,
+        episodeNumber,
+        userIds: new Set(),
+        logs: [],
+      });
+    }
+
+    const group =
+      groups.get(key);
+
+    replyUserIds.forEach(
+      (userId) =>
+        group.userIds.add(
+          String(userId)
+        )
+    );
+
+    group.logs.push(log);
+  }
+
+  for (const group of groups.values()) {
+    const reviewerLogs =
+      await TVLog.find({
+        showTmdbId:
+          group.showTmdbId,
+
+        seasonNumber:
+          group.seasonNumber,
+
+        episodeNumber:
+          group.episodeNumber,
+
+        user: {
+          $in: [
+            ...group.userIds,
+          ],
+        },
+      })
+        .select(
+          "user rating favoriteCharacter watchedAt createdAt"
+        )
+        .sort({
+          watchedAt: -1,
+          createdAt: -1,
+          _id: -1,
+        })
+        .lean();
+
+    const latestByUser =
+      new Map();
+
+    for (
+      const reviewerLog of
+      reviewerLogs
+    ) {
+      const reviewerUserId =
+        String(
+          reviewerLog?.user?._id ||
+          reviewerLog?.user ||
+          ""
+        );
+
+      if (
+        !reviewerUserId ||
+        latestByUser.has(
+          reviewerUserId
+        )
+      ) {
+        continue;
+      }
+
+      latestByUser.set(
+        reviewerUserId,
+        {
+          rating:
+            reviewerLog?.rating ??
+            null,
+
+          favoriteCharacter:
+            reviewerLog
+              ?.favoriteCharacter ||
+            null,
+
+          teamTag:
+            getEpisodeTeamTag(
+              reviewerLog
+                ?.favoriteCharacter
+            ),
+        }
+      );
+    }
+
+    for (
+      const targetLog of
+      group.logs
+    ) {
+      if (
+        !Array.isArray(
+          targetLog?.replies
+        )
+      ) {
+        continue;
+      }
+
+      for (
+        const reply of
+        targetLog.replies
+      ) {
+        const replyUserId =
+          String(
+            reply?.user?._id ||
+            reply?.user?.id ||
+            reply?.user ||
+            ""
+          );
+
+        const metadata =
+          latestByUser.get(
+            replyUserId
+          );
+
+        reply.rating =
+          metadata?.rating ??
+          null;
+
+        reply.favoriteCharacter =
+          metadata
+            ?.favoriteCharacter ||
+          null;
+
+        reply.teamTag =
+          metadata?.teamTag ||
+          null;
+      }
+    }
+  }
+
+  return logs;
+}
+
+function serializeEpisodeReview(
+  log,
+  viewerUserId = null
+) {
+  const populatedUser =
+    log.user &&
+    typeof log.user ===
+      "object" &&
+    log.user._id
+      ? log.user
+      : null;
+
+  const replies =
+    Array.isArray(
+      log.replies
+    )
+      ? log.replies
+      : [];
+
+  return {
+    id:
+      String(log._id),
+
+    user: {
+      id:
+        populatedUser
+          ? String(
+              populatedUser._id
+            )
+          : String(
+              log.user
+            ),
+
+      username:
+        populatedUser?.username ||
+        "",
+
+      name:
+        populatedUser?.name ||
+        "",
+
+      avatar:
+        populatedUser?.avatar ||
+        "",
+    },
+
+    show: {
+      tmdbId:
+        log.showTmdbId,
+
+      name:
+        log.showName ||
+        "",
+
+      poster:
+        log.customShowPoster ||
+        log.showPoster ||
+        "",
+
+      backdrop:
+        log.showBackdrop ||
+        "",
+    },
+
+    episode: {
+      tmdbId:
+        log.episodeTmdbId ||
+        null,
+
+      seasonNumber:
+        log.seasonNumber,
+
+      episodeNumber:
+        log.episodeNumber,
+
+      name:
+        log.episodeName ||
+        "",
+
+      still:
+        log.customEpisodeBackdrop ||
+        log.episodeStillPath ||
+        log.showBackdrop ||
+        "",
+    },
+
+    rating:
+      log.rating ??
+      null,
+
+    review:
+      log.review ||
+      "",
+
+    containsSpoilers:
+      Boolean(
+        log.containsSpoilers
+      ),
+
+    favoriteCharacter:
+      log.favoriteCharacter ||
+      null,
+
+    teamTag:
+      getEpisodeTeamTag(
+        log.favoriteCharacter
+      ),
+
+    media: {
+      gif:
+        log.gif ||
+        "",
+
+      image:
+        log.image ||
+        "",
+
+      images:
+        Array.isArray(
+          log.images
+        )
+          ? log.images
+          : [],
+    },
+
+    engagement: {
+      likeCount:
+        Array.isArray(
+          log.likes
+        )
+          ? log.likes.length
+          : 0,
+
+      replyCount:
+        replies.length,
+
+      likedByViewer:
+        viewerUserId
+          ? includesObjectId(
+              log.likes,
+              viewerUserId
+            )
+          : false,
+    },
+
+    replies:
+      replies.map((reply) =>
+        serializeReply(
+          reply,
+          viewerUserId
+        )
+      ),
+
+    watchNumber:
+      Number(
+        log.watchNumber
+      ) || 1,
+
+    watchedAt:
+      log.watchedAt ||
+      null,
+
+    createdAt:
+      log.createdAt ||
+      null,
+
+    updatedAt:
+      log.updatedAt ||
+      null,
+
+    navigation: {
+      screen:
+        "EpisodeReview",
+
+      params: {
+        logId:
+          String(log._id),
+
+        showTmdbId:
+          log.showTmdbId,
+
+        seasonNumber:
+          log.seasonNumber,
+
+        episodeNumber:
+          log.episodeNumber,
+      },
+    },
   };
 }
 
@@ -520,6 +962,83 @@ router.post(
 );
 
 // ======================================================
+// POST /api/tv-logs/bulk-show
+//
+// Logs every currently aired, unlogged episode across
+// every normal season. Never creates rewatches.
+// ======================================================
+
+router.post(
+  "/bulk-show",
+  protect,
+  async (req, res) => {
+    try {
+      const userId =
+        getAuthenticatedUserId(req);
+
+      const {
+        showTmdbId,
+        watchedAt,
+      } = req.body;
+
+      const result =
+        await bulkLogAiredShowEpisodes({
+          userId,
+          showTmdbId,
+          watchedAt,
+        });
+
+      return res
+        .status(201)
+        .json({
+          message:
+            result.createdCount > 0
+              ? `${result.createdCount} episodes marked watched`
+              : "All aired episodes were already watched",
+
+          createdCount:
+            result.createdCount,
+
+          skippedCount:
+            result.skippedCount,
+
+          seasonCount:
+            result.seasonCount,
+
+          airedEpisodeCount:
+            result.airedEpisodeCount,
+
+          createdLogs:
+            result.createdLogs,
+
+          progress:
+            result.progress,
+        });
+    } catch (error) {
+      console.error(
+        "❌ BULK SHOW QUICK LOG ERROR:",
+        {
+          message: error?.message,
+          code: error?.code,
+          statusCode: error?.statusCode,
+          stack: error?.stack,
+          body: req.body,
+          userId: getAuthenticatedUserId(req),
+          errors: error?.errors,
+          writeErrors: error?.writeErrors,
+        }
+      );
+
+      return handleServiceError(
+        error,
+        res,
+        "Failed to mark show watched"
+      );
+    }
+  }
+);
+
+// ======================================================
 // GET /api/tv-logs/episode/:showTmdbId/:seasonNumber/:episodeNumber/history
 //
 // Authenticated user's complete episode watch history.
@@ -604,6 +1123,446 @@ router.get(
         error,
         res,
         "Failed to fetch latest episode log"
+      );
+    }
+  }
+);
+
+// ======================================================
+// GET /api/tv-logs/episode/:showTmdbId/:seasonNumber/:episodeNumber/friends
+//
+// Ratings and reviews from users the current user follows.
+// One latest rated/reviewed log per followed user.
+// ======================================================
+
+router.get(
+  "/episode/:showTmdbId/:seasonNumber/:episodeNumber/friends",
+  protect,
+  async (req, res) => {
+    try {
+      const viewerUserId =
+        getAuthenticatedUserId(req);
+
+      const showTmdbId =
+        Number(
+          req.params.showTmdbId
+        );
+
+      const seasonNumber =
+        Number(
+          req.params.seasonNumber
+        );
+
+      const episodeNumber =
+        Number(
+          req.params.episodeNumber
+        );
+
+      if (
+        !Number.isInteger(showTmdbId) ||
+        showTmdbId < 1 ||
+        !Number.isInteger(seasonNumber) ||
+        seasonNumber < 0 ||
+        !Number.isInteger(episodeNumber) ||
+        episodeNumber < 1
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid show, season, or episode number",
+        });
+      }
+
+      const currentUser =
+        await User.findById(
+          viewerUserId
+        )
+          .select("following")
+          .lean();
+
+      if (!currentUser) {
+        return res.status(404).json({
+          error:
+            "User not found",
+        });
+      }
+
+      const following =
+        Array.isArray(
+          currentUser.following
+        )
+          ? currentUser.following
+          : [];
+
+      if (!following.length) {
+        return res.status(200).json({
+          showTmdbId,
+          seasonNumber,
+          episodeNumber,
+          results: [],
+          count: 0,
+        });
+      }
+
+      const logs =
+        await TVLog.find({
+          showTmdbId,
+          seasonNumber,
+          episodeNumber,
+
+          user: {
+            $in: following,
+          },
+
+          $or: [
+            {
+              rating: {
+                $ne: null,
+              },
+            },
+
+            {
+              review: {
+                $nin: [
+                  null,
+                  "",
+                ],
+              },
+            },
+
+            {
+              gif: {
+                $nin: [
+                  null,
+                  "",
+                ],
+              },
+            },
+
+            {
+              image: {
+                $nin: [
+                  null,
+                  "",
+                ],
+              },
+            },
+          ],
+        })
+          .sort({
+            watchedAt: -1,
+            createdAt: -1,
+            _id: -1,
+          })
+          .populate(
+            "user",
+            "username name avatar"
+          )
+          .populate(
+            "replies.user",
+            "username name avatar"
+          )
+          .lean({
+            virtuals: true,
+          });
+
+      // A user may have multiple rewatches.
+      // Display only their latest meaningful log.
+      const uniqueByUser =
+        new Map();
+
+      for (const log of logs) {
+        const userId =
+          String(
+            log.user?._id ||
+            log.user ||
+            ""
+          );
+
+        if (
+          !userId ||
+          uniqueByUser.has(userId)
+        ) {
+          continue;
+        }
+
+        uniqueByUser.set(
+          userId,
+          log
+        );
+      }
+
+      const uniqueLogs =
+        Array.from(
+          uniqueByUser.values()
+        );
+
+      await enrichEpisodeRepliesWithReviewerData(
+        uniqueLogs
+      );
+
+      const results =
+        uniqueLogs.map((log) =>
+          serializeEpisodeReview(
+            log,
+            viewerUserId
+          )
+        );
+
+      return res.status(200).json({
+        showTmdbId,
+        seasonNumber,
+        episodeNumber,
+        results,
+        count:
+          results.length,
+      });
+    } catch (error) {
+      return handleServiceError(
+        error,
+        res,
+        "Failed to fetch friends’ episode ratings"
+      );
+    }
+  }
+);
+
+// ======================================================
+// GET /api/tv-logs/episode/:showTmdbId/:seasonNumber/:episodeNumber/popular
+//
+// Most-liked public episode reviews.
+// Query:
+// - page=1
+// - limit=20
+// ======================================================
+
+router.get(
+  "/episode/:showTmdbId/:seasonNumber/:episodeNumber/popular",
+  protect,
+  async (req, res) => {
+    try {
+      const viewerUserId =
+        getAuthenticatedUserId(req);
+
+      const showTmdbId =
+        Number(
+          req.params.showTmdbId
+        );
+
+      const seasonNumber =
+        Number(
+          req.params.seasonNumber
+        );
+
+      const episodeNumber =
+        Number(
+          req.params.episodeNumber
+        );
+
+      const page =
+        Math.max(
+          1,
+          Number(
+            req.query.page
+          ) || 1
+        );
+
+      const limit =
+        Math.min(
+          50,
+          Math.max(
+            1,
+            Number(
+              req.query.limit
+            ) || 20
+          )
+        );
+
+      if (
+        !Number.isInteger(showTmdbId) ||
+        showTmdbId < 1 ||
+        !Number.isInteger(seasonNumber) ||
+        seasonNumber < 0 ||
+        !Number.isInteger(episodeNumber) ||
+        episodeNumber < 1
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid show, season, or episode number",
+        });
+      }
+
+      const match = {
+        showTmdbId,
+        seasonNumber,
+        episodeNumber,
+
+        $or: [
+          {
+            review: {
+              $nin: [
+                null,
+                "",
+              ],
+            },
+          },
+
+          {
+            gif: {
+              $nin: [
+                null,
+                "",
+              ],
+            },
+          },
+
+          {
+            image: {
+              $nin: [
+                null,
+                "",
+              ],
+            },
+          },
+
+          {
+            images: {
+              $exists: true,
+              $not: {
+                $size: 0,
+              },
+            },
+          },
+        ],
+      };
+
+      const [
+        sortedLogs,
+        total,
+      ] = await Promise.all([
+        TVLog.aggregate([
+          {
+            $match:
+              match,
+          },
+
+          {
+            $addFields: {
+              calculatedLikeCount: {
+                $size: {
+                  $ifNull: [
+                    "$likes",
+                    [],
+                  ],
+                },
+              },
+            },
+          },
+
+          {
+            $sort: {
+              calculatedLikeCount: -1,
+              createdAt: -1,
+              _id: -1,
+            },
+          },
+
+          {
+            $skip:
+              (page - 1) *
+              limit,
+          },
+
+          {
+            $limit:
+              limit,
+          },
+        ]),
+
+        TVLog.countDocuments(
+          match
+        ),
+      ]);
+
+      const ids =
+        sortedLogs.map(
+          (log) =>
+            log._id
+        );
+
+      const populatedLogs =
+        await TVLog.find({
+          _id: {
+            $in: ids,
+          },
+        })
+          .populate(
+            "user",
+            "username name avatar"
+          )
+          .populate(
+            "replies.user",
+            "username name avatar"
+          )
+          .lean({
+            virtuals: true,
+          });
+
+      const byId =
+        new Map(
+          populatedLogs.map(
+            (log) => [
+              String(log._id),
+              log,
+            ]
+          )
+        );
+
+      const orderedLogs =
+        ids
+          .map((id) =>
+            byId.get(
+              String(id)
+            )
+          )
+          .filter(Boolean);
+
+      await enrichEpisodeRepliesWithReviewerData(
+        orderedLogs
+      );
+
+      return res.status(200).json({
+        showTmdbId,
+        seasonNumber,
+        episodeNumber,
+
+        results:
+          orderedLogs.map((log) =>
+            serializeEpisodeReview(
+              log,
+              viewerUserId
+            )
+          ),
+
+        pagination: {
+          page,
+          limit,
+          total,
+
+          totalPages:
+            Math.ceil(
+              total / limit
+            ),
+
+          hasMore:
+            page * limit <
+            total,
+        },
+      });
+    } catch (error) {
+      return handleServiceError(
+        error,
+        res,
+        "Failed to fetch popular episode reviews"
       );
     }
   }
@@ -1364,10 +2323,20 @@ router.get(
             req.params.logId,
         });
 
+      await enrichEpisodeRepliesWithReviewerData(
+        log
+      );
+
       return res
         .status(200)
         .json({
-          log,
+          log:
+            serializeEpisodeReview(
+              log,
+              getAuthenticatedUserId(
+                req
+              )
+            ),
         });
     } catch (error) {
       return handleServiceError(

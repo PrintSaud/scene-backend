@@ -95,6 +95,39 @@ router.post(
 );
 
 
+// POST /api/upload/review-media
+// Upload an image used in movie/show/episode reviews.
+router.post(
+  "/review-media",
+  protect,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          message: "No image received",
+        });
+      }
+
+      const url = await uploadToCloudinary(
+        req.file.buffer,
+        "scene/review-media"
+      );
+
+      return res.status(200).json({
+        url,
+      });
+    } catch (error) {
+      return handleUploadError(
+        error,
+        res
+      );
+    }
+  }
+);
+
+
+
 // POST /api/upload/avatar/:id
 // Upload an avatar for the authenticated user's own account.
 router.post(

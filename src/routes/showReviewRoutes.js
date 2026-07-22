@@ -309,6 +309,129 @@ function getTeamTag(
     : null;
 }
 
+async function enrichRepliesWithReviewerShowData(
+  reviews,
+  showTmdbId
+) {
+  const reviewList =
+    Array.isArray(reviews)
+      ? reviews
+      : reviews
+      ? [reviews]
+      : [];
+
+  if (
+    reviewList.length === 0 ||
+    !showTmdbId
+  ) {
+    return reviews;
+  }
+
+  const replyUserIds = [
+    ...new Set(
+      reviewList
+        .flatMap(
+          (review) =>
+            Array.isArray(
+              review?.replies
+            )
+              ? review.replies
+              : []
+        )
+        .map(
+          (reply) =>
+            reply?.user?._id ||
+            reply?.user?.id ||
+            reply?.user
+        )
+        .filter(Boolean)
+        .map(String)
+    ),
+  ];
+
+  if (
+    replyUserIds.length === 0
+  ) {
+    return reviews;
+  }
+
+  const reviewerReviews =
+    await ShowReview.find({
+      showTmdbId,
+      user: {
+        $in: replyUserIds,
+      },
+    })
+      .select(
+        "user rating favoriteCharacter"
+      )
+      .lean();
+
+  const reviewerReviewMap =
+    new Map(
+      reviewerReviews.map(
+        (review) => [
+          String(review.user),
+          {
+            rating:
+              review.rating ??
+              null,
+
+            favoriteCharacter:
+              review.favoriteCharacter ||
+              null,
+
+            teamTag:
+              getTeamTag(
+                review.favoriteCharacter
+              ),
+          },
+        ]
+      )
+    );
+
+  reviewList.forEach(
+    (review) => {
+      if (
+        !Array.isArray(
+          review?.replies
+        )
+      ) {
+        return;
+      }
+
+      review.replies.forEach(
+        (reply) => {
+          const replyUserId =
+            reply?.user?._id ||
+            reply?.user?.id ||
+            reply?.user;
+
+          const reviewerReview =
+            reviewerReviewMap.get(
+              String(replyUserId)
+            );
+
+          reply.rating =
+            reviewerReview?.rating ??
+            null;
+
+          reply.favoriteCharacter =
+            reviewerReview
+              ?.favoriteCharacter ||
+            null;
+
+          reply.teamTag =
+            reviewerReview?.teamTag ||
+            null;
+        }
+      );
+    }
+  );
+
+  return reviews;
+}
+
 function buildReviewSort(sortType) {
   switch (sortType) {
     case "oldest":
@@ -382,6 +505,20 @@ function serializeReply(
 
     image:
       reply.image || "",
+
+    rating:
+      reply.rating ??
+      null,
+
+    favoriteCharacter:
+      reply.favoriteCharacter ||
+      null,
+
+    teamTag:
+      reply.teamTag ||
+      getTeamTag(
+        reply.favoriteCharacter
+      ),
 
     parentComment:
       reply.parentComment
@@ -779,6 +916,240 @@ router.get(
   }
 );
 
+
+// ======================================================
+// GET /api/show-reviews/show/:showTmdbId/friends
+//
+// Reviews and ratings from users the current user follows.
+//
+// Query:
+// - page=1
+// - limit=20
+// - sort=newest|oldest|highest|lowest|most-liked
+// ======================================================
+
+router.get(
+  "/show/:showTmdbId/friends",
+  protect,
+  async (req, res) => {
+    try {
+      const userId =
+        getAuthenticatedUserId(req);
+
+      const showTmdbId =
+        parsePositiveInteger(
+          req.params.showTmdbId,
+          "show ID"
+        );
+
+      const page =
+        parsePage(req.query.page);
+
+      const limit =
+        parseLimit(req.query.limit);
+
+      const requestedSort =
+        typeof req.query.sort === "string"
+          ? req.query.sort
+          : "newest";
+
+      const sortType =
+        VALID_SORTS.has(requestedSort)
+          ? requestedSort
+          : "newest";
+
+      const currentUser =
+        await User.findById(userId)
+          .select("following")
+          .lean();
+
+      if (!currentUser) {
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      const following =
+        Array.isArray(currentUser.following)
+          ? currentUser.following
+          : [];
+
+      if (!following.length) {
+        return res.status(200).json({
+          showTmdbId,
+          results: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0,
+            hasMore: false,
+          },
+          sort: sortType,
+        });
+      }
+
+      const match = {
+        showTmdbId,
+        user: {
+          $in: following,
+        },
+      };
+
+      let reviews = [];
+      let total = 0;
+
+      if (sortType === "most-liked") {
+        const sortedResults =
+          await ShowReview.aggregate([
+            {
+              $match: match,
+            },
+            {
+              $addFields: {
+                likeCount: {
+                  $size: {
+                    $ifNull: [
+                      "$likes",
+                      [],
+                    ],
+                  },
+                },
+              },
+            },
+            {
+              $sort: {
+                likeCount: -1,
+                updatedAt: -1,
+                _id: -1,
+              },
+            },
+            {
+              $skip:
+                (page - 1) * limit,
+            },
+            {
+              $limit: limit,
+            },
+          ]);
+
+        const reviewIds =
+          sortedResults.map(
+            (review) => review._id
+          );
+
+        const populatedReviews =
+          await ShowReview.find({
+            _id: {
+              $in: reviewIds,
+            },
+          })
+            .populate(
+              "user",
+              "username name avatar"
+            )
+            .populate(
+              "replies.user",
+              "username name avatar"
+            )
+            .lean({
+              virtuals: true,
+            });
+
+        const reviewMap =
+          new Map(
+            populatedReviews.map(
+              (review) => [
+                String(review._id),
+                review,
+              ]
+            )
+          );
+
+        reviews =
+          reviewIds
+            .map((reviewId) =>
+              reviewMap.get(
+                String(reviewId)
+              )
+            )
+            .filter(Boolean);
+
+        total =
+          await ShowReview.countDocuments(
+            match
+          );
+      } else {
+        [
+          reviews,
+          total,
+        ] = await Promise.all([
+          ShowReview.find(match)
+            .sort(
+              buildReviewSort(sortType)
+            )
+            .skip(
+              (page - 1) * limit
+            )
+            .limit(limit)
+            .populate(
+              "user",
+              "username name avatar"
+            )
+            .populate(
+              "replies.user",
+              "username name avatar"
+            )
+            .lean({
+              virtuals: true,
+            }),
+
+          ShowReview.countDocuments(
+            match
+          ),
+        ]);
+      }
+
+      await enrichRepliesWithReviewerShowData(
+        reviews,
+        showTmdbId
+      );
+
+      return res.status(200).json({
+        showTmdbId,
+
+        results:
+          reviews.map((review) =>
+            serializeReview(
+              review,
+              userId
+            )
+          ),
+
+        pagination: {
+          page,
+          limit,
+          total,
+
+          totalPages:
+            Math.ceil(total / limit),
+
+          hasMore:
+            page * limit < total,
+        },
+
+        sort: sortType,
+      });
+    } catch (error) {
+      return handleError(
+        error,
+        res,
+        "Failed to fetch friends’ show reviews"
+      );
+    }
+  }
+);
+
 // ======================================================
 // GET /api/show-reviews/show/:showTmdbId
 //
@@ -957,6 +1328,11 @@ router.get(
           ),
         ]);
       }
+
+      await enrichRepliesWithReviewerShowData(
+        reviews,
+        showTmdbId
+      );
 
       return res.status(200).json({
         showTmdbId,
@@ -1289,6 +1665,11 @@ router.get(
             "Show review not found",
         });
       }
+
+      await enrichRepliesWithReviewerShowData(
+        review,
+        review.showTmdbId
+      );
 
       return res.status(200).json({
         review:

@@ -225,6 +225,9 @@ function buildMessage({
     case "reply":
       return `💬 ${username} replied to your comment`;
 
+    case "list_like":
+      return `❤️ ${username} liked your list`;
+
     case "share-list":
     case "list_shared":
       return `📋 ${username} shared a list with you`;
@@ -370,6 +373,9 @@ function getMuteSettingForType(type) {
       "muteLikes",
 
     show_review_like:
+      "muteLikes",
+
+    list_like:
       "muteLikes",
 
     "share-movie":

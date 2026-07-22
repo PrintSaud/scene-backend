@@ -80,6 +80,60 @@ const importStatsSchema = new Schema(
       min: 0,
     },
 
+    watchDatesDetected: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    rewatchesDetected: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    favoriteCharacterVotesDetected: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    watchLaterShowsDetected: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    favoriteShowsDetected: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    listsDetected: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    commentRecordsDetected: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    recoverableCommentBodiesDetected: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    archiveFilesDetected: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     reviewsDetected: {
       type: Number,
       default: 0,
@@ -99,6 +153,12 @@ const importStatsSchema = new Schema(
     },
 
     unmatchedShows: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    uncertainShows: {
       type: Number,
       default: 0,
       min: 0,
@@ -189,6 +249,488 @@ const importWarningSchema = new Schema(
 // ======================================================
 // TV import job
 // ======================================================
+
+// ======================================================
+// TV Time → TMDB show resolution
+// ======================================================
+
+const showResolutionCandidateSchema = new Schema(
+  {
+    tmdbId: {
+      type: Number,
+      default: null,
+    },
+
+    name: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    originalName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    firstAirDate: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    year: {
+      type: Number,
+      default: null,
+    },
+
+    posterPath: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    backdropPath: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    originCountry: {
+      type: [String],
+      default: [],
+    },
+
+    popularity: {
+      type: Number,
+      default: 0,
+    },
+
+    score: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 1,
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
+const orphanEpisodePatternSchema = new Schema(
+  {
+    seasonNumber: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    episodes: {
+      type: [Number],
+      default: [],
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
+const episodeResolutionIssueSchema = new Schema(
+  {
+    sourceEpisodeId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    sourceKey: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    sourceName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    showTmdbId: {
+      type: Number,
+      default: null,
+    },
+
+    seasonNumber: {
+      type: Number,
+      default: null,
+    },
+
+    episodeNumber: {
+      type: Number,
+      default: null,
+    },
+
+    status: {
+      type: String,
+      enum: [
+        "blocked_show",
+        "invalid_position",
+        "missing_tmdb_episode",
+        "special",
+      ],
+      required: true,
+    },
+
+    reason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
+const episodeResolutionSummarySchema = new Schema(
+  {
+    totalSourceEpisodes: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    exactMatches: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    directMatches: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    externalIdMatches: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    compatibilityMatches: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    manualRecoveryRecords: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    specials: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    blockedByUnresolvedShows: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    invalidPositions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    missingTmdbEpisodes: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    duplicateSourceRows: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    preservedWatchDates: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    resolvedShows: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    resolvedSeasons: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    syncedSeasons: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    generatedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
+
+// ======================================================
+// Dry-run execution plan summary
+// ======================================================
+
+const importPlanSummarySchema =
+  new Schema(
+    {
+      totalSourceRecords: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      resolvedRecords: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      readyToCreate: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      alreadyImported: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      skippedUnresolved: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      skippedSpecials: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      invalidResolvedRows: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      showsAffected: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      uniqueEpisodesAffected: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      rewatchLogs: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      ratingsAttached: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      characterVotesAttached: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      preservedWatchDates: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      accountingDifference: {
+        type: Number,
+        default: 0,
+      },
+
+      planHash: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      generatedAt: {
+        type: Date,
+        default: null,
+      },
+    },
+    {
+      _id: false,
+    }
+  );
+
+const showResolutionSchema = new Schema(
+  {
+    sourceKey: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    sourceId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    sourceName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    normalizedSourceName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    sourceNameMissing: {
+      type: Boolean,
+      default: false,
+    },
+
+    reportedEpisodesSeen: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    recoveredEpisodeCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    episodePattern: {
+      type: [orphanEpisodePatternSchema],
+      default: [],
+    },
+
+    firstWatchDate: {
+      type: Date,
+      default: null,
+    },
+
+    lastWatchDate: {
+      type: Date,
+      default: null,
+    },
+
+    episodeCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    followed: {
+      type: Boolean,
+      default: false,
+    },
+
+    favorite: {
+      type: Boolean,
+      default: false,
+    },
+
+    watchLater: {
+      type: Boolean,
+      default: false,
+    },
+
+    status: {
+      type: String,
+      enum: [
+        "matched",
+        "uncertain",
+        "unmatched",
+        "confirmed",
+        "rejected",
+      ],
+      default: "unmatched",
+      index: true,
+    },
+
+    selectedTmdbId: {
+      type: Number,
+      default: null,
+    },
+
+    confidence: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 1,
+    },
+
+    reason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    candidates: {
+      type: [showResolutionCandidateSchema],
+      default: [],
+    },
+
+    resolvedAt: {
+      type: Date,
+      default: null,
+    },
+
+    confirmedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    _id: false,
+  }
+);
 
 const tvImportJobSchema = new Schema(
   {
@@ -318,6 +860,26 @@ const tvImportJobSchema = new Schema(
     warnings: {
       type: [importWarningSchema],
       default: [],
+    },
+
+    showResolution: {
+      type: [showResolutionSchema],
+      default: [],
+    },
+
+    episodeResolutionSummary: {
+      type: episodeResolutionSummarySchema,
+      default: () => ({}),
+    },
+
+    episodeResolutionIssues: {
+      type: [episodeResolutionIssueSchema],
+      default: [],
+    },
+
+    importPlanSummary: {
+      type: importPlanSummarySchema,
+      default: () => ({}),
     },
 
     // ==================================================

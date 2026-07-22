@@ -448,19 +448,40 @@ const UserSchema = new Schema(
     },
 
     /**
-     * TV Top Four.
+     * Unlimited TV favorites.
      *
-     * Array order is the profile display order.
+     * These appear in the Favorites section of the TV profile.
+     */
+    /**
+     * Unlimited favorite shows.
+     *
+     * This is separate from a future profile Top Four selection.
      */
     favoriteShows: {
       type: [favoriteShowSchema],
       default: [],
+    },
+
+    /**
+     * The four shows displayed at the top of the TV profile.
+     *
+     * This is intentionally separate from favoriteShows,
+     * which is the user's unlimited collection of favorited shows.
+     */
+    topShows: {
+      type: [favoriteShowSchema],
+      default: [],
+
       validate: {
-        validator(shows) {
-          return Array.isArray(shows) && shows.length <= 4;
+        validator(value) {
+          return (
+            Array.isArray(value) &&
+            value.length <= 8
+          );
         },
+
         message:
-          "A user can have no more than four favorite shows.",
+          "A maximum of eight top shows is allowed.",
       },
     },
 
@@ -795,6 +816,41 @@ function deduplicateObjectIds(values) {
 // Pre-save cleanup
 // ======================================================
 
+// ======================================================
+// Normalize cached counters before Mongoose validation.
+//
+// Validation runs before custom pre("save") hooks, so negative
+// legacy/in-memory values must be repaired during pre("validate").
+// ======================================================
+
+UserSchema.pre("validate", function normalizeCountersBeforeValidation(next) {
+  const counterFields = [
+    "totalLogs",
+    "totalEpisodeWatches",
+    "totalUniqueEpisodesWatched",
+    "totalEpisodeRewatches",
+    "totalTVWatchMinutes",
+    "totalSeasonsCompleted",
+    "totalShowsStarted",
+    "totalShowsCompleted",
+  ];
+
+  for (const field of counterFields) {
+    this[field] = normalizeNonNegativeInteger(this[field]);
+  }
+
+  if (this.totalEpisodeRewatches > this.totalEpisodeWatches) {
+    this.totalEpisodeRewatches = this.totalEpisodeWatches;
+  }
+
+  if (this.totalUniqueEpisodesWatched > this.totalEpisodeWatches) {
+    this.totalUniqueEpisodesWatched = this.totalEpisodeWatches;
+  }
+
+  next();
+});
+
+
 UserSchema.pre("save", async function normalizeUser(next) {
   try {
     if (
@@ -983,7 +1039,7 @@ UserSchema.pre("save", async function normalizeUser(next) {
     }
 
     // ==================================================
-    // Favorite Show Top Four
+    // Favorite Shows
     // ==================================================
 
     if (Array.isArray(this.favoriteShows)) {

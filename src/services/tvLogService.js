@@ -34,6 +34,7 @@ const VALID_LOG_METHODS = new Set([
   "full",
   "quick",
   "bulk_season",
+  "bulk_show",
   "import",
 ]);
 
@@ -1203,15 +1204,16 @@ async function bulkLogAiredSeasonEpisodes({
       seasonNumber
     );
 
-  await syncSeasonFromTMDB(
-    parsedShowId,
-    parsedSeasonNumber,
-    {
-      syncEpisodes: true,
-    }
-  );
+  const now =
+    new Date();
 
-  const episodes =
+  /*
+   * Cache-first bulk logging.
+   *
+   * Use Scene's cached Episode documents immediately. Only contact
+   * TMDB when this season has no cached aired episodes at all.
+   */
+  let episodes =
     await Episode.find({
       showTmdbId:
         parsedShowId,
@@ -1221,13 +1223,43 @@ async function bulkLogAiredSeasonEpisodes({
 
       airDate: {
         $ne: null,
-        $lte: new Date(),
+        $lte: now,
       },
     })
       .sort({
         episodeNumber: 1,
       })
       .lean();
+
+  if (
+    episodes.length === 0
+  ) {
+    await syncSeasonFromTMDB(
+      parsedShowId,
+      parsedSeasonNumber,
+      {
+        syncEpisodes: true,
+      }
+    );
+
+    episodes =
+      await Episode.find({
+        showTmdbId:
+          parsedShowId,
+
+        seasonNumber:
+          parsedSeasonNumber,
+
+        airDate: {
+          $ne: null,
+          $lte: now,
+        },
+      })
+        .sort({
+          episodeNumber: 1,
+        })
+        .lean();
+  }
 
   if (
     episodes.length === 0
@@ -1394,6 +1426,483 @@ async function bulkLogAiredSeasonEpisodes({
       createdLogs.length,
 
     createdLogs,
+
+    progress,
+  };
+}
+
+// ======================================================
+// Bulk-log every currently aired episode in a show
+//
+// - Normal seasons only: seasonNumber > 0
+// - Never creates rewatches
+// - Skips episodes already watched by the user
+// - Rebuilds canonical show progress only once
+// ======================================================
+
+async function bulkLogAiredShowEpisodes({
+  userId,
+  showTmdbId,
+  watchedAt = null,
+}) {
+  requireValidUserId(
+    userId
+  );
+
+  const parsedShowId =
+    parsePositiveInteger(
+      showTmdbId,
+      "show ID"
+    );
+
+  const show =
+    await Show.findOne({
+      tmdbId:
+        parsedShowId,
+    });
+
+  if (!show) {
+    throw new TVLogServiceError(
+      "Show metadata not found",
+      {
+        statusCode: 404,
+        code: "SHOW_NOT_FOUND",
+      }
+    );
+  }
+
+  /*
+   * Determine every normal season the show is expected to have.
+   *
+   * Prefer the canonical count stored on the Show. Fall back to
+   * embedded season metadata and finally already-cached Season docs.
+   */
+  const declaredSeasonCount =
+    Number(
+      show.numberOfSeasons ??
+      show.seasonCount ??
+      0
+    ) || 0;
+
+  let seasonNumbers = [];
+
+  if (declaredSeasonCount > 0) {
+    seasonNumbers =
+      Array.from(
+        {
+          length:
+            declaredSeasonCount,
+        },
+        (_, index) =>
+          index + 1
+      );
+  } else if (
+    Array.isArray(
+      show.seasons
+    )
+  ) {
+    seasonNumbers =
+      show.seasons
+        .map(
+          (season) =>
+            Number(
+              season?.seasonNumber ??
+              season?.season_number
+            )
+        )
+        .filter(
+          (seasonNumber) =>
+            Number.isInteger(
+              seasonNumber
+            ) &&
+            seasonNumber > 0
+        );
+  }
+
+  if (
+    seasonNumbers.length === 0
+  ) {
+    const cachedSeasonNumbers =
+      await Season.distinct(
+        "seasonNumber",
+        {
+          showTmdbId:
+            parsedShowId,
+
+          seasonNumber: {
+            $gt: 0,
+          },
+        }
+      );
+
+    seasonNumbers =
+      cachedSeasonNumbers
+        .map(Number)
+        .filter(
+          (seasonNumber) =>
+            Number.isInteger(
+              seasonNumber
+            ) &&
+            seasonNumber > 0
+        );
+  }
+
+  seasonNumbers = [
+    ...new Set(
+      seasonNumbers
+    ),
+  ].sort(
+    (a, b) =>
+      a - b
+  );
+
+  if (
+    seasonNumbers.length === 0
+  ) {
+    throw new TVLogServiceError(
+      "No seasons found for this show",
+      {
+        statusCode: 404,
+        code: "NO_SEASONS_FOUND",
+      }
+    );
+  }
+
+  /*
+   * Cache-first full-show logging.
+   *
+   * Previously every bulk-show request synchronized every season from
+   * TMDB. Large shows could therefore wait minutes on external calls
+   * even when Scene already had their episodes cached.
+   *
+   * Sync only seasons with zero cached Episode documents.
+   */
+  const cacheCheckNow =
+    new Date();
+
+  /*
+   * A season is useful for bulk logging only when Scene already has
+   * at least one episode with a real air date that has passed.
+   *
+   * Merely having partial/future Episode documents must not prevent
+   * the season from being refreshed from TMDB.
+   */
+  const cachedSeasonNumbers =
+    await Episode.distinct(
+      "seasonNumber",
+      {
+        showTmdbId:
+          parsedShowId,
+
+        seasonNumber: {
+          $in:
+            seasonNumbers,
+        },
+
+        airDate: {
+          $ne: null,
+          $lte:
+            cacheCheckNow,
+        },
+      }
+    );
+
+  const cachedSeasonSet =
+    new Set(
+      cachedSeasonNumbers
+        .map(Number)
+        .filter(
+          Number.isInteger
+        )
+    );
+
+  const missingSeasonNumbers =
+    seasonNumbers.filter(
+      (seasonNumber) =>
+        !cachedSeasonSet.has(
+          seasonNumber
+        )
+    );
+
+  if (
+    missingSeasonNumbers.length > 0
+  ) {
+    const syncResults =
+      await Promise.allSettled(
+        missingSeasonNumbers.map(
+          (seasonNumber) =>
+            syncSeasonFromTMDB(
+              parsedShowId,
+              seasonNumber,
+              {
+                syncEpisodes: true,
+              }
+            )
+        )
+      );
+
+    syncResults.forEach(
+      (result, index) => {
+        if (
+          result.status ===
+          "rejected"
+        ) {
+          console.warn(
+            `⚠️ Failed to sync missing show ${parsedShowId} season ${missingSeasonNumbers[index]} during bulk show log:`,
+            result.reason?.message ||
+            result.reason
+          );
+        }
+      }
+    );
+  }
+
+  const now =
+    new Date();
+
+  const episodes =
+    await Episode.find({
+      showTmdbId:
+        parsedShowId,
+
+      seasonNumber: {
+        $gt: 0,
+      },
+
+      airDate: {
+        $ne: null,
+        $lte: now,
+      },
+    })
+      .sort({
+        seasonNumber: 1,
+        episodeNumber: 1,
+      })
+      .lean();
+
+  if (
+    episodes.length === 0
+  ) {
+    throw new TVLogServiceError(
+      "No aired episodes found for this show",
+      {
+        statusCode: 404,
+        code: "NO_AIRED_EPISODES",
+      }
+    );
+  }
+
+  /*
+   * Read watched episode identities once instead of issuing one query
+   * per season.
+   */
+  const watchedEpisodes =
+    await TVLog.find({
+      user:
+        userId,
+
+      showTmdbId:
+        parsedShowId,
+    })
+      .select({
+        seasonNumber: 1,
+        episodeNumber: 1,
+      })
+      .lean();
+
+  const watchedSet =
+    new Set(
+      watchedEpisodes.map(
+        (log) =>
+          `${Number(
+            log.seasonNumber
+          )}:${Number(
+            log.episodeNumber
+          )}`
+      )
+    );
+
+  const episodesToCreate =
+    episodes.filter(
+      (episode) =>
+        !watchedSet.has(
+          `${Number(
+            episode.seasonNumber
+          )}:${Number(
+            episode.episodeNumber
+          )}`
+        )
+    );
+
+  if (
+    episodesToCreate.length === 0
+  ) {
+    const progress =
+      await rebuildUserShowProgress(
+        userId,
+        parsedShowId
+      );
+
+    return {
+      createdCount: 0,
+
+      skippedCount:
+        episodes.length,
+
+      createdLogs: [],
+
+      seasonCount:
+        new Set(
+          episodes.map(
+            (episode) =>
+              Number(
+                episode.seasonNumber
+              )
+          )
+        ).size,
+
+      airedEpisodeCount:
+        episodes.length,
+
+      progress,
+    };
+  }
+
+  const requiredSeasonNumbers = [
+    ...new Set(
+      episodesToCreate.map(
+        (episode) =>
+          Number(
+            episode.seasonNumber
+          )
+      )
+    ),
+  ];
+
+  /*
+   * Resolve saved artwork once per affected season, concurrently.
+   */
+  const artworkEntries =
+    await Promise.all(
+      requiredSeasonNumbers.map(
+        async (seasonNumber) => [
+          seasonNumber,
+
+          await resolveBulkSeasonArtwork({
+            userId,
+
+            showTmdbId:
+              parsedShowId,
+
+            seasonNumber,
+          }),
+        ]
+      )
+    );
+
+  const artworkBySeason =
+    new Map(
+      artworkEntries
+    );
+
+  const bulkWatchedAt =
+    normalizeOptionalDate(
+      watchedAt
+    ) ||
+    new Date();
+
+  const documents =
+    episodesToCreate.map(
+      (episode) => {
+        const seasonNumberValue =
+          Number(
+            episode.seasonNumber
+          );
+
+        const episodeNumberValue =
+          Number(
+            episode.episodeNumber
+          );
+
+        const artwork =
+          artworkBySeason.get(
+            seasonNumberValue
+          );
+
+        return buildTVLogPayload({
+          userId,
+          show,
+          episode,
+
+          input: {
+            watchedAt:
+              bulkWatchedAt,
+
+            customShowPoster:
+              artwork
+                ?.customShowPoster ||
+              "",
+
+            customEpisodeBackdrop:
+              artwork
+                ?.backdropByEpisodeNumber
+                ?.get(
+                  episodeNumberValue
+                ) ||
+              "",
+          },
+
+          watchNumber:
+            1,
+
+          logMethod:
+            "bulk_show",
+
+          source:
+            "manual",
+        });
+      }
+    );
+
+  const createdLogs =
+    await TVLog.insertMany(
+      documents,
+      {
+        ordered: true,
+      }
+    );
+
+  /*
+   * This is the only progress rebuild for the entire show operation.
+   */
+  const progress =
+    await rebuildUserShowProgress(
+      userId,
+      parsedShowId
+    );
+
+  return {
+    createdCount:
+      createdLogs.length,
+
+    skippedCount:
+      episodes.length -
+      createdLogs.length,
+
+    createdLogs,
+
+    seasonCount:
+      new Set(
+        episodes.map(
+          (episode) =>
+            Number(
+              episode.seasonNumber
+            )
+        )
+      ).size,
+
+    airedEpisodeCount:
+      episodes.length,
 
     progress,
   };
@@ -1986,6 +2495,7 @@ module.exports = {
   createEpisodeLog,
   createQuickEpisodeLog,
   bulkLogAiredSeasonEpisodes,
+  bulkLogAiredShowEpisodes,
 
   updateEpisodeLog,
   deleteEpisodeLog,

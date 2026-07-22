@@ -178,46 +178,107 @@ async function tmdbGet(
   {
     language = "en-US",
     params = {},
-    timeout = 15000,
+    timeout = 30000,
+    retries = 1,
   } = {}
 ) {
-  try {
-    const response = await axios.get(
-      `${TMDB_BASE_URL}${path}`,
-      {
-        timeout,
+  let lastError = null;
 
-        params: {
-          api_key: TMDB_API_KEY,
-          language,
-          ...params,
-        },
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await axios.get(
+        `${TMDB_BASE_URL}${path}`,
+        {
+          timeout,
+
+          params: {
+            api_key: TMDB_API_KEY,
+            language,
+            ...params,
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      lastError = error;
+
+      const status =
+        error.response?.status || null;
+
+      const message =
+        error.response?.data?.status_message ||
+        error.message;
+
+      console.error(
+        `❌ TMDB request failed: ${path}`,
+        {
+          status,
+          message,
+          attempt: attempt + 1,
+          retries,
+        }
+      );
+
+      if (status === 404) {
+        return null;
       }
-    );
 
-    return response.data;
-  } catch (error) {
-    const status =
-      error.response?.status || null;
-
-    const message =
-      error.response?.data?.status_message ||
-      error.message;
-
-    console.error(
-      `❌ TMDB request failed: ${path}`,
-      {
-        status,
-        message,
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        continue;
       }
-    );
-
-    if (status === 404) {
-      return null;
     }
-
-    throw error;
   }
+
+  throw lastError;
+}
+
+
+// ======================================================
+// Weekly Scene TV discovery
+// ======================================================
+
+async function getOnTheAirTVShows({
+  language = "en-US",
+  page = 1,
+} = {}) {
+  const payload = await tmdbGet(
+    "/tv/on_the_air",
+    {
+      language,
+      params: { page },
+    }
+  );
+
+  return Array.isArray(payload?.results)
+    ? payload.results
+    : [];
+}
+
+async function discoverWeeklyTVShows({
+  language = "en-US",
+  page = 1,
+  minimumVoteAverage = 7.5,
+  minimumVoteCount = 300,
+} = {}) {
+  const payload = await tmdbGet(
+    "/discover/tv",
+    {
+      language,
+      params: {
+        page,
+        sort_by: "vote_average.desc",
+        "vote_average.gte": minimumVoteAverage,
+        "vote_count.gte": minimumVoteCount,
+        include_null_first_air_dates: false,
+      },
+    }
+  );
+
+  return Array.isArray(payload?.results)
+    ? payload.results
+    : [];
 }
 
 // ======================================================
@@ -561,6 +622,8 @@ async function getTrendingTVShows(
     `/trending/tv/${safeWindow}`,
     {
       language,
+      timeout: 35000,
+      retries: 2,
     }
   );
 
@@ -910,6 +973,65 @@ async function syncShowFromTMDB(
     );
 
   return show;
+}
+
+// ======================================================
+// External episode identity lookup
+// ======================================================
+
+async function findTVEpisodesByExternalId(
+  externalId,
+  {
+    externalSource = "tvdb_id",
+    language = "en-US",
+  } = {}
+) {
+  const parsedExternalId =
+    String(
+      externalId ||
+      ""
+    ).trim();
+
+  if (!parsedExternalId) {
+    return [];
+  }
+
+  const allowedSources =
+    new Set([
+      "tvdb_id",
+      "imdb_id",
+    ]);
+
+  if (
+    !allowedSources.has(
+      externalSource
+    )
+  ) {
+    throw new Error(
+      "Unsupported external episode ID source"
+    );
+  }
+
+  const data =
+    await tmdbGet(
+      `/find/${encodeURIComponent(
+        parsedExternalId
+      )}`,
+      {
+        language,
+
+        params: {
+          external_source:
+            externalSource,
+        },
+      }
+    );
+
+  return Array.isArray(
+    data?.tv_episode_results
+  )
+    ? data.tv_episode_results
+    : [];
 }
 
 // ======================================================
@@ -2068,8 +2190,11 @@ module.exports = {
 
   searchTVShows,
   getTrendingTVShows,
+  getOnTheAirTVShows,
+  discoverWeeklyTVShows,
 
   getTVShowDetails,
+  findTVEpisodesByExternalId,
   getTVSeasonDetails,
   getTVEpisodeDetails,
 

@@ -206,6 +206,216 @@ function handleError(
     });
 }
 
+
+
+// ======================================================
+// POST /api/custom-show-posters/user/:userId/batch
+//
+// Public profile-owner poster lookup.
+//
+// Body:
+// {
+//   "showTmdbIds": [1396, 60059]
+// }
+//
+// Returns the custom posters selected by the profile
+// owner, so visitors see that user's profile styling.
+// ======================================================
+
+router.post(
+  "/user/:userId/batch",
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      if (
+        !mongoose.isValidObjectId(
+          userId
+        )
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid user ID",
+        });
+      }
+
+      const showTmdbIds = [
+        ...new Set(
+          (
+            Array.isArray(
+              req.body?.showTmdbIds
+            )
+              ? req.body.showTmdbIds
+              : []
+          )
+            .map(Number)
+            .filter(
+              (value) =>
+                Number.isInteger(
+                  value
+                ) &&
+                value > 0
+            )
+        ),
+      ].slice(
+        0,
+        MAXIMUM_LIMIT
+      );
+
+      if (
+        showTmdbIds.length === 0
+      ) {
+        return res
+          .status(200)
+          .json({});
+      }
+
+      const userExists =
+        await User.exists({
+          _id:
+            userId,
+        });
+
+      if (!userExists) {
+        return res.status(404).json({
+          error:
+            "User not found",
+        });
+      }
+
+      const posters =
+        await CustomShowPoster.find({
+          userId,
+
+          showId: {
+            $in:
+              showTmdbIds,
+          },
+        })
+          .select(
+            "showId posterUrl -_id"
+          )
+          .lean();
+
+      const result = {};
+
+      for (
+        const poster of posters
+      ) {
+        if (
+          poster?.posterUrl
+        ) {
+          result[
+            String(
+              poster.showId
+            )
+          ] =
+            poster.posterUrl;
+        }
+      }
+
+      return res
+        .status(200)
+        .json(result);
+    } catch (error) {
+      return handleError(
+        error,
+        res,
+        "Failed to fetch profile custom show posters"
+      );
+    }
+  }
+);
+
+// ======================================================
+// POST /api/custom-show-posters/batch
+//
+// Returns the current user's custom poster for many shows.
+//
+// Body:
+// {
+//   "showTmdbIds": [1396, 60059]
+// }
+//
+// Response:
+// {
+//   "1396": "https://...",
+//   "60059": "https://..."
+// }
+// ======================================================
+
+router.post(
+  "/batch",
+  protect,
+  async (req, res) => {
+    try {
+      const userId =
+        getAuthenticatedUserId(req);
+
+      if (
+        !Array.isArray(
+          req.body?.showTmdbIds
+        )
+      ) {
+        return res.status(400).json({
+          error:
+            "showTmdbIds must be an array",
+        });
+      }
+
+      const showTmdbIds = [
+        ...new Set(
+          req.body.showTmdbIds
+            .map((value) =>
+              Number(value)
+            )
+            .filter(
+              (value) =>
+                Number.isInteger(value) &&
+                value > 0
+            )
+        ),
+      ].slice(0, MAXIMUM_LIMIT);
+
+      if (!showTmdbIds.length) {
+        return res.status(200).json({});
+      }
+
+      const posters =
+        await CustomShowPoster.find({
+          userId,
+
+          showId: {
+            $in: showTmdbIds,
+          },
+        })
+          .select(
+            "showId posterUrl -_id"
+          )
+          .lean();
+
+      const result = {};
+
+      for (const poster of posters) {
+        result[
+          String(poster.showId)
+        ] = poster.posterUrl;
+      }
+
+      return res.status(200).json(
+        result
+      );
+    } catch (error) {
+      return handleError(
+        error,
+        res,
+        "Failed to fetch custom show posters"
+      );
+    }
+  }
+);
+
+
 // ======================================================
 // GET /api/custom-show-posters/show/:showTmdbId/me
 //

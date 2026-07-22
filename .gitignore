@@ -10,3 +10,7 @@ node_modules/
 # macOS
 .DS_Store
 **/.DS_Store
+
+# Local backup files
+*.backup-*
+*.bak

@@ -12,6 +12,7 @@ const User = require("../models/user");
 const Movie = require("../models/movieModel");
 const CustomPoster = require("../models/customPoster");
 const Notification = require("../models/notification");
+const sendNotification = require("../utils/sendNotification");
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
@@ -1003,80 +1004,71 @@ router.post(
         listOwnerId &&
         String(listOwnerId) !== userId
       ) {
-        const sender =
-          await User.findById(
-            req.user._id
-          )
-            .select(
-              "username avatar"
-            )
-            .lean();
+        /*
+         * Unified notification pipeline:
+         *
+         * - database notification
+         * - Socket.IO event
+         * - Expo/FCM device push
+         * - invalid-token cleanup
+         * - muteLikes support
+         * - exact list navigation
+         */
+        try {
+          const mediaType =
+            list.mediaType === "tv"
+              ? "tv"
+              : "movie";
 
-        const notification =
-          await Notification.create({
-            type: "list_like",
-            message: `@${
-              sender?.username || "Someone"
-            } liked your list!`,
-            from: req.user._id,
-            to: listOwnerId,
-            listId: list._id,
-            relatedId: list._id,
-            read: false,
+          await sendNotification({
+            type:
+              "list_like",
+
+            fromUserId:
+              req.user._id,
+
+            toUserId:
+              listOwnerId,
+
+            mediaType,
+
+            targetType:
+              "list",
+
+            listId:
+              list._id,
+
+            relatedId:
+              String(list._id),
+
+            deduplicationKey:
+              `list-like:${String(
+                list._id
+              )}:${String(
+                req.user._id
+              )}`,
+
+            metadata: {
+              action:
+                "like",
+
+              listTitle:
+                list.title || "",
+
+              listMediaType:
+                list.mediaType ||
+                "movies",
+            },
           });
-
-        const io = req.app.get("io");
-
-        io
-          ?.to(String(listOwnerId))
-          .emit("notification", {
-            ...notification.toObject(),
-            from: sender,
-          });
-
-        const deviceToken =
-          list.user?.deviceToken;
-
-        const firebaseAdmin =
-          req.app.get(
-            "firebaseAdmin"
+        } catch (notificationError) {
+          /*
+           * Notification failure must never undo a successful like.
+           */
+          console.error(
+            "❌ Unified list-like notification failed:",
+            notificationError?.message ||
+            notificationError
           );
-
-        if (
-          deviceToken &&
-          firebaseAdmin?.messaging
-        ) {
-          try {
-            await firebaseAdmin
-              .messaging()
-              .send({
-                token: deviceToken,
-
-                notification: {
-                  title:
-                    "New Like on Your List!",
-
-                  body: `@${
-                    sender?.username ||
-                    "Someone"
-                  } liked your list!`,
-                },
-
-                data: {
-                  type: "list_like",
-                  listId:
-                    list._id.toString(),
-
-                  senderId:
-                    req.user._id.toString(),
-                },
-              });
-          } catch (pushError) {
-            console.warn(
-              "⚠️ List-like push failed:",
-              pushError.message
-            );
-          }
         }
       }
 
@@ -1577,45 +1569,88 @@ router.post(
         });
       }
 
-      const notifications =
-        await Notification.insertMany(
+      const mediaType =
+        list.mediaType === "tv"
+          ? "tv"
+          : "movie";
+
+      /*
+       * Send through the unified pipeline for every recipient.
+       *
+       * Promise.allSettled ensures one recipient failure does not
+       * prevent the list from being shared with everyone else.
+       */
+      const notificationResults =
+        await Promise.allSettled(
           validRecipients.map(
-            (recipient) => ({
-              type: "share-list",
+            (recipient) =>
+              sendNotification({
+                type:
+                  "share-list",
 
-              message:
-                "suggested you check out their list!",
+                fromUserId:
+                  req.user._id,
 
-              from: req.user._id,
-              to: recipient._id,
+                toUserId:
+                  recipient._id,
 
-              listId: list._id,
-              relatedId: list._id,
+                mediaType,
 
-              read: false,
-            })
+                targetType:
+                  "list",
+
+                listId:
+                  list._id,
+
+                relatedId:
+                  String(list._id),
+
+                deduplicationKey:
+                  `list-share:${String(
+                    list._id
+                  )}:${String(
+                    req.user._id
+                  )}:${String(
+                    recipient._id
+                  )}`,
+
+                metadata: {
+                  action:
+                    "share",
+
+                  listTitle:
+                    list.title || "",
+
+                  listMediaType:
+                    list.mediaType ||
+                    "movies",
+                },
+              })
           )
         );
 
-      const io = req.app.get("io");
+      const sentCount =
+        notificationResults.filter(
+          (result) =>
+            result.status ===
+              "fulfilled" &&
+            result.value
+        ).length;
 
-      notifications.forEach(
-        (notification) => {
-          io
-            ?.to(
-              String(notification.to)
-            )
-            .emit("notification", {
-              ...notification.toObject(),
-              from: sender,
-            });
-        }
-      );
+      const failedCount =
+        notificationResults.length -
+        sentCount;
+
+      if (failedCount > 0) {
+        console.warn(
+          `⚠️ ${failedCount} list-share notification(s) failed`
+        );
+      }
 
       return res.json({
         success: true,
-        sentCount:
-          notifications.length,
+        sentCount,
+        failedCount,
       });
     } catch (error) {
       console.error(

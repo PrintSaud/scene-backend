@@ -29,8 +29,14 @@ const UserShowProgress = require(
   "../models/userShowProgress"
 );
 
+const WeeklyTVSelection = require(
+  "../models/weeklyTVSelection"
+);
+
 const {
-  getTrendingShows,
+  getTrendingTVShows,
+  getOnTheAirTVShows,
+  discoverWeeklyTVShows,
   syncShowFromTMDB,
 } = require(
   "../services/tvMetadataService"
@@ -205,22 +211,201 @@ function serializeProgressCard(
     progress.nextUnwatchedEpisode ||
     null;
 
+  const latestEpisode = {
+    logId:
+      progress.lastLog
+        ? String(
+            progress.lastLog
+          )
+        : null,
+
+    episodeTmdbId:
+      progress.lastEpisodeTmdbId ??
+      null,
+
+    seasonNumber:
+      progress.lastSeasonNumber ??
+      null,
+
+    episodeNumber:
+      progress.lastEpisodeNumber ??
+      null,
+
+    name:
+      progress.lastEpisodeName ||
+      "",
+
+    stillPath:
+      progress.lastEpisodeStillPath ||
+      "",
+
+    watchedAt:
+      progress.lastWatchedAt ||
+      null,
+
+    watchNumber:
+      Number(
+        progress.lastWatchNumber
+      ) || 1,
+
+    rewatch:
+      Boolean(
+        progress.lastWasRewatch
+      ),
+  };
+
+  const displayEpisode =
+    nextEpisode ||
+    latestEpisode ||
+    null;
+
+  const displaySeasonNumber =
+    displayEpisode?.seasonNumber ??
+    latestEpisode?.seasonNumber ??
+    null;
+
+  const displayEpisodeNumber =
+    displayEpisode?.episodeNumber ??
+    latestEpisode?.episodeNumber ??
+    null;
+
+  const displayEpisodeTitle =
+    displayEpisode?.name ||
+    displayEpisode?.title ||
+    latestEpisode?.name ||
+    "";
+
+  const displayEpisodeStillPath =
+    displayEpisode?.stillPath ||
+    displayEpisode?.still_path ||
+    displayEpisode?.still ||
+    latestEpisode?.stillPath ||
+    "";
+
+  const showId =
+    progress.show
+      ? String(
+          progress.show
+        )
+      : null;
+
+  const progressPercent =
+    Number(
+      progress.progressPercentage
+    ) || 0;
+
   return {
     id:
       String(progress._id),
 
+    // --------------------------------------------------
+    // Flat display aliases for mobile Home cards
+    // --------------------------------------------------
+    showId,
+
+    tmdbId:
+      progress.showTmdbId,
+
+    showTmdbId:
+      progress.showTmdbId,
+
+    title:
+      displayEpisodeTitle ||
+      progress.showName ||
+      "",
+
+    name:
+      displayEpisodeTitle ||
+      progress.showName ||
+      "",
+
+    showTitle:
+      progress.showName ||
+      "",
+
+    showName:
+      progress.showName ||
+      "",
+
+    showTitleAr:
+      progress.showNameAr ||
+      "",
+
+    episodeTitle:
+      displayEpisodeTitle,
+
+    episodeName:
+      displayEpisodeTitle,
+
+    seasonNumber:
+      displaySeasonNumber,
+
+    episodeNumber:
+      displayEpisodeNumber,
+
+    episodeCode:
+      displaySeasonNumber &&
+      displayEpisodeNumber
+        ? `S${displaySeasonNumber}E${displayEpisodeNumber}`
+        : "",
+
+    posterPath:
+      progress.posterPath ||
+      "",
+
+    poster_path:
+      progress.posterPath ||
+      "",
+
+    showPoster:
+      progress.posterPath ||
+      "",
+
+    backdropPath:
+      displayEpisodeStillPath ||
+      progress.backdropPath ||
+      "",
+
+    backdrop_path:
+      displayEpisodeStillPath ||
+      progress.backdropPath ||
+      "",
+
+    stillPath:
+      displayEpisodeStillPath,
+
+    still_path:
+      displayEpisodeStillPath,
+
+    episodeStillPath:
+      displayEpisodeStillPath,
+
+    episodeBackdrop:
+      displayEpisodeStillPath,
+
+    progressPercent,
+
+    percent:
+      progressPercent,
+
+    completionPercent:
+      progressPercent,
+
+    // --------------------------------------------------
+    // Structured payload
+    // --------------------------------------------------
     show: {
       id:
-        progress.show
-          ? String(
-              progress.show
-            )
-          : null,
+        showId,
 
       tmdbId:
         progress.showTmdbId,
 
       name:
+        progress.showName ||
+        "",
+
+      title:
         progress.showName ||
         "",
 
@@ -232,7 +417,15 @@ function serializeProgressCard(
         progress.posterPath ||
         "",
 
+      poster_path:
+        progress.posterPath ||
+        "",
+
       backdropPath:
+        progress.backdropPath ||
+        "",
+
+      backdrop_path:
         progress.backdropPath ||
         "",
 
@@ -247,9 +440,7 @@ function serializeProgressCard(
         "watching",
 
       percentage:
-        Number(
-          progress.progressPercentage
-        ) || 0,
+        progressPercent,
 
       watchedEpisodeCount:
         Number(
@@ -287,48 +478,7 @@ function serializeProgressCard(
         ),
     },
 
-    latestEpisode: {
-      logId:
-        progress.lastLog
-          ? String(
-              progress.lastLog
-            )
-          : null,
-
-      episodeTmdbId:
-        progress.lastEpisodeTmdbId ??
-        null,
-
-      seasonNumber:
-        progress.lastSeasonNumber ??
-        null,
-
-      episodeNumber:
-        progress.lastEpisodeNumber ??
-        null,
-
-      name:
-        progress.lastEpisodeName ||
-        "",
-
-      stillPath:
-        progress.lastEpisodeStillPath ||
-        "",
-
-      watchedAt:
-        progress.lastWatchedAt ||
-        null,
-
-      watchNumber:
-        Number(
-          progress.lastWatchNumber
-        ) || 1,
-
-      rewatch:
-        Boolean(
-          progress.lastWasRewatch
-        ),
-    },
+    latestEpisode,
 
     nextEpisode,
 
@@ -954,71 +1104,398 @@ async function getActiveTVBanners() {
     .lean();
 }
 
-async function getWeeklyShow() {
-  let show =
-    await Show.findOne({
-      $or: [
-        {
-          isWeeklyShow:
-            true,
-        },
-        {
-          weeklyShow:
-            true,
-        },
-        {
-          featuredWeekly:
-            true,
-        },
-      ],
-    })
-      .sort({
-        weeklyShowSetAt:
-          -1,
+const RIYADH_OFFSET_MS =
+  3 * 60 * 60 * 1000;
 
-        updatedAt:
-          -1,
-      })
-      .lean();
+let weeklySelectionPromise = null;
 
-  if (show) {
-    return show;
+function getWednesdayWindow(now = new Date()) {
+  const riyadhNow = new Date(
+    now.getTime() + RIYADH_OFFSET_MS
+  );
+
+  const daysSinceWednesday =
+    (riyadhNow.getUTCDay() - 3 + 7) % 7;
+
+  const startRiyadh = new Date(
+    Date.UTC(
+      riyadhNow.getUTCFullYear(),
+      riyadhNow.getUTCMonth(),
+      riyadhNow.getUTCDate() - daysSinceWednesday,
+      0,
+      0,
+      0,
+      0
+    )
+  );
+
+  const startsAt = new Date(
+    startRiyadh.getTime() - RIYADH_OFFSET_MS
+  );
+
+  const refreshesAt = new Date(
+    startsAt.getTime() + 7 * 24 * 60 * 60 * 1000
+  );
+
+  const dateKey = [
+    startRiyadh.getUTCFullYear(),
+    String(startRiyadh.getUTCMonth() + 1).padStart(2, "0"),
+    String(startRiyadh.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+
+  return {
+    weekKey: `wednesday-${dateKey}`,
+    startsAt,
+    refreshesAt,
+  };
+}
+
+function hashWeeklyValue(value) {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
   }
 
-  show =
-    await Show.findOne({
-      posterPath: {
-        $nin: [
-          "",
-          null,
-        ],
-      },
+  return hash >>> 0;
+}
 
-      backdropPath: {
-        $nin: [
-          "",
-          null,
-        ],
-      },
+function getWeeklyOriginCountries(
+  show
+) {
+  const values =
+    show?.origin_country ||
+    show?.originCountry ||
+    [];
 
-      voteAverage: {
-        $gte:
-          7,
+  return Array.isArray(values)
+    ? values
+        .map(
+          (value) =>
+            String(value || "")
+              .trim()
+              .toUpperCase()
+        )
+        .filter(Boolean)
+    : [];
+}
+
+function isStrongWeeklyCandidate(
+  show,
+  {
+    minimumVoteCount = 50,
+    minimumVoteAverage = 0,
+  } = {}
+) {
+  const tmdbId =
+    Number(
+      show?.id ||
+      show?.tmdbId
+    );
+
+  const voteCount =
+    Number(
+      show?.vote_count ||
+      show?.voteCount ||
+      0
+    );
+
+  const voteAverage =
+    Number(
+      show?.vote_average ||
+      show?.voteAverage ||
+      0
+    );
+
+  const isAmerican =
+    getWeeklyOriginCountries(
+      show
+    ).includes("US");
+
+  const requiredVoteCount =
+    isAmerican
+      ? minimumVoteCount
+      : Math.max(
+          minimumVoteCount,
+          101
+        );
+
+  const requiredVoteAverage =
+    isAmerican
+      ? minimumVoteAverage
+      : Math.max(
+          minimumVoteAverage,
+          8.3
+        );
+
+  return Boolean(
+    Number.isInteger(tmdbId) &&
+    tmdbId > 0 &&
+    (
+      show?.poster_path ||
+      show?.posterPath
+    ) &&
+    (
+      show?.backdrop_path ||
+      show?.backdropPath
+    ) &&
+    String(
+      show?.overview ||
+      ""
+    ).trim() &&
+    voteCount >=
+      requiredVoteCount &&
+    voteAverage >=
+      requiredVoteAverage
+  );
+}
+
+function pickWeeklyCandidate(
+  values,
+  {
+    seed,
+    excludedIds = [],
+    minimumVoteCount = 50,
+    minimumVoteAverage = 0,
+  }
+) {
+  const excluded = new Set(
+    excludedIds.map((value) => Number(value))
+  );
+
+  const candidates = (Array.isArray(values) ? values : [])
+    .filter((show) =>
+      isStrongWeeklyCandidate(show, {
+        minimumVoteCount,
+        minimumVoteAverage,
+      })
+    )
+    .filter((show) =>
+      !excluded.has(Number(show?.id || show?.tmdbId))
+    )
+    .sort(
+      (left, right) =>
+        Number(left?.id || left?.tmdbId) -
+        Number(right?.id || right?.tmdbId)
+    );
+
+  if (!candidates.length) {
+    return null;
+  }
+
+  return candidates[
+    hashWeeklyValue(seed) % candidates.length
+  ];
+}
+
+async function syncWeeklyCandidate(candidate) {
+  const tmdbId = Number(candidate?.id || candidate?.tmdbId);
+
+  if (!Number.isInteger(tmdbId) || tmdbId < 1) {
+    return null;
+  }
+
+  let show = await Show.findOne({ tmdbId });
+
+  if (!show) {
+    show = await syncShowFromTMDB(tmdbId);
+  }
+
+  return show || null;
+}
+
+async function buildWeeklyTVSelection(window) {
+  const [
+    trendingPage,
+    airingPageOne,
+    airingPageTwo,
+    discoveryPageOne,
+    discoveryPageTwo,
+  ] = await Promise.all([
+    getTrendingTVShows(20),
+    getOnTheAirTVShows({ page: 1 }),
+    getOnTheAirTVShows({ page: 2 }),
+    discoverWeeklyTVShows({
+      page: 1,
+      minimumVoteAverage: 7.5,
+      minimumVoteCount: 300,
+    }),
+    discoverWeeklyTVShows({
+      page: 2,
+      minimumVoteAverage: 7.5,
+      minimumVoteCount: 300,
+    }),
+  ]);
+
+  const trendingCandidate = pickWeeklyCandidate(
+    trendingPage,
+    {
+      seed: `${window.weekKey}:trending`,
+      minimumVoteCount: 100,
+    }
+  );
+
+  const airingCandidate = pickWeeklyCandidate(
+    [...airingPageOne, ...airingPageTwo],
+    {
+      seed: `${window.weekKey}:airing`,
+      excludedIds: [trendingCandidate?.id],
+      minimumVoteCount: 75,
+      minimumVoteAverage: 6.5,
+    }
+  );
+
+  const discoveryCandidate = pickWeeklyCandidate(
+    [...discoveryPageOne, ...discoveryPageTwo],
+    {
+      seed: `${window.weekKey}:discovery`,
+      excludedIds: [
+        trendingCandidate?.id,
+        airingCandidate?.id,
+      ],
+      minimumVoteCount: 300,
+      minimumVoteAverage: 7.5,
+    }
+  );
+
+  if (!trendingCandidate || !airingCandidate || !discoveryCandidate) {
+    throw new Error(
+      "TMDB did not return enough Weekly Shows candidates"
+    );
+  }
+
+  const [trendingShow, airingShow, discoveryShow] =
+    await Promise.all([
+      syncWeeklyCandidate(trendingCandidate),
+      syncWeeklyCandidate(airingCandidate),
+      syncWeeklyCandidate(discoveryCandidate),
+    ]);
+
+  if (!trendingShow || !airingShow || !discoveryShow) {
+    throw new Error(
+      "Failed to cache one or more Weekly Shows"
+    );
+  }
+
+  return WeeklyTVSelection.findOneAndUpdate(
+    { weekKey: window.weekKey },
+    {
+      $setOnInsert: {
+        weekKey: window.weekKey,
+        startsAt: window.startsAt,
+        refreshesAt: window.refreshesAt,
+        trending: {
+          show: trendingShow._id,
+          tmdbId: trendingShow.tmdbId,
+        },
+        airing: {
+          show: airingShow._id,
+          tmdbId: airingShow.tmdbId,
+        },
+        discovery: {
+          show: discoveryShow._id,
+          tmdbId: discoveryShow.tmdbId,
+        },
       },
+    },
+    {
+      new: true,
+      upsert: true,
+      setDefaultsOnInsert: true,
+    }
+  ).lean();
+}
+
+async function getWeeklyTVSelection() {
+  const window = getWednesdayWindow();
+
+  let selection = await WeeklyTVSelection.findOne({
+    weekKey: window.weekKey,
+  }).lean();
+
+  if (!selection) {
+    if (!weeklySelectionPromise) {
+      weeklySelectionPromise = buildWeeklyTVSelection(
+        window
+      ).finally(() => {
+        weeklySelectionPromise = null;
+      });
+    }
+
+    selection = await weeklySelectionPromise;
+  }
+
+  const showIds = [
+    selection?.trending?.show,
+    selection?.airing?.show,
+    selection?.discovery?.show,
+  ].filter(Boolean);
+
+  const shows = await Show.find({
+    _id: { $in: showIds },
+  }).lean();
+
+  const showMap = new Map(
+    shows.map((show) => [String(show._id), show])
+  );
+
+  return {
+    weekKey: selection.weekKey,
+    startsAt: selection.startsAt,
+    refreshesAt: selection.refreshesAt,
+    trending:
+      showMap.get(String(selection.trending.show)) || null,
+    airing:
+      showMap.get(String(selection.airing.show)) || null,
+    discovery:
+      showMap.get(String(selection.discovery.show)) || null,
+  };
+}
+
+async function getWeeklyShows() {
+  try {
+    return await getWeeklyTVSelection();
+  } catch (error) {
+    console.warn(
+      "⚠️ Failed to build Wednesday Weekly Shows:",
+      error?.response?.data || error?.message
+    );
+
+    const fallback = await Show.findOne({
+      posterPath: { $nin: ["", null] },
+      backdropPath: { $nin: ["", null] },
+      voteAverage: { $gte: 7 },
     })
       .sort({
-        popularity:
-          -1,
-
-        voteAverage:
-          -1,
-
-        updatedAt:
-          -1,
+        popularity: -1,
+        voteAverage: -1,
+        updatedAt: -1,
       })
       .lean();
 
-  return show;
+    const window = getWednesdayWindow();
+
+    return {
+      weekKey: window.weekKey,
+      startsAt: window.startsAt,
+      refreshesAt: window.refreshesAt,
+      trending: fallback,
+      airing: null,
+      discovery: null,
+    };
+  }
+}
+
+async function getWeeklyShow() {
+  const weeklyShows = await getWeeklyShows();
+
+  return (
+    weeklyShows.trending ||
+    weeklyShows.airing ||
+    weeklyShows.discovery ||
+    null
+  );
 }
 
 async function getFollowingFeed({
@@ -1209,10 +1686,10 @@ async function getTrendingSection(
 ) {
   try {
     const trending =
-      await getTrendingShows({
-        page:
-          1,
-      });
+      await getTrendingTVShows(
+        "en-US",
+        "week"
+      );
 
     const rawResults =
       Array.isArray(
@@ -1285,17 +1762,23 @@ router.get(
 
       const [
         banners,
-        weeklyShow,
+        weeklyShows,
         trending,
       ] = await Promise.all([
         getActiveTVBanners(),
 
-        getWeeklyShow(),
+        getWeeklyShows(),
 
         getTrendingSection(
           trendingLimit
         ),
       ]);
+
+      const weeklyShow =
+        weeklyShows.trending ||
+        weeklyShows.airing ||
+        weeklyShows.discovery ||
+        null;
 
       return res
         .status(200)
@@ -1313,7 +1796,36 @@ router.get(
               weeklyShow
             ),
 
+          weeklyShows: {
+            trending:
+              serializeWeeklyShow(
+                weeklyShows.trending
+              ),
+
+            airing:
+              serializeWeeklyShow(
+                weeklyShows.airing
+              ),
+
+            discovery:
+              serializeWeeklyShow(
+                weeklyShows.discovery
+              ),
+
+            weekKey:
+              weeklyShows.weekKey,
+
+            startsAt:
+              weeklyShows.startsAt,
+
+            refreshesAt:
+              weeklyShows.refreshesAt,
+          },
+
           trending,
+
+          trendingShows:
+            trending,
 
           meta: {
             generatedAt:
@@ -1504,10 +2016,7 @@ if (
 // Complete signed-in TV Home payload.
 // ======================================================
 
-router.get(
-  "/",
-  protect,
-  async (req, res) => {
+router.get("/",protect,async (req, res) => {
     try {
       const userId =
         getAuthenticatedUserId(
@@ -1619,7 +2128,7 @@ router.get(
 
       const [
         banners,
-        weeklyShow,
+        weeklyShows,
         continueWatching,
         upcomingEpisodes,
         followingActivity,
@@ -1628,7 +2137,7 @@ router.get(
       ] = await Promise.all([
         getActiveTVBanners(),
 
-        getWeeklyShow(),
+        getWeeklyShows(),
 
         UserShowProgress.find(
           continueMatch
@@ -1679,6 +2188,12 @@ router.get(
         ),
       ]);
 
+      const weeklyShow =
+        weeklyShows.trending ||
+        weeklyShows.airing ||
+        weeklyShows.discovery ||
+        null;
+
       return res
         .status(200)
         .json({
@@ -1718,6 +2233,32 @@ router.get(
               weeklyShow
             ),
 
+          weeklyShows: {
+            trending:
+              serializeWeeklyShow(
+                weeklyShows.trending
+              ),
+
+            airing:
+              serializeWeeklyShow(
+                weeklyShows.airing
+              ),
+
+            discovery:
+              serializeWeeklyShow(
+                weeklyShows.discovery
+              ),
+
+            weekKey:
+              weeklyShows.weekKey,
+
+            startsAt:
+              weeklyShows.startsAt,
+
+            refreshesAt:
+              weeklyShows.refreshesAt,
+          },
+
           continueWatching:
             continueWatching.map(
               serializeProgressCard
@@ -1731,6 +2272,12 @@ router.get(
           followingActivity,
 
           trending,
+
+          trendingShows:
+            trending,
+
+          trendingShows:
+            trending,
 
           summary,
 

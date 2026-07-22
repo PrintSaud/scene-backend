@@ -308,7 +308,13 @@ const tvLogSchema = new Schema(
      */
     logMethod: {
       type: String,
-      enum: ["full", "quick", "bulk_season", "import"],
+      enum: [
+        "full",
+        "quick",
+        "bulk_season",
+        "bulk_show",
+        "import",
+      ],
       default: "full",
       index: true,
     },
@@ -333,6 +339,21 @@ const tvLogSchema = new Schema(
       type: String,
       default: null,
       trim: true,
+    },
+
+    /*
+     * Lossless source-specific metadata that Scene cannot yet
+     * convert into native fields without inventing meaning.
+     *
+     * For TV Time this may preserve:
+     * - opaque episode vote identifiers;
+     * - opaque favorite-character identifiers;
+     * - source episode IDs;
+     * - resolution evidence.
+     */
+    sourceImportMetadata: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
 
     // ==================================================

@@ -125,6 +125,21 @@ function selectTrailer(videos) {
 }
 
 function formatPerson(person) {
+  const roles =
+    normalizeArray(person?.roles);
+
+  const characterNames = [
+    ...new Set(
+      roles
+        .map((role) =>
+          normalizeString(
+            role?.character
+          )
+        )
+        .filter(Boolean)
+    ),
+  ];
+
   return {
     id:
       Number(person?.id) || null,
@@ -138,9 +153,11 @@ function formatPerson(person) {
       ),
 
     character:
-      normalizeString(
-        person?.character
-      ),
+      characterNames.length > 0
+        ? characterNames.join(" / ")
+        : normalizeString(
+            person?.character
+          ),
 
     knownForDepartment:
       normalizeString(
@@ -157,11 +174,20 @@ function formatPerson(person) {
       ),
 
     order:
-      Number(person?.order) || 0,
+      Number(
+        person?.order ??
+        roles?.[0]?.order
+      ) || 0,
+
+    episodeCount:
+      Number(
+        person?.total_episode_count
+      ) || 0,
 
     creditId:
       normalizeString(
-        person?.credit_id
+        person?.credit_id ??
+        roles?.[0]?.credit_id
       ),
   };
 }
@@ -531,14 +557,43 @@ router.get(
               )
           );
 
-      const cast =
+      const aggregateCast =
+        normalizeArray(
+          detailsEn.aggregate_credits?.cast
+        );
+
+      const regularCast =
         normalizeArray(
           detailsEn.credits?.cast
-        )
+        );
+
+      const castSource =
+        aggregateCast.length > 0
+          ? aggregateCast
+          : regularCast;
+
+      const cast =
+        castSource
           .map(formatPerson)
+          .filter(
+            (person) =>
+              person.id &&
+              person.name
+          )
           .sort(
             (a, b) =>
-              a.order - b.order
+              (
+                b.episodeCount || 0
+              ) -
+                (
+                  a.episodeCount || 0
+                ) ||
+              (
+                a.order || 0
+              ) -
+                (
+                  b.order || 0
+                )
           );
 
       const crew =
