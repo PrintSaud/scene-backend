@@ -181,7 +181,7 @@ async function synchronizeTotalLogs(userId) {
 const parsePagination = (
   query,
   defaultLimit = 60,
-  maximumLimit = 100
+  maximumLimit = 1000
 ) => {
   const requestedPage = Number(query.page);
   const requestedLimit = Number(query.limit);
@@ -2397,7 +2397,7 @@ router.get("/feed/:id",protect,async (req, res) => {
       } = parsePagination(
         req.query,
         60,
-        100
+        1000
       );
 
       const logs = await Log.find({

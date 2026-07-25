@@ -901,8 +901,13 @@ router.get("/:id", async (req, res) => {
         userId: id,
       }).lean(),
 
-      Log.distinct("movie", {
+      Log.distinct("tmdbId", {
         user: id,
+
+        tmdbId: {
+          $type: "number",
+          $gt: 0,
+        },
       }),
 
       User.countDocuments({
@@ -917,7 +922,7 @@ router.get("/:id", async (req, res) => {
         })
         .limit(4)
         .select(
-          "movie title poster rating rewatch createdAt review"
+          "movie tmdbId title poster rating rewatch watchedAt createdAt review"
         )
         .lean(),
     ]);
