@@ -1781,6 +1781,82 @@ router.get("/movie/:id/popular",protect,async (req, res) => {
   }
 );
 
+router.get("/movie/:id/me",protect,async (req, res) => {
+    try {
+      const movieId = parsePositiveInteger(
+        req.params.id
+      );
+
+      if (!movieId) {
+        return res.status(400).json({
+          message: "Invalid movie ID",
+        });
+      }
+
+      const logs = await Log.find({
+        tmdbId: movieId,
+        user: req.user._id,
+      })
+        .populate(
+          "user",
+          "username avatar"
+        )
+        .populate(
+          "replies.user",
+          "username avatar"
+        )
+        .sort({
+          watchedAt: -1,
+          createdAt: -1,
+          _id: -1,
+        })
+        .limit(100)
+        .lean();
+
+      const formattedLogs = logs.map(
+        (log) => ({
+          ...log,
+
+          likes: Array.isArray(log.likes)
+            ? log.likes
+            : [],
+
+          replies: Array.isArray(log.replies)
+            ? log.replies.map((reply) => ({
+                ...reply,
+
+                user: reply.user || {
+                  _id: null,
+                  username: "Deleted User",
+                  avatar: DEFAULT_AVATAR,
+                },
+
+                likes: Array.isArray(
+                  reply.likes
+                )
+                  ? reply.likes
+                  : [],
+              }))
+            : [],
+        })
+      );
+
+      return res.json(formattedLogs);
+    } catch (error) {
+      console.error(
+        "❌ Failed to fetch current user's movie logs:",
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to fetch current user's movie logs",
+      });
+    }
+  }
+);
+
+
 router.get("/movie/:id/friends",protect,async (req, res) => {
     try {
       const movieId = parsePositiveInteger(
@@ -2727,7 +2803,7 @@ router.get("/user/:userId",protect,async (req, res) => {
       } = parsePagination(
         req.query,
         60,
-        100
+        1000
       );
 
       const logs = await Log.find({
