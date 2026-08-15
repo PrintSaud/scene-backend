@@ -1318,7 +1318,9 @@ router.get("/:logId",async (req, res) => {
         backdrop,
 
         customBackdrop:
-          log.customBackdrop || "",
+          log.customBackdrop ||
+          log.backdrop ||
+          "",
 
         review: log.review || "",
         rating: log.rating ?? 0,
@@ -1341,7 +1343,9 @@ router.get("/:logId",async (req, res) => {
           log.createdAt || null,
 
         reviewBackdrop:
-          backdropPath || null,
+          log.backdrop ||
+          backdropPath ||
+          null,
       });
     } catch (error) {
       console.error(
