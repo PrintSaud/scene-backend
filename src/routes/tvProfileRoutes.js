@@ -385,7 +385,10 @@ function serializeProfileUser(user) {
 }
 
 function serializeShowProgress(progress) {
-  const nextEpisode = progress.nextUnwatchedEpisode || null;
+  const nextEpisode =
+    progress.nextUnwatchedEpisode ||
+    progress.nextEpisodeAfterLatestLog ||
+    null;
 
   return {
     id: String(progress._id),
@@ -454,9 +457,16 @@ function serializeShowProgress(progress) {
       rewatch: Boolean(progress.lastWasRewatch),
     },
 
-    nextUnwatchedEpisode: nextEpisode,
+    nextUnwatchedEpisode:
+      progress.nextUnwatchedEpisode || null,
 
-    nextScheduledEpisode: progress.nextScheduledEpisode || null,
+    nextEpisodeAfterLatestLog:
+      progress.nextEpisodeAfterLatestLog || null,
+
+    nextEpisode,
+
+    nextScheduledEpisode:
+      progress.nextScheduledEpisode || null,
 
     startedAt: progress.startedAt || null,
 

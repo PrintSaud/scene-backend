@@ -311,6 +311,19 @@ const userShowProgressSchema = new Schema(
     },
 
     /**
+     * Chronological episode after the user's latest episode log
+     * when they are rewatching an already-completed show.
+     *
+     * This is intentionally separate from nextUnwatchedEpisode:
+     * progress can remain 100% while Continue Watching follows
+     * the user's current rewatch position.
+     */
+    nextEpisodeAfterLatestLog: {
+      type: nextEpisodeSchema,
+      default: null,
+    },
+
+    /**
      * True when every currently aired regular episode has been
      * watched.
      *

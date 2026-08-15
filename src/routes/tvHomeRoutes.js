@@ -209,6 +209,7 @@ function serializeProgressCard(
 ) {
   const nextEpisode =
     progress.nextUnwatchedEpisode ||
+    progress.nextEpisodeAfterLatestLog ||
     null;
 
   const latestEpisode = {

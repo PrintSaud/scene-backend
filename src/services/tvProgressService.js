@@ -321,6 +321,68 @@ function findNextUnwatchedEpisode({
   return formatEpisodeSnapshot(nextEpisode || null);
 }
 
+/**
+ * Find the chronological aired episode immediately after the
+ * user's latest log.
+ *
+ * Used only for rewatch continuation on completed shows.
+ * It does NOT affect watchedEpisodeCount, completion status,
+ * or progress percentage.
+ */
+function findNextEpisodeAfterLatestLog({
+  episodes,
+  latestLog,
+  now = new Date(),
+}) {
+  if (!latestLog) {
+    return null;
+  }
+
+  const latestSeasonNumber =
+    Number(latestLog.seasonNumber);
+
+  const latestEpisodeNumber =
+    Number(latestLog.episodeNumber);
+
+  if (
+    !Number.isInteger(latestSeasonNumber) ||
+    latestSeasonNumber <= 0 ||
+    !Number.isInteger(latestEpisodeNumber) ||
+    latestEpisodeNumber <= 0
+  ) {
+    return null;
+  }
+
+  const regularAiredEpisodes = episodes
+    .filter(
+      (episode) =>
+        Number(episode.seasonNumber) > 0 &&
+        isAiredEpisode(episode, now),
+    )
+    .sort(compareEpisodes);
+
+  const nextEpisode =
+    regularAiredEpisodes.find((episode) => {
+      const seasonNumber =
+        Number(episode.seasonNumber);
+
+      const episodeNumber =
+        Number(episode.episodeNumber);
+
+      return (
+        seasonNumber > latestSeasonNumber ||
+        (
+          seasonNumber === latestSeasonNumber &&
+          episodeNumber > latestEpisodeNumber
+        )
+      );
+    });
+
+  return formatEpisodeSnapshot(
+    nextEpisode || null,
+  );
+}
+
 function findNextScheduledEpisode({ episodes, now = new Date() }) {
   const futureEpisodes = episodes
     .filter(
@@ -513,6 +575,18 @@ async function calculateUserShowProgress(
     now,
   });
 
+  const latestWasRewatch =
+    Number(latestLog.watchNumber) > 1;
+
+  const nextEpisodeAfterLatestLog =
+    isCaughtUp && latestWasRewatch
+      ? findNextEpisodeAfterLatestLog({
+          episodes,
+          latestLog,
+          now,
+        })
+      : null;
+
   const nextScheduledEpisode = findNextScheduledEpisode({
     episodes,
     now,
@@ -590,6 +664,8 @@ async function calculateUserShowProgress(
       lastWasRewatch: Number(latestLog.watchNumber) > 1,
 
       nextUnwatchedEpisode,
+
+      nextEpisodeAfterLatestLog,
 
       isCaughtUp,
 
@@ -907,10 +983,21 @@ async function getContinueWatching(
   };
 
   if (!includeCaughtUp) {
-    query.isCaughtUp = false;
-    query.nextUnwatchedEpisode = {
-      $ne: null,
-    };
+    query.$or = [
+      {
+        isCaughtUp: false,
+        nextUnwatchedEpisode: {
+          $ne: null,
+        },
+      },
+      {
+        isCaughtUp: true,
+        lastWasRewatch: true,
+        nextEpisodeAfterLatestLog: {
+          $ne: null,
+        },
+      },
+    ];
   }
 
   return UserShowProgress.find(query)
