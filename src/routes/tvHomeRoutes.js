@@ -2097,16 +2097,42 @@ router.get("/",protect,async (req, res) => {
       const continueMatch = {
         user:
           userId,
-
-        nextUnwatchedEpisode: {
-          $ne:
-            null,
-        },
       };
 
       if (!includeCaughtUp) {
-        continueMatch.isCaughtUp =
-          false;
+        /*
+         * Continue Watching follows viewing position, not only
+         * unfinished completion progress.
+         *
+         * Normal watching:
+         *   nextUnwatchedEpisode
+         *
+         * Completed-show rewatch:
+         *   nextEpisodeAfterLatestLog
+         *
+         * The show's progress/status remain completed at 100%.
+         */
+        continueMatch.$or = [
+          {
+            isCaughtUp: false,
+
+            nextUnwatchedEpisode: {
+              $ne:
+                null,
+            },
+          },
+
+          {
+            isCaughtUp: true,
+
+            lastWasRewatch: true,
+
+            nextEpisodeAfterLatestLog: {
+              $ne:
+                null,
+            },
+          },
+        ];
       }
 
       const availableEpisodeMatch = {
