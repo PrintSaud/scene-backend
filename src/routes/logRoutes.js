@@ -15,6 +15,7 @@ const DEFAULT_BACKDROP = "/default-backdrop.jpg";
 const DEFAULT_AVATAR = "/default-avatar.jpg";
 const Notification = require('../models/notification');
 const Movie = require("../models/movieModel");
+const sendNotification = require("../utils/sendNotification");
 const mongoose = require("mongoose");
 
 const upload = multer({
@@ -1459,37 +1460,111 @@ router.post("/:id/reply",protect,upload.single("image"),async (req, res) => {
       )
         .select("username avatar")
         .lean();
+      /*
+       * All movie reply notifications now go through Scene's
+       * unified notification pipeline:
+       *
+       * DB notification
+       * Socket.IO
+       * Expo / FCM push
+       * mute settings
+       * badge count
+       * invalid-token cleanup
+       */
+      const notificationMovieId =
+        String(
+          log.movie?.id ||
+          log.movie?._id ||
+          log.movie ||
+          log.movieId ||
+          log.tmdbId ||
+          ""
+        );
 
-      const io = req.app.get("io");
+      const notificationMovieTitle =
+        String(
+          log.movie?.title ||
+          log.movie?.name ||
+          log.movieTitle ||
+          log.title ||
+          ""
+        );
 
-      // Notify review owner for a normal reply.
+      const notificationMoviePoster =
+        String(
+          log.movie?.poster_path ||
+          log.movie?.posterPath ||
+          log.moviePoster ||
+          log.poster ||
+          ""
+        );
+
+      // Normal reply → notify the review owner.
       if (
         !parentCommentId &&
         log.user &&
         String(log.user) !==
           String(req.user._id)
       ) {
-        const notification =
-          await Notification.create({
+        try {
+          await sendNotification({
             type: "reply",
+
             message:
               "replied to your review",
-            from: req.user._id,
-            to: log.user,
-            relatedId: log._id,
-            read: false,
-          });
 
-        io
-          ?.to(String(log.user))
-          .emit("notification", {
-            ...notification.toObject(),
-            from: fromUser,
+            fromUserId:
+              req.user._id,
+
+            toUserId:
+              log.user,
+
+            mediaType:
+              "movie",
+
+            targetType:
+              "movieReview",
+
+            relatedId:
+              String(log._id),
+
+            reviewId:
+              String(log._id),
+
+            movieLogId:
+              log._id,
+
+            movieId:
+              notificationMovieId,
+
+            movieTitle:
+              notificationMovieTitle,
+
+            moviePoster:
+              notificationMoviePoster,
+
+            metadata: {
+              action:
+                "comment",
+
+              replyId:
+                String(createdReplyId),
+            },
           });
+        } catch (notificationError) {
+          console.error(
+            "❌ Movie review reply notification failed:",
+            notificationError?.message ||
+              notificationError
+          );
+        }
       }
 
-      // Notify the parent comment owner.
-      if (parentCommentId && parentReply) {
+      // Nested reply → notify the parent comment owner.
+      if (
+        parentCommentId &&
+        parentReply
+      ) {
         const parentOwnerId =
           parentReply.user?._id ||
           parentReply.user;
@@ -1499,25 +1574,66 @@ router.post("/:id/reply",protect,upload.single("image"),async (req, res) => {
           String(parentOwnerId) !==
             String(req.user._id)
         ) {
-          const notification =
-            await Notification.create({
-              type: "reply",
+          try {
+            await sendNotification({
+              type:
+                "reply",
+
               message:
                 "replied to your comment",
-              from: req.user._id,
-              to: parentOwnerId,
-              relatedId: log._id,
-              read: false,
-            });
 
-          io
-            ?.to(String(parentOwnerId))
-            .emit("notification", {
-              ...notification.toObject(),
-              from: fromUser,
+              fromUserId:
+                req.user._id,
+
+              toUserId:
+                parentOwnerId,
+
+              mediaType:
+                "movie",
+
+              targetType:
+                "movieReview",
+
+              relatedId:
+                String(log._id),
+
+              reviewId:
+                String(log._id),
+
+              movieLogId:
+                log._id,
+
+              movieId:
+                notificationMovieId,
+
+              movieTitle:
+                notificationMovieTitle,
+
+              moviePoster:
+                notificationMoviePoster,
+
+              metadata: {
+                action:
+                  "nested_reply",
+
+                replyId:
+                  String(createdReplyId),
+
+                parentCommentId:
+                  String(parentCommentId),
+              },
             });
+          } catch (notificationError) {
+            console.error(
+              "❌ Movie nested-reply notification failed:",
+              notificationError?.message ||
+                notificationError
+            );
+          }
         }
       }
+
+
 
       await log.populate(
         "replies.user",
@@ -2953,12 +3069,6 @@ router.post("/:id/share",protect,async (req, res) => {
         });
       }
 
-      const fromUser = await User.findById(
-        req.user._id
-      )
-        .select("username avatar")
-        .lean();
-
       const movieId =
         log.tmdbId ||
         log.movie?.tmdbId ||
@@ -2969,39 +3079,97 @@ router.post("/:id/share",protect,async (req, res) => {
             : null
         );
 
-      const notifications =
-        await Notification.insertMany(
+      /*
+       * Sharing a review now uses Scene's unified notification
+       * pipeline instead of Notification.insertMany + manual
+       * Socket.IO.
+       *
+       * Each recipient now gets:
+       * - DB notification
+       * - live Socket.IO event
+       * - Expo / FCM push
+       * - correct unread badge
+       * - mute-setting support
+       * - dead-token cleanup
+       */
+      const notificationResults =
+        await Promise.allSettled(
           validRecipientIds.map(
-            (recipientId) => ({
-              type: "share-review",
-              message:
-                "suggested you to check out this review!",
-              from: req.user._id,
-              to: recipientId,
-              reviewId: log._id,
-              relatedId: log._id,
-              movieId: movieId || null,
-              read: false,
-            })
+            (recipientId) =>
+              sendNotification({
+                type:
+                  "share-review",
+
+                message:
+                  "suggested you to check out this review!",
+
+                fromUserId:
+                  req.user._id,
+
+                toUserId:
+                  recipientId,
+
+                mediaType:
+                  "movie",
+
+                targetType:
+                  "movieReview",
+
+                reviewId:
+                  String(log._id),
+
+                movieLogId:
+                  log._id,
+
+                relatedId:
+                  String(log._id),
+
+                movieId:
+                  movieId
+                    ? String(movieId)
+                    : "",
+
+                deduplicationKey:
+                  `review-share:${String(
+                    log._id
+                  )}:${String(
+                    req.user._id
+                  )}:${String(
+                    recipientId
+                  )}`,
+
+                metadata: {
+                  action:
+                    "share",
+                },
+              })
           )
         );
 
-      const io = req.app.get("io");
+      const sentCount =
+        notificationResults.filter(
+          (result) =>
+            result.status === "fulfilled" &&
+            result.value
+        ).length;
 
-      notifications.forEach(
-        (notification) => {
-          io
-            ?.to(String(notification.to))
-            .emit("notification", {
-              ...notification.toObject(),
-              from: fromUser,
-            });
-        }
-      );
+      const failedCount =
+        notificationResults.filter(
+          (result) =>
+            result.status === "rejected"
+        ).length;
+
+      if (failedCount > 0) {
+        console.warn(
+          `⚠️ Review share notifications partially failed: ${failedCount}/${notificationResults.length}`
+        );
+      }
+
+
 
       return res.json({
         success: true,
-        sentCount: notifications.length,
+        sentCount,
       });
     } catch (error) {
       console.error(
@@ -3068,35 +3236,141 @@ router.post("/:logId/replies/:replyId/like",protect,async (req, res) => {
 
       const replyOwnerId =
         reply.user?._id || reply.user;
+      const replyLikeDeduplicationKey =
+        `movie-reply-like:${String(
+          log._id
+        )}:${String(
+          reply._id
+        )}:${String(
+          userId
+        )}`;
 
       if (
         !alreadyLiked &&
         replyOwnerId &&
-        String(replyOwnerId) !== String(userId)
+        String(replyOwnerId) !==
+          String(userId)
       ) {
-        const fromUser = await User.findById(userId)
-          .select("username avatar")
-          .lean();
+        try {
+          const notificationMovieId =
+            String(
+              log.movie?.id ||
+              log.movie?._id ||
+              log.movie ||
+              log.movieId ||
+              log.tmdbId ||
+              ""
+            );
 
-        const notification =
-          await Notification.create({
-            type: "reaction",
-            message: "liked your comment",
-            from: userId,
-            to: replyOwnerId,
-            relatedId: log._id,
-            read: false,
+          const notificationMovieTitle =
+            String(
+              log.movie?.title ||
+              log.movie?.name ||
+              log.movieTitle ||
+              log.title ||
+              ""
+            );
+
+          const notificationMoviePoster =
+            String(
+              log.movie?.poster_path ||
+              log.movie?.posterPath ||
+              log.moviePoster ||
+              log.poster ||
+              ""
+            );
+
+          await sendNotification({
+            type:
+              "reaction",
+
+            message:
+              "liked your comment",
+
+            fromUserId:
+              userId,
+
+            toUserId:
+              replyOwnerId,
+
+            mediaType:
+              "movie",
+
+            targetType:
+              "movieReview",
+
+            relatedId:
+              String(log._id),
+
+            reviewId:
+              String(log._id),
+
+            movieLogId:
+              log._id,
+
+            movieId:
+              notificationMovieId,
+
+            movieTitle:
+              notificationMovieTitle,
+
+            moviePoster:
+              notificationMoviePoster,
+
+            deduplicationKey:
+              replyLikeDeduplicationKey,
+
+            metadata: {
+              action:
+                "reply_like",
+
+              replyId:
+                String(reply._id),
+            },
           });
-
-        const io = req.app.get("io");
-
-        io
-          ?.to(String(replyOwnerId))
-          .emit("notification", {
-            ...notification.toObject(),
-            from: fromUser,
-          });
+        } catch (notificationError) {
+          console.error(
+            "❌ Movie reply-like notification failed:",
+            notificationError?.message ||
+              notificationError
+          );
+        }
       }
+
+      /*
+       * If the user UNLIKES the reply, remove the dedupe
+       * notification as well.
+       *
+       * This means:
+       *
+       * like   → notification
+       * unlike → notification removed
+       * re-like→ NEW notification + push
+       *
+       * instead of "Duplicate notification skipped".
+       */
+      if (
+        alreadyLiked &&
+        replyOwnerId
+      ) {
+        try {
+          await Notification.deleteOne({
+            to:
+              replyOwnerId,
+
+            deduplicationKey:
+              replyLikeDeduplicationKey,
+          });
+        } catch (notificationCleanupError) {
+          console.warn(
+            "⚠️ Could not clean movie reply-like notification:",
+            notificationCleanupError?.message ||
+              notificationCleanupError
+          );
+        }
+      }
+
+
 
       return res.json({
         liked: !alreadyLiked,

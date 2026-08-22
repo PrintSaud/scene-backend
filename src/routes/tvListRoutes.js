@@ -21,6 +21,10 @@ const Show = require(
   "../models/showModel"
 );
 
+const sendNotification = require(
+  "../utils/sendNotification"
+);
+
 // ======================================================
 // Constants
 // ======================================================
@@ -1763,6 +1767,67 @@ router.post(
       }
 
       await list.save();
+
+      /*
+       * TV list likes previously changed the database only.
+       * They now use the same notification engine as movie
+       * list likes.
+       */
+      if (
+        !liked &&
+        list.user &&
+        String(list.user) !==
+          String(userId)
+      ) {
+        try {
+          await sendNotification({
+            type:
+              "list_like",
+
+            fromUserId:
+              userId,
+
+            toUserId:
+              list.user,
+
+            mediaType:
+              "tv",
+
+            targetType:
+              "list",
+
+            listId:
+              list._id,
+
+            relatedId:
+              String(list._id),
+
+            deduplicationKey:
+              `list-like:${String(
+                list._id
+              )}:${String(
+                userId
+              )}`,
+
+            metadata: {
+              action:
+                "like",
+
+              listTitle:
+                list.title || "",
+
+              listMediaType:
+                "tv",
+            },
+          });
+        } catch (notificationError) {
+          console.error(
+            "❌ TV list-like notification failed:",
+            notificationError?.message ||
+              notificationError
+          );
+        }
+      }
 
       return res.status(200).json({
         liked:

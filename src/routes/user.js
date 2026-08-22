@@ -2040,33 +2040,37 @@ router.post("/:id/notify/share",protect,async (req, res) => {
         });
       }
 
-      const notification =
-        await Notification.create({
-          type: "suggest_movie",
-          message:
-            "suggested you check out this film!",
-          from: senderId,
-          to: recipientId,
-          movieId,
-          read: false,
-        });
+      await sendNotification({
+        type:
+          "suggest_movie",
 
-      const io = req.app.get("io");
+        message:
+          "suggested you check out this film!",
 
-      if (io) {
-        io.to(
-          String(recipientId)
-        ).emit("notification", {
-          ...notification.toObject(),
+        fromUserId:
+          senderId,
 
-          from: {
-            _id: fromUser._id,
-            username:
-              fromUser.username,
-            avatar: fromUser.avatar,
-          },
-        });
-      }
+        toUserId:
+          recipientId,
+
+        mediaType:
+          "movie",
+
+        targetType:
+          "movie",
+
+        movieId:
+          String(movieId),
+
+        relatedId:
+          String(movieId),
+
+        metadata: {
+          action:
+            "share",
+        },
+      });
+
 
       return res.status(200).json({
         message: "Notification sent",
@@ -2175,21 +2179,24 @@ router.post(
       }
 
       const notification =
-        await Notification.create({
-          type: "show_shared",
+        await sendNotification({
+          type:
+            "show_shared",
 
           message:
             "suggested you check out this show!",
 
-          from:
+          fromUserId:
             senderId,
 
-          to:
+          toUserId:
             recipientId,
 
-          mediaType: "tv",
+          mediaType:
+            "tv",
 
-          targetType: "show",
+          targetType:
+            "show",
 
           showId:
             String(showTmdbId),
@@ -2197,48 +2204,33 @@ router.post(
           showTitle:
             typeof req.body
               ?.showTitle ===
-            "string"
+              "string"
               ? req.body.showTitle.trim()
               : "",
 
           showPoster:
             typeof req.body
               ?.showPoster ===
-            "string"
+              "string"
               ? req.body.showPoster.trim()
               : "",
 
           showBackdrop:
             typeof req.body
               ?.showBackdrop ===
-            "string"
+              "string"
               ? req.body.showBackdrop.trim()
               : "",
 
-          read: false,
-        });
+          relatedId:
+            String(showTmdbId),
 
-      const io =
-        req.app.get("io");
-
-      if (io) {
-        io.to(
-          String(recipientId)
-        ).emit("notification", {
-          ...notification.toObject(),
-
-          from: {
-            _id:
-              fromUser._id,
-
-            username:
-              fromUser.username,
-
-            avatar:
-              fromUser.avatar,
+          metadata: {
+            action:
+              "share",
           },
         });
-      }
+
 
       return res.status(200).json({
         message:
