@@ -10,6 +10,9 @@ const ShownDailyMovie = require("../models/ShownDailyMovie");
 
 const TMDB_KEY = process.env.TMDB_KEY || process.env.TMDB_API_KEY;
 
+const GENRE_ANIMATION = 16;
+const GENRE_FAMILY = 10751;
+
 let cachedMovie = null;
 let cachedDate = null; // YYYY-MM-DD in Asia/Riyadh
 
@@ -19,7 +22,7 @@ let cachedDate = null; // YYYY-MM-DD in Asia/Riyadh
 const POOL_BASE = {
   "vote_average.gte": 7.5,
   "vote_count.gte": 5000,      // tougher bar to avoid inflated fresh titles
-  without_genres: "99,10755", // docs, reality, animation, family
+  without_genres: "16,99,10751,10755", // docs, reality, animation, family
   include_adult: false,
   include_video: false,
   with_runtime_gte: 70,        // avoid shorts/specials
