@@ -10,8 +10,16 @@ const SceneBotUsage = require(
 
 const router = express.Router();
 
+/*
+ * GPT-5.6 Terra is the balanced default for SceneBot:
+ * strong entertainment reasoning without using the
+ * highest-cost model for every chat.
+ *
+ * Railway can override this with SCENEBOT_MODEL.
+ */
 const SCENEBOT_MODEL =
-  process.env.SCENEBOT_MODEL || "gpt-4o";
+  process.env.SCENEBOT_MODEL ||
+  "gpt-5.6-terra";
 
 const DAILY_LIMIT = Math.max(
   1,
@@ -187,29 +195,111 @@ const getConversationKey = (req) => {
   )}`;
 };
 
+const getSceneCurrentDate = () => {
+  /*
+   * Scene is based in Saudi Arabia, so use Riyadh
+   * time instead of Railway/UTC for "today".
+   */
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      timeZone:
+        "Asia/Riyadh",
+
+      year:
+        "numeric",
+
+      month:
+        "long",
+
+      day:
+        "numeric",
+    }
+  ).format(
+    new Date()
+  );
+};
+
 const getSystemPrompt = (language) => {
+  const currentDate =
+    getSceneCurrentDate();
+
   return [
     "You are SceneBot, the movie and television expert inside Scene.",
+
+    `The current date is ${currentDate}.`,
+
     `Respond fluently in ${language}.`,
-    "Be friendly, conversational, creative, and direct.",
+
+    "Be friendly, conversational, creative, confident, and direct.",
 
     "Focus equally on movies and television shows.",
-    "You can discuss movies, TV shows, actors, directors, writers, cinematographers, characters, recommendations, trivia, reviews, filmmaking, and television production.",
+
+    "You can discuss movies, TV shows, actors, directors, writers, cinematographers, characters, franchises, universes, recommendations, trivia, reviews, filmmaking, television production, release schedules, box office, casting, and entertainment news.",
+
+    "",
+
+    "CURRENT INFORMATION RULES:",
+
+    "You have access to web search.",
+
+    "Use web search whenever the answer depends on information that may have changed, including current or upcoming releases, release dates, current franchise order, casting changes, announcements, cancellations, renewals, box office results, awards, production status, trailers, recent episodes, current streaming availability, or entertainment news.",
+
+    "Also search when the user uses words such as latest, current, today, now, upcoming, next, recently, announced, released, coming soon, or newest.",
+
+    "If there is a meaningful chance that your stored knowledge is outdated, search before answering.",
+
+    "Do not call a movie, season, episode, or project 'upcoming' without checking whether its release date is still in the future relative to the current date.",
+
+    "Never rely on an old announced release schedule when a newer release, delay, cancellation, or announcement may exist.",
+
+    "When discussing a franchise timeline such as Marvel, DC, Star Wars, or another active universe, verify current status if the question involves what comes next or what has recently released.",
+
+    "For stable questions such as themes, opinions, filmmaking analysis, older movie recommendations, character analysis, or historical facts that are unlikely to have changed, you do not need to search unnecessarily.",
+
+    "",
+
+    "ACCURACY:",
+
+    "Prefer verified current information over assumptions.",
+
+    "Do not fabricate releases, credits, quotes, ratings, episode details, release dates, announcements, or other facts.",
+
+    "If reliable sources conflict, briefly acknowledge the uncertainty.",
+
+    "Never present rumors as confirmed facts.",
+
+    "",
+
+    "MOVIE / TV CONTEXT:",
 
     "Pay close attention to whether the user is discussing a movie or a TV show.",
+
     "Never assume that a title refers to a movie when it may refer to a television show.",
-    "When a movie and a TV show share the same or a similar title, use the context supplied by the user and ask for clarification only when genuinely necessary.",
+
+    "When a movie and a TV show share the same or a similar title, use the conversation context and ask for clarification only when genuinely necessary.",
+
+    "",
+
+    "SPOILERS:",
 
     "If the user requests a spoiler-free answer, do not reveal major twists, deaths, endings, identities, or later-story developments.",
+
     "Do not introduce spoilers unless the user clearly asks for them.",
 
-    "When a request is unrelated to movies or television, briefly redirect the conversation toward entertainment topics supported by Scene.",
+    "",
+
+    "STYLE:",
 
     "Do not claim to be human.",
-    "Do not fabricate releases, credits, quotes, ratings, episode details, or other facts.",
-    "When unsure about a fact, clearly communicate uncertainty.",
 
     "Keep answers useful and reasonably concise unless the user requests more detail.",
+
+    "Do not clutter normal answers with raw URLs.",
+
+    "If web search was useful, naturally incorporate the verified information rather than talking about the search process.",
+
+    "When a request is unrelated to movies or television, briefly redirect the conversation toward entertainment topics supported by Scene.",
   ].join("\n");
 };
 
@@ -516,34 +606,64 @@ router.post(
           -MAX_HISTORY_MESSAGES
         );
 
-      const completion =
-        await openai.chat.completions.create(
+      /*
+       * Responses API gives SceneBot access to
+       * OpenAI's hosted live web-search tool.
+       *
+       * tool_choice "auto" means the model can
+       * answer stable questions immediately and
+       * search only when current information is
+       * useful.
+       */
+      const response =
+        await openai.responses.create(
           {
-            model: SCENEBOT_MODEL,
+            model:
+              SCENEBOT_MODEL,
 
-            messages: [
+            instructions:
+              getSystemPrompt(
+                language
+              ),
+
+            input:
+              conversation.messages,
+
+            tools: [
               {
-                role: "system",
-                content:
-                  getSystemPrompt(
-                    language
-                  ),
+                type:
+                  "web_search",
               },
-
-              ...conversation.messages,
             ],
 
-            temperature: 0.8,
-            max_tokens: 800,
+            tool_choice:
+              "auto",
+
+            /*
+             * Low reasoning keeps ordinary chat
+             * responsive while still allowing
+             * stronger reasoning when necessary.
+             */
+            reasoning: {
+              effort:
+                "low",
+            },
+
+            max_output_tokens:
+              1200,
           },
           {
-            timeout: 30000,
+            /*
+             * Live search may take slightly longer
+             * than a normal model-only response.
+             */
+            timeout:
+              45000,
           }
         );
 
       const rawReply =
-        completion.choices?.[0]
-          ?.message?.content;
+        response?.output_text;
 
       const reply =
         typeof rawReply === "string"
@@ -552,7 +672,7 @@ router.post(
 
       if (!reply) {
         throw new Error(
-          "SceneBot returned an empty response"
+          "SceneBot Responses API returned an empty response"
         );
       }
 
@@ -606,7 +726,11 @@ router.post(
         error.code ===
           "ETIMEDOUT" ||
         error.code ===
-          "ECONNABORTED"
+          "ECONNABORTED" ||
+        error.code ===
+          "TIMEOUT" ||
+        error.name ===
+          "AbortError"
       ) {
         return res.status(504).json({
           message:
