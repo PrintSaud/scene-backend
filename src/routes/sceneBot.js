@@ -807,6 +807,49 @@ router.post(
       return res.status(500).json({
         message:
           "SceneBot is temporarily unavailable. Please try again later.",
+
+        /*
+         * Temporary SceneBot diagnostics.
+         * Remove after the OpenAI Responses API
+         * integration is confirmed working.
+         */
+        debug:
+          process.env.NODE_ENV === "production"
+            ? {
+                message:
+                  error?.message || null,
+
+                status:
+                  error?.status || null,
+
+                code:
+                  error?.code || null,
+
+                type:
+                  error?.type || null,
+
+                param:
+                  error?.param || null,
+              }
+            : {
+                message:
+                  error?.message || null,
+
+                status:
+                  error?.status || null,
+
+                code:
+                  error?.code || null,
+
+                type:
+                  error?.type || null,
+
+                param:
+                  error?.param || null,
+
+                stack:
+                  error?.stack || null,
+              },
       });
     }
   }
