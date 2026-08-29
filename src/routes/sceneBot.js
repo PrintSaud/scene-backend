@@ -64,6 +64,60 @@ const cleanString = (
     .trim()
     .slice(0, maximumLength);
 };
+const stripSceneBotReply = (
+  value
+) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    /*
+     * Convert markdown links:
+     * [title](https://example.com) -> title
+     */
+    .replace(
+      /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi,
+      "$1"
+    )
+
+    /*
+     * Remove remaining raw URLs.
+     */
+    .replace(
+      /https?:\/\/[^\s)]+/gi,
+      ""
+    )
+
+    /*
+     * Remove common bare domains that look like sources.
+     */
+    .replace(
+      /\b(?:www\.)?[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?/gi,
+      ""
+    )
+
+    /*
+     * Remove markdown emphasis and code styling.
+     */
+    .replace(/\*\*/g, "")
+    .replace(/__/g, "")
+    .replace(/`/g, "")
+
+    /*
+     * Remove leftover empty brackets / parens from source formatting.
+     */
+    .replace(/\[\s*\]/g, "")
+    .replace(/\(\s*\)/g, "")
+
+    /*
+     * Clean spacing.
+     */
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+};
 
 const normalizeLanguage = (value) => {
   const language = cleanString(
@@ -295,7 +349,8 @@ const getSystemPrompt = (language) => {
 
     "Keep answers useful and reasonably concise unless the user requests more detail.",
 
-    "Do not clutter normal answers with raw URLs.",
+    "Do not include raw URLs, markdown links, source attributions, or tracking parameters in replies.",
+    "Prefer clean plain-text answers with no markdown formatting unless the user explicitly asks for markdown.",
 
     "If web search was useful, naturally incorporate the verified information rather than talking about the search process.",
 
@@ -666,9 +721,11 @@ router.post(
         response?.output_text;
 
       const reply =
-        typeof rawReply === "string"
-          ? rawReply.trim()
-          : "";
+        stripSceneBotReply(
+          typeof rawReply === "string"
+            ? rawReply
+            : ""
+        );
 
       if (!reply) {
         throw new Error(
