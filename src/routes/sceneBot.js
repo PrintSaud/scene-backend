@@ -24,7 +24,7 @@ const SCENEBOT_MODEL =
 const DAILY_LIMIT = Math.max(
   1,
   Number(
-    process.env.SCENEBOT_DAILY_LIMIT || 20
+    process.env.SCENEBOT_DAILY_LIMIT || 50
   )
 );
 
@@ -705,7 +705,7 @@ router.post(
             },
 
             max_output_tokens:
-              1200,
+              5000,
           },
           {
             /*
@@ -713,7 +713,7 @@ router.post(
              * than a normal model-only response.
              */
             timeout:
-              45000,
+              90000,
           }
         );
 
