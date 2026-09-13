@@ -2615,36 +2615,109 @@ router.get("/feed/:id",protect,async (req, res) => {
         .map(getLogTmdbId)
         .filter(Boolean);
 
-      const [
-        movieMetadataMap,
-        customPosterMap,
-      ] = await Promise.all([
-        getMovieMetadataMap(tmdbIds),
-
-        getCustomPosterMap(
-          req.user._id,
+      const movieMetadataMap =
+        await getMovieMetadataMap(
           tmdbIds
+        );
+
+      /*
+       * Feed cards must use the LOG AUTHOR'S current custom
+       * poster — never the current viewer's custom poster.
+       *
+       * Build poster maps per author so changing a movie poster
+       * later updates that user's old Recent Activity cards too.
+       */
+      const authorIds = [
+        ...new Set(
+          logs
+            .map((log) =>
+              String(
+                log?.user?._id ||
+                log?.user ||
+                ""
+              )
+            )
+            .filter(Boolean)
         ),
-      ]);
+      ];
+
+      const authorPosterMaps =
+        new Map();
+
+      await Promise.all(
+        authorIds.map(
+          async (authorId) => {
+            const authorMovieIds =
+              logs
+                .filter(
+                  (log) =>
+                    String(
+                      log?.user?._id ||
+                      log?.user ||
+                      ""
+                    ) === authorId
+                )
+                .map(getLogTmdbId)
+                .filter(Boolean);
+
+            const map =
+              await getCustomPosterMap(
+                authorId,
+                authorMovieIds
+              );
+
+            authorPosterMaps.set(
+              authorId,
+              map
+            );
+          }
+        )
+      );
 
       const formattedLogs = logs
         .map((log) => {
           const tmdbId =
             getLogTmdbId(log);
 
-          return formatRetrievedLog({
-            log,
+          const authorId =
+            String(
+              log?.user?._id ||
+              log?.user ||
+              ""
+            );
 
-            movieMetadata:
-              movieMetadataMap.get(
-                tmdbId
-              ),
+          const authorPoster =
+            authorPosterMaps
+              .get(authorId)
+              ?.get(tmdbId) ||
+            null;
 
-            customPosterUrl:
-              customPosterMap.get(
-                tmdbId
-              ),
-          });
+          const formatted =
+            formatRetrievedLog({
+              log,
+
+              movieMetadata:
+                movieMetadataMap.get(
+                  tmdbId
+                ),
+
+              /*
+               * This is now explicitly the author's poster.
+               */
+              customPosterUrl:
+                authorPoster,
+            });
+
+          if (!formatted) {
+            return null;
+          }
+
+          return {
+            ...formatted,
+
+            authorPosterOverride:
+              authorPoster,
+          };
         })
         .filter(Boolean);
 
