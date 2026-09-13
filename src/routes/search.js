@@ -500,7 +500,7 @@ const discoverMovies =
        * Avoid tiny-vote 10/10 titles.
        */
       params["vote_count.gte"] =
-        50;
+        500;
     } else if (
       filters.sort === "newest"
     ) {
