@@ -591,9 +591,10 @@ const searchMoviesWithFilters =
      */
     const hasFilters =
       Boolean(
-        filters.genre ||
+        filters.genres.length ||
         filters.decade ||
-        filters.country ||
+        filters.countries.length ||
+        filters.runtime ||
         filters.sort !==
           "relevance"
       );
@@ -681,6 +682,744 @@ const searchMoviesWithFilters =
   };
 
 
+
+/*
+ * ==========================================================
+ * ADVANCED MOVIE DISCOVERY V2
+ *
+ * Multi-select:
+ *   genres
+ *   countries
+ *
+ * Single-select:
+ *   decade
+ *   runtime
+ *   sort
+ * ==========================================================
+ */
+
+const parseCsvNumbers = (value) =>
+  String(value || "")
+    .split(",")
+    .map((item) =>
+      Number(item.trim())
+    )
+    .filter(
+      (item) =>
+        Number.isInteger(item) &&
+        item > 0
+    );
+
+const parseCsvCountries = (value) =>
+  [...new Set(
+    String(value || "")
+      .split(",")
+      .map((item) =>
+        item
+          .trim()
+          .toUpperCase()
+      )
+      .filter((item) =>
+        /^[A-Z]{2}$/.test(
+          item
+        )
+      )
+  )];
+
+const normalizeMovieFiltersV2 = (
+  req
+) => {
+  const genres =
+    parseCsvNumbers(
+      req.query.genre
+    );
+
+  const countries =
+    parseCsvCountries(
+      req.query.country
+    );
+
+  const decadeRaw =
+    String(
+      req.query.decade || ""
+    ).trim();
+
+  const runtimeRaw =
+    String(
+      req.query.runtime || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const sortRaw =
+    String(
+      req.query.sort ||
+      "relevance"
+    )
+      .trim()
+      .toLowerCase();
+
+  const decade =
+    /^\d{4}$/.test(decadeRaw)
+      ? Number(decadeRaw)
+      : null;
+
+  const allowedRuntimes =
+    new Set([
+      "under90",
+      "90to120",
+      "120to180",
+      "over180",
+    ]);
+
+  const runtime =
+    allowedRuntimes.has(
+      runtimeRaw
+    )
+      ? runtimeRaw
+      : null;
+
+  const allowedSorts =
+    new Set([
+      "relevance",
+      "rating",
+      "newest",
+      "oldest",
+    ]);
+
+  const sort =
+    allowedSorts.has(sortRaw)
+      ? sortRaw
+      : "relevance";
+
+  return {
+    genres,
+    countries,
+    decade,
+    runtime,
+    sort,
+  };
+};
+
+const movieMatchesGenreAndDecadeV2 =
+  (
+    movie,
+    filters
+  ) => {
+    if (
+      filters.genres.length
+    ) {
+      const genreIds =
+        Array.isArray(
+          movie?.genre_ids
+        )
+          ? movie.genre_ids.map(
+              Number
+            )
+          : Array.isArray(
+              movie?.genres
+            )
+          ? movie.genres
+              .map((genre) =>
+                Number(
+                  genre?.id
+                )
+              )
+              .filter(
+                Number.isFinite
+              )
+          : [];
+
+      /*
+       * Multiple genres = AND.
+       *
+       * Drama + Crime means:
+       * movie must contain both.
+       */
+      const hasEveryGenre =
+        filters.genres.every(
+          (genreId) =>
+            genreIds.includes(
+              genreId
+            )
+        );
+
+      if (!hasEveryGenre) {
+        return false;
+      }
+    }
+
+    if (filters.decade) {
+      const year =
+        Number(
+          String(
+            movie
+              ?.release_date ||
+            ""
+          ).slice(0, 4)
+        );
+
+      if (
+        !Number.isInteger(
+          year
+        ) ||
+        year <
+          filters.decade ||
+        year >
+          filters.decade + 9
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+const movieMatchesRuntimeV2 = (
+  runtime,
+  filter
+) => {
+  const minutes =
+    Number(runtime || 0);
+
+  if (!filter) {
+    return true;
+  }
+
+  if (
+    !Number.isFinite(
+      minutes
+    ) ||
+    minutes <= 0
+  ) {
+    return false;
+  }
+
+  if (
+    filter === "under90"
+  ) {
+    return minutes < 90;
+  }
+
+  if (
+    filter === "90to120"
+  ) {
+    return (
+      minutes >= 90 &&
+      minutes <= 120
+    );
+  }
+
+  if (
+    filter === "120to180"
+  ) {
+    return (
+      minutes > 120 &&
+      minutes <= 180
+    );
+  }
+
+  if (
+    filter === "over180"
+  ) {
+    return minutes > 180;
+  }
+
+  return true;
+};
+
+const applyMovieSortV2 = (
+  movies,
+  sort
+) => {
+  const output = [
+    ...(movies || []),
+  ];
+
+  if (sort === "rating") {
+    /*
+     * Best Rated rules:
+     *
+     * 1. < 10 votes NEVER appears.
+     * 2. Rating still matters.
+     * 3. Vote count has very strong
+     *    influence on confidence.
+     *
+     * So 9.9/10 with 11 votes does
+     * not beat 8.7/10 with 20,000.
+     */
+    return output
+      .filter(
+        (movie) =>
+          Number(
+            movie
+              ?.vote_count ||
+            0
+          ) >= 10
+      )
+      .sort((a, b) => {
+        const aVotes =
+          Number(
+            a?.vote_count ||
+            0
+          );
+
+        const bVotes =
+          Number(
+            b?.vote_count ||
+            0
+          );
+
+        const aRating =
+          Number(
+            a?.vote_average ||
+            0
+          );
+
+        const bRating =
+          Number(
+            b?.vote_average ||
+            0
+          );
+
+        const aScore =
+          aRating *
+          Math.log10(
+            aVotes + 10
+          );
+
+        const bScore =
+          bRating *
+          Math.log10(
+            bVotes + 10
+          );
+
+        if (
+          bScore !== aScore
+        ) {
+          return (
+            bScore -
+            aScore
+          );
+        }
+
+        return (
+          bVotes -
+          aVotes
+        );
+      });
+  }
+
+  if (sort === "newest") {
+    return output.sort(
+      (a, b) =>
+        String(
+          b?.release_date ||
+          ""
+        ).localeCompare(
+          String(
+            a?.release_date ||
+            ""
+          )
+        )
+    );
+  }
+
+  if (sort === "oldest") {
+    return output.sort(
+      (a, b) =>
+        String(
+          a?.release_date ||
+          "9999"
+        ).localeCompare(
+          String(
+            b?.release_date ||
+            "9999"
+          )
+        )
+    );
+  }
+
+  return output;
+};
+
+const enrichMovieDetailsV2 =
+  async (
+    movies,
+    filters
+  ) => {
+    const needsDetails =
+      filters.countries.length >
+        0 ||
+      Boolean(
+        filters.runtime
+      );
+
+    if (!needsDetails) {
+      return movies;
+    }
+
+    const candidates =
+      movies.slice(0, 80);
+
+    const enriched =
+      await Promise.all(
+        candidates.map(
+          async (movie) => {
+            try {
+              const response =
+                await axios.get(
+                  `${TMDB_BASE}/movie/${movie.id}`,
+                  {
+                    params: {
+                      api_key:
+                        TMDB_API_KEY,
+                    },
+                  }
+                );
+
+              return {
+                ...movie,
+
+                origin_country:
+                  response.data
+                    ?.origin_country ||
+                  [],
+
+                runtime:
+                  response.data
+                    ?.runtime ??
+                  movie?.runtime ??
+                  null,
+              };
+            } catch (error) {
+              return movie;
+            }
+          }
+        )
+      );
+
+    return enriched.filter(
+      (movie) => {
+        if (
+          filters.countries
+            .length
+        ) {
+          const origins =
+            Array.isArray(
+              movie
+                ?.origin_country
+            )
+              ? movie
+                  .origin_country
+              : [];
+
+          /*
+           * Multiple countries = OR.
+           *
+           * France + Italy means
+           * films originating from
+           * either selected country.
+           */
+          const countryMatch =
+            filters.countries.some(
+              (country) =>
+                origins.includes(
+                  country
+                )
+            );
+
+          if (!countryMatch) {
+            return false;
+          }
+        }
+
+        if (
+          filters.runtime &&
+          !movieMatchesRuntimeV2(
+            movie?.runtime,
+            filters.runtime
+          )
+        ) {
+          return false;
+        }
+
+        return true;
+      }
+    );
+  };
+
+const discoverMoviesV2 =
+  async (filters) => {
+    const params = {
+      api_key:
+        TMDB_API_KEY,
+
+      include_adult:
+        false,
+
+      include_video:
+        false,
+    };
+
+    if (
+      filters.genres.length
+    ) {
+      /*
+       * TMDB comma = AND.
+       */
+      params.with_genres =
+        filters.genres.join(
+          ","
+        );
+    }
+
+    if (
+      filters.countries.length
+    ) {
+      /*
+       * TMDB pipe = OR.
+       */
+      params.with_origin_country =
+        filters.countries.join(
+          "|"
+        );
+    }
+
+    if (filters.decade) {
+      params[
+        "primary_release_date.gte"
+      ] =
+        `${filters.decade}-01-01`;
+
+      params[
+        "primary_release_date.lte"
+      ] =
+        `${
+          filters.decade + 9
+        }-12-31`;
+    }
+
+    if (
+      filters.runtime ===
+      "under90"
+    ) {
+      params[
+        "with_runtime.lte"
+      ] = 89;
+    }
+
+    if (
+      filters.runtime ===
+      "90to120"
+    ) {
+      params[
+        "with_runtime.gte"
+      ] = 90;
+
+      params[
+        "with_runtime.lte"
+      ] = 120;
+    }
+
+    if (
+      filters.runtime ===
+      "120to180"
+    ) {
+      params[
+        "with_runtime.gte"
+      ] = 121;
+
+      params[
+        "with_runtime.lte"
+      ] = 180;
+    }
+
+    if (
+      filters.runtime ===
+      "over180"
+    ) {
+      params[
+        "with_runtime.gte"
+      ] = 181;
+    }
+
+    if (
+      filters.sort ===
+      "rating"
+    ) {
+      /*
+       * Universal floor.
+       *
+       * Saudi/local cinema can
+       * still participate, but
+       * one-vote entries cannot.
+       */
+      params[
+        "vote_count.gte"
+      ] = 10;
+
+      params.sort_by =
+        "vote_average.desc";
+    } else if (
+      filters.sort ===
+      "newest"
+    ) {
+      params.sort_by =
+        "primary_release_date.desc";
+    } else if (
+      filters.sort ===
+      "oldest"
+    ) {
+      params.sort_by =
+        "primary_release_date.asc";
+    } else {
+      params.sort_by =
+        "popularity.desc";
+    }
+
+    const requests =
+      [1, 2, 3].map(
+        (page) =>
+          axios.get(
+            `${TMDB_BASE}/discover/movie`,
+            {
+              params: {
+                ...params,
+                page,
+              },
+            }
+          )
+      );
+
+    const pages =
+      await Promise.all(
+        requests
+      );
+
+    let movies =
+      uniqById(
+        pages.flatMap(
+          (response) =>
+            response.data
+              ?.results ||
+            []
+        )
+      );
+
+    movies =
+      await filterMediaSearchResults(
+        movies,
+        "movie"
+      );
+
+    return applyMovieSortV2(
+      movies,
+      filters.sort
+    );
+  };
+
+const searchMoviesWithFiltersV2 =
+  async (
+    query,
+    filters
+  ) => {
+    if (!query) {
+      return discoverMoviesV2(
+        filters
+      );
+    }
+
+    const hasFilters =
+      Boolean(
+        filters.genres.length ||
+        filters.countries
+          .length ||
+        filters.decade ||
+        filters.runtime ||
+        filters.sort !==
+          "relevance"
+      );
+
+    const pageCount =
+      hasFilters
+        ? 5
+        : 2;
+
+    const pages =
+      await Promise.all(
+        Array.from(
+          {
+            length:
+              pageCount,
+          },
+          (_, index) =>
+            axios.get(
+              `${TMDB_BASE}/search/movie`,
+              {
+                params: {
+                  api_key:
+                    TMDB_API_KEY,
+
+                  query,
+
+                  page:
+                    index + 1,
+
+                  include_adult:
+                    false,
+                },
+              }
+            )
+        )
+      );
+
+    const forceAllowed =
+      await loadForceAllowedMatches(
+        "movie",
+        query
+      );
+
+    let movies =
+      uniqById([
+        ...forceAllowed,
+
+        ...pages.flatMap(
+          (response) =>
+            response.data
+              ?.results ||
+            []
+        ),
+      ]);
+
+    movies =
+      movies.filter(
+        (movie) =>
+          movieMatchesGenreAndDecadeV2(
+            movie,
+            filters
+          )
+      );
+
+    movies =
+      await enrichMovieDetailsV2(
+        movies,
+        filters
+      );
+
+    movies =
+      await filterMediaSearchResults(
+        movies,
+        "movie"
+      );
+
+    return applyMovieSortV2(
+      movies,
+      filters.sort
+    );
+  };
+
+
 /*
  * ----------------------------------------------------------
  * Movie search — backend authority
@@ -698,7 +1437,7 @@ router.get(
       ).trim();
 
     const filters =
-      normalizeMovieFilters(req);
+      normalizeMovieFiltersV2(req);
 
     const hasDiscoveryFilters =
       Boolean(
@@ -733,7 +1472,7 @@ router.get(
 
     try {
       const movies =
-        await searchMoviesWithFilters(
+        await searchMoviesWithFiltersV2(
           query,
           filters
         );
