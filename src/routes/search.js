@@ -500,7 +500,11 @@ const discoverMovies =
        * Avoid tiny-vote 10/10 titles.
        */
       params["vote_count.gte"] =
-        500;
+        filters.country === "SA"
+          ? 1
+          : filters.country
+          ? 25
+          : 500;
     } else if (
       filters.sort === "newest"
     ) {
