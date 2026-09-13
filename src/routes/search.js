@@ -213,6 +213,470 @@ const searchTmdbMedia =
   };
 
 
+
+const normalizeMovieFilters = (req) => {
+  const genreRaw =
+    String(req.query.genre || "").trim();
+
+  const decadeRaw =
+    String(req.query.decade || "").trim();
+
+  const countryRaw =
+    String(req.query.country || "")
+      .trim()
+      .toUpperCase();
+
+  const sortRaw =
+    String(req.query.sort || "relevance")
+      .trim()
+      .toLowerCase();
+
+  const genre =
+    /^\d+$/.test(genreRaw)
+      ? Number(genreRaw)
+      : null;
+
+  const decade =
+    /^\d{4}$/.test(decadeRaw)
+      ? Number(decadeRaw)
+      : null;
+
+  const country =
+    /^[A-Z]{2}$/.test(countryRaw)
+      ? countryRaw
+      : null;
+
+  const allowedSorts =
+    new Set([
+      "relevance",
+      "rating",
+      "newest",
+      "oldest",
+    ]);
+
+  const sort =
+    allowedSorts.has(sortRaw)
+      ? sortRaw
+      : "relevance";
+
+  return {
+    genre,
+    decade,
+    country,
+    sort,
+  };
+};
+
+const movieMatchesBasicFilters = (
+  movie,
+  filters
+) => {
+  if (filters.genre) {
+    const genreIds =
+      Array.isArray(movie?.genre_ids)
+        ? movie.genre_ids
+        : Array.isArray(movie?.genres)
+        ? movie.genres
+            .map((genre) =>
+              Number(genre?.id)
+            )
+            .filter(Number.isFinite)
+        : [];
+
+    if (
+      !genreIds.includes(
+        filters.genre
+      )
+    ) {
+      return false;
+    }
+  }
+
+  if (filters.decade) {
+    const year =
+      Number(
+        String(
+          movie?.release_date || ""
+        ).slice(0, 4)
+      );
+
+    if (
+      !Number.isInteger(year) ||
+      year < filters.decade ||
+      year > filters.decade + 9
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const applyMovieSort = (
+  movies,
+  sort
+) => {
+  const result = [
+    ...(movies || []),
+  ];
+
+  if (sort === "rating") {
+    return result.sort((a, b) => {
+      const aVotes =
+        Number(a?.vote_count || 0);
+
+      const bVotes =
+        Number(b?.vote_count || 0);
+
+      const aRating =
+        Number(a?.vote_average || 0);
+
+      const bRating =
+        Number(b?.vote_average || 0);
+
+      /*
+       * Confidence-weighted rating.
+       *
+       * Prevents a random 10/10 with
+       * 1 or 2 votes from beating
+       * genuinely well-rated movies.
+       */
+      const aConfidence =
+        Math.min(
+          1,
+          Math.log10(aVotes + 1) / 3
+        );
+
+      const bConfidence =
+        Math.min(
+          1,
+          Math.log10(bVotes + 1) / 3
+        );
+
+      const aScore =
+        aRating * aConfidence;
+
+      const bScore =
+        bRating * bConfidence;
+
+      if (bScore !== aScore) {
+        return bScore - aScore;
+      }
+
+      return bVotes - aVotes;
+    });
+  }
+
+  if (sort === "newest") {
+    return result.sort(
+      (a, b) =>
+        String(
+          b?.release_date || ""
+        ).localeCompare(
+          String(
+            a?.release_date || ""
+          )
+        )
+    );
+  }
+
+  if (sort === "oldest") {
+    return result.sort(
+      (a, b) =>
+        String(
+          a?.release_date || "9999"
+        ).localeCompare(
+          String(
+            b?.release_date || "9999"
+          )
+        )
+    );
+  }
+
+  return result;
+};
+
+const attachMovieDetailsForCountry =
+  async (
+    movies,
+    country
+  ) => {
+    if (!country) {
+      return movies;
+    }
+
+    /*
+     * Genre + decade filtering happens
+     * before this, so we only request
+     * details for plausible candidates.
+     */
+    const candidates =
+      movies.slice(0, 60);
+
+    const enriched =
+      await Promise.all(
+        candidates.map(
+          async (movie) => {
+            try {
+              const response =
+                await axios.get(
+                  `${TMDB_BASE}/movie/${movie.id}`,
+                  {
+                    params: {
+                      api_key:
+                        TMDB_API_KEY,
+                    },
+                  }
+                );
+
+              return {
+                ...movie,
+                origin_country:
+                  response.data
+                    ?.origin_country ||
+                  [],
+              };
+            } catch (error) {
+              return movie;
+            }
+          }
+        )
+      );
+
+    return enriched.filter(
+      (movie) =>
+        Array.isArray(
+          movie?.origin_country
+        ) &&
+        movie.origin_country.includes(
+          country
+        )
+    );
+  };
+
+const discoverMovies =
+  async (filters) => {
+    const params = {
+      api_key:
+        TMDB_API_KEY,
+
+      include_adult:
+        false,
+
+      include_video:
+        false,
+
+      page:
+        1,
+    };
+
+    if (filters.genre) {
+      params.with_genres =
+        filters.genre;
+    }
+
+    if (filters.country) {
+      params.with_origin_country =
+        filters.country;
+    }
+
+    if (filters.decade) {
+      params[
+        "primary_release_date.gte"
+      ] =
+        `${filters.decade}-01-01`;
+
+      params[
+        "primary_release_date.lte"
+      ] =
+        `${filters.decade + 9}-12-31`;
+    }
+
+    if (filters.sort === "rating") {
+      params.sort_by =
+        "vote_average.desc";
+
+      /*
+       * Avoid tiny-vote 10/10 titles.
+       */
+      params["vote_count.gte"] =
+        50;
+    } else if (
+      filters.sort === "newest"
+    ) {
+      params.sort_by =
+        "primary_release_date.desc";
+    } else if (
+      filters.sort === "oldest"
+    ) {
+      params.sort_by =
+        "primary_release_date.asc";
+    } else {
+      params.sort_by =
+        "popularity.desc";
+    }
+
+    const [page1, page2] =
+      await Promise.all([
+        axios.get(
+          `${TMDB_BASE}/discover/movie`,
+          {
+            params: {
+              ...params,
+              page: 1,
+            },
+          }
+        ),
+
+        axios.get(
+          `${TMDB_BASE}/discover/movie`,
+          {
+            params: {
+              ...params,
+              page: 2,
+            },
+          }
+        ),
+      ]);
+
+    const combined =
+      uniqById([
+        ...(
+          page1.data?.results ||
+          []
+        ),
+        ...(
+          page2.data?.results ||
+          []
+        ),
+      ]);
+
+    const safe =
+      await filterMediaSearchResults(
+        combined,
+        "movie"
+      );
+
+    return applyMovieSort(
+      safe,
+      filters.sort
+    );
+  };
+
+const searchMoviesWithFilters =
+  async (
+    query,
+    filters
+  ) => {
+    /*
+     * No text query:
+     * use TMDB Discover.
+     */
+    if (!query) {
+      return discoverMovies(
+        filters
+      );
+    }
+
+    /*
+     * Search more than the old 2 pages
+     * whenever filters are being used,
+     * otherwise a valid filtered movie
+     * can disappear simply because it was
+     * on page 3+ of TMDB search.
+     */
+    const hasFilters =
+      Boolean(
+        filters.genre ||
+        filters.decade ||
+        filters.country ||
+        filters.sort !==
+          "relevance"
+      );
+
+    const pageCount =
+      hasFilters
+        ? 5
+        : 2;
+
+    const requests = [];
+
+    for (
+      let page = 1;
+      page <= pageCount;
+      page += 1
+    ) {
+      requests.push(
+        axios.get(
+          `${TMDB_BASE}/search/movie`,
+          {
+            params: {
+              api_key:
+                TMDB_API_KEY,
+
+              query,
+
+              page,
+
+              include_adult:
+                false,
+            },
+          }
+        )
+      );
+    }
+
+    const pages =
+      await Promise.all(
+        requests
+      );
+
+    const forceAllowed =
+      await loadForceAllowedMatches(
+        "movie",
+        query
+      );
+
+    let combined =
+      uniqById([
+        ...forceAllowed,
+
+        ...pages.flatMap(
+          (response) =>
+            response.data
+              ?.results ||
+            []
+        ),
+      ]);
+
+    combined =
+      combined.filter(
+        (movie) =>
+          movieMatchesBasicFilters(
+            movie,
+            filters
+          )
+      );
+
+    combined =
+      await attachMovieDetailsForCountry(
+        combined,
+        filters.country
+      );
+
+    const safe =
+      await filterMediaSearchResults(
+        combined,
+        "movie"
+      );
+
+    return applyMovieSort(
+      safe,
+      filters.sort
+    );
+  };
+
+
 /*
  * ----------------------------------------------------------
  * Movie search — backend authority
@@ -229,14 +693,35 @@ router.get(
         ""
       ).trim();
 
-    if (!query) {
+    const filters =
+      normalizeMovieFilters(req);
+
+    const hasDiscoveryFilters =
+      Boolean(
+        filters.genre ||
+        filters.decade ||
+        filters.country ||
+        filters.sort !==
+          "relevance"
+      );
+
+    /*
+     * Empty query is allowed when the
+     * user is actively discovering via
+     * filters.
+     */
+    if (
+      !query &&
+      !hasDiscoveryFilters
+    ) {
       return res.status(400).json({
         message:
-          "Search query is required",
+          "Search query or filters are required",
       });
     }
 
     if (
+      query &&
       containsBannedWord(query)
     ) {
       return res.json([]);
@@ -244,9 +729,9 @@ router.get(
 
     try {
       const movies =
-        await searchTmdbMedia(
-          "movie",
-          query
+        await searchMoviesWithFilters(
+          query,
+          filters
         );
 
       return res.json(
