@@ -453,4 +453,46 @@ router.get(
   }
 );
 
+
+router.get(
+  "/debug-overrides",
+  async (req, res) => {
+    try {
+      const mongoose = require("mongoose");
+
+      const rows =
+        await MediaSearchOverride.find({})
+          .lean();
+
+      return res.json({
+        database:
+          mongoose.connection.name,
+
+        count:
+          rows.length,
+
+        overrides:
+          rows.map((row) => ({
+            tmdbId:
+              row.tmdbId,
+
+            mediaType:
+              row.mediaType,
+
+            action:
+              row.action,
+
+            reason:
+              row.reason,
+          })),
+      });
+    } catch (error) {
+      return res.status(500).json({
+        message:
+          error.message,
+      });
+    }
+  }
+);
+
 module.exports = router;
