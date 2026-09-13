@@ -172,6 +172,13 @@ const basicSafetyPass = (
       item?.popularity || 0
     );
 
+  const voteAverage =
+    Number(
+      item?.vote_average ??
+      item?.voteAverage ??
+      0
+    );
+
   const isArabic =
     lang === "ar";
 
@@ -182,6 +189,23 @@ const basicSafetyPass = (
     item.origin_country.includes(
       "SA"
     );
+
+  /*
+   * Remove unrated foreign entries.
+   *
+   * Keep English plus Arabic / Saudi content.
+   * Explicit database "allow" overrides can still
+   * rescue a title when needed.
+   */
+  if (
+    lang &&
+    lang !== "en" &&
+    !isArabic &&
+    !isSaudi &&
+    voteAverage <= 0
+  ) {
+    return false;
+  }
 
   /*
    * Protect Arabic / Saudi content from
