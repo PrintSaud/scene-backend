@@ -3,6 +3,7 @@ const axios = require("axios");
 
 const User = require("../models/user");
 const List = require("../models/list");
+const MediaSearchOverride = require("../models/mediaSearchOverride");
 
 const {
   filterMediaSearchResults,
@@ -18,6 +19,105 @@ const TMDB_API_KEY =
 
 const TMDB_BASE =
   "https://api.themoviedb.org/3";
+
+const normalizeSearchText = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .trim();
+
+const mediaMatchesQuery = (
+  item,
+  mediaType,
+  query
+) => {
+  const q =
+    normalizeSearchText(query);
+
+  if (!q) {
+    return false;
+  }
+
+  const values =
+    mediaType === "tv"
+      ? [
+          item?.name,
+          item?.original_name,
+        ]
+      : [
+          item?.title,
+          item?.original_title,
+        ];
+
+  return values.some(
+    (value) =>
+      normalizeSearchText(value)
+        .includes(q)
+  );
+};
+
+const loadForceAllowedMatches = async (
+  mediaType,
+  query
+) => {
+  const overrides =
+    await MediaSearchOverride.find({
+      mediaType,
+      action: "allow",
+    }).lean();
+
+  if (!overrides.length) {
+    return [];
+  }
+
+  const endpoint =
+    mediaType === "tv"
+      ? "tv"
+      : "movie";
+
+  const fetched = [];
+
+  for (const override of overrides) {
+    try {
+      const response =
+        await axios.get(
+          `${TMDB_BASE}/${endpoint}/${override.tmdbId}`,
+          {
+            params: {
+              api_key:
+                TMDB_API_KEY,
+            },
+          }
+        );
+
+      const item =
+        response.data;
+
+      if (
+        item &&
+        mediaMatchesQuery(
+          item,
+          mediaType,
+          query
+        )
+      ) {
+        fetched.push(item);
+      }
+    } catch (error) {
+      console.warn(
+        "⚠️ Force-allow TMDB fetch failed:",
+        {
+          tmdbId:
+            override.tmdbId,
+          mediaType,
+          message:
+            error?.message,
+        }
+      );
+    }
+  }
+
+  return fetched;
+};
 
 const uniqById = (items) => {
   const map = new Map();
@@ -85,12 +185,21 @@ const searchTmdbMedia =
         ),
       ]);
 
+    const forceAllowed =
+      await loadForceAllowedMatches(
+        mediaType,
+        query
+      );
+
     const combined =
       uniqById([
+        ...forceAllowed,
+
         ...(
           page1.data?.results ||
           []
         ),
+
         ...(
           page2.data?.results ||
           []
