@@ -1086,6 +1086,11 @@ const enrichMovieDetailsV2 =
                     ?.origin_country ||
                   [],
 
+                production_countries:
+                  response.data
+                    ?.production_countries ||
+                  [],
+
                 runtime:
                   response.data
                     ?.runtime ??
@@ -1135,10 +1140,71 @@ const enrichMovieDetailsV2 =
               origins[0] || ""
             ).toUpperCase();
 
-          const countryMatch =
-            filters.countries.includes(
-              primaryOrigin
-            );
+          const selectedCountries =
+            filters.countries || [];
+
+          const language =
+            String(
+              movie?.original_language || ""
+            ).toLowerCase();
+
+          const productionCountries =
+            Array.isArray(
+              movie?.production_countries
+            )
+              ? movie.production_countries
+                  .map((item) =>
+                    String(
+                      item?.iso_3166_1 || ""
+                    ).toUpperCase()
+                  )
+                  .filter(Boolean)
+              : [];
+
+          let countryMatch = false;
+
+          for (
+            const country of selectedCountries
+          ) {
+            /*
+             * Scene Saudi Cinema classification:
+             *
+             * Saudi must actually be part of the
+             * movie's identity, not merely funding.
+             *
+             * Arabic-language + Saudi country
+             * involvement is required.
+             */
+            if (country === "SA") {
+              const hasSaudiCountry =
+                origins.includes("SA") ||
+                productionCountries.includes(
+                  "SA"
+                );
+
+              if (
+                language === "ar" &&
+                hasSaudiCountry
+              ) {
+                countryMatch = true;
+                break;
+              }
+
+              continue;
+            }
+
+            /*
+             * Every other country uses
+             * primary movie origin.
+             */
+            if (
+              primaryOrigin ===
+              country
+            ) {
+              countryMatch = true;
+              break;
+            }
+          }
 
           if (!countryMatch) {
             return false;
