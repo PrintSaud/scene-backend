@@ -1441,9 +1441,10 @@ router.get(
 
     const hasDiscoveryFilters =
       Boolean(
-        filters.genre ||
+        (filters.genres || []).length ||
         filters.decade ||
-        filters.country ||
+        (filters.countries || []).length ||
+        filters.runtime ||
         filters.sort !==
           "relevance"
       );
