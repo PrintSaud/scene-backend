@@ -1121,12 +1121,23 @@ const enrichMovieDetailsV2 =
            * films originating from
            * either selected country.
            */
+          /*
+           * Country filtering means PRIMARY
+           * movie origin, not merely any
+           * co-production / funding country.
+           *
+           * Example:
+           * ["ID", "SA"] = Indonesian,
+           * not Saudi.
+           */
+          const primaryOrigin =
+            String(
+              origins[0] || ""
+            ).toUpperCase();
+
           const countryMatch =
-            filters.countries.some(
-              (country) =>
-                origins.includes(
-                  country
-                )
+            filters.countries.includes(
+              primaryOrigin
             );
 
           if (!countryMatch) {
