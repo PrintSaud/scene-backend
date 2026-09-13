@@ -1319,6 +1319,12 @@ const discoverMoviesV2 =
       );
 
     movies =
+      await enrichMovieDetailsV2(
+        movies,
+        filters
+      );
+
+    movies =
       await filterMediaSearchResults(
         movies,
         "movie"
