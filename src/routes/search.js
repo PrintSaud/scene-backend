@@ -427,50 +427,98 @@ const applyMovieSort = (
   }
 
   if (sort === "rating") {
-    return result.sort((a, b) => {
-      const aVotes =
-        Number(a?.vote_count || 0);
+    const selectedCountries =
+      Array.isArray(filters?.countries)
+        ? filters.countries
+        : [];
 
-      const bVotes =
-        Number(b?.vote_count || 0);
+    const isSaudi =
+      selectedCountries.includes("SA");
 
-      const aRating =
-        Number(a?.vote_average || 0);
+    /*
+     * Scene Best Rated:
+     *
+     * Saudi Arabia:
+     *   1+ vote.
+     *
+     * Worldwide / any non-Saudi country:
+     *   1000+ votes.
+     *
+     * Zero-rating titles are never shown.
+     */
+    const minimumVotes =
+      isSaudi ? 1 : 1000;
 
-      const bRating =
-        Number(b?.vote_average || 0);
+    return output
+      .filter((movie) => {
+        const votes =
+          Number(
+            movie?.vote_count ||
+            0
+          );
 
-      /*
-       * Confidence-weighted rating.
-       *
-       * Prevents a random 10/10 with
-       * 1 or 2 votes from beating
-       * genuinely well-rated movies.
-       */
-      const aConfidence =
-        Math.min(
-          1,
-          Math.log10(aVotes + 1) / 3
+        const rating =
+          Number(
+            movie?.vote_average ||
+            0
+          );
+
+        return (
+          votes >= minimumVotes &&
+          rating > 0
         );
+      })
+      .sort((a, b) => {
+        const aVotes =
+          Number(
+            a?.vote_count ||
+            0
+          );
 
-      const bConfidence =
-        Math.min(
-          1,
-          Math.log10(bVotes + 1) / 3
+        const bVotes =
+          Number(
+            b?.vote_count ||
+            0
+          );
+
+        const aRating =
+          Number(
+            a?.vote_average ||
+            0
+          );
+
+        const bRating =
+          Number(
+            b?.vote_average ||
+            0
+          );
+
+        const aScore =
+          aRating *
+          Math.log10(
+            aVotes + 10
+          );
+
+        const bScore =
+          bRating *
+          Math.log10(
+            bVotes + 10
+          );
+
+        if (
+          bScore !== aScore
+        ) {
+          return (
+            bScore -
+            aScore
+          );
+        }
+
+        return (
+          bVotes -
+          aVotes
         );
-
-      const aScore =
-        aRating * aConfidence;
-
-      const bScore =
-        bRating * bConfidence;
-
-      if (bScore !== aScore) {
-        return bScore - aScore;
-      }
-
-      return bVotes - aVotes;
-    });
+      });
   }
 
   if (sort === "newest") {
@@ -1001,6 +1049,17 @@ const movieMatchesRuntimeV2 = (
     return false;
   }
 
+  /*
+   * Scene default relevance rule:
+   * feature-length movies only unless the user
+   * explicitly selects another Runtime filter.
+   */
+  if (
+    filter === "__scene_relevance_90plus"
+  ) {
+    return minutes >= 90;
+  }
+
   if (
     filter === "under90"
   ) {
@@ -1034,10 +1093,28 @@ const movieMatchesRuntimeV2 = (
   return true;
 };
 
+const getEffectiveMovieFiltersV2 = (
+  filters = {}
+) => {
+  if (
+    filters.sort === "relevance" &&
+    !filters.runtime
+  ) {
+    return {
+      ...filters,
+      runtime:
+        "__scene_relevance_90plus",
+    };
+  }
+
+  return filters;
+};
+
 const applyMovieSortV2 = (
   movies,
   sort,
-  query = ""
+  query = "",
+  filters = {}
 ) => {
   const output = [
     ...(movies || []),
@@ -1392,6 +1469,20 @@ const discoverMoviesV2 =
         }-12-31`;
     }
 
+    /*
+     * Relevance defaults to feature-length movies.
+     * Explicit Runtime selection overrides this.
+     */
+    if (
+      filters.sort ===
+        "relevance" &&
+      !filters.runtime
+    ) {
+      params[
+        "with_runtime.gte"
+      ] = 90;
+    }
+
     if (
       filters.runtime ===
       "under90"
@@ -1441,15 +1532,19 @@ const discoverMoviesV2 =
       "rating"
     ) {
       /*
-       * Universal floor.
+       * Best Rated discovery floor:
        *
-       * Saudi/local cinema can
-       * still participate, but
-       * one-vote entries cannot.
+       * Saudi = 1+ vote
+       * Everywhere else = 1000+ votes
        */
       params[
         "vote_count.gte"
-      ] = 10;
+      ] =
+        filters.countries.includes(
+          "SA"
+        )
+          ? 1
+          : 1000;
 
       params.sort_by =
         "vote_average.desc";
@@ -1502,7 +1597,9 @@ const discoverMoviesV2 =
     movies =
       await enrichMovieDetailsV2(
         movies,
-        filters
+        getEffectiveMovieFiltersV2(
+          filters
+        )
       );
 
     movies =
@@ -1513,7 +1610,9 @@ const discoverMoviesV2 =
 
     return applyMovieSortV2(
       movies,
-      filters.sort
+      filters.sort,
+      "",
+      filters
     );
   };
 
@@ -1602,7 +1701,9 @@ const searchMoviesWithFiltersV2 =
     movies =
       await enrichMovieDetailsV2(
         movies,
-        filters
+        getEffectiveMovieFiltersV2(
+          filters
+        )
       );
 
     movies =
@@ -1614,7 +1715,8 @@ const searchMoviesWithFiltersV2 =
     return applyMovieSortV2(
       movies,
       filters.sort,
-      query
+      query,
+      filters
     );
   };
 
