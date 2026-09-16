@@ -320,6 +320,112 @@ const applyMovieSort = (
     ...(movies || []),
   ];
 
+  if (sort === "relevance") {
+    const normalizedQuery =
+      normalizeSearchText(query);
+
+    return output.sort((a, b) => {
+      const scoreMovie = (movie) => {
+        const title =
+          normalizeSearchText(
+            movie?.title ||
+            movie?.original_title ||
+            ""
+          );
+
+        const originalTitle =
+          normalizeSearchText(
+            movie?.original_title ||
+            ""
+          );
+
+        const votes =
+          Math.max(
+            0,
+            Number(movie?.vote_count || 0)
+          );
+
+        const rating =
+          Math.max(
+            0,
+            Number(movie?.vote_average || 0)
+          );
+
+        let titleScore = 0;
+
+        if (normalizedQuery) {
+          // Exact title should dominate everything.
+          if (
+            title === normalizedQuery ||
+            originalTitle === normalizedQuery
+          ) {
+            titleScore = 1000;
+          }
+
+          // "Batman Begins" for "batman"
+          else if (
+            title.startsWith(normalizedQuery) ||
+            originalTitle.startsWith(normalizedQuery)
+          ) {
+            titleScore = 700;
+          }
+
+          // General title containment.
+          else if (
+            title.includes(normalizedQuery) ||
+            originalTitle.includes(normalizedQuery)
+          ) {
+            titleScore = 500;
+          }
+        }
+
+        /*
+         * Vote confidence is logarithmic.
+         *
+         * This gives established movies a strong
+         * advantage without letting gigantic movies
+         * completely destroy title relevance.
+         *
+         * 1 vote       ≈ 0.3
+         * 100 votes    ≈ 2
+         * 10,000 votes ≈ 4
+         */
+        const voteScore =
+          Math.log10(votes + 1) * 60;
+
+        /*
+         * Rating matters, but much less than
+         * title relevance + audience confidence.
+         */
+        const ratingScore =
+          rating * 2;
+
+        return (
+          titleScore +
+          voteScore +
+          ratingScore
+        );
+      };
+
+      const aScore =
+        scoreMovie(a);
+
+      const bScore =
+        scoreMovie(b);
+
+      if (bScore !== aScore) {
+        return bScore - aScore;
+      }
+
+      // Final tie-breaker:
+      // more votes wins.
+      return (
+        Number(b?.vote_count || 0) -
+        Number(a?.vote_count || 0)
+      );
+    });
+  }
+
   if (sort === "rating") {
     return result.sort((a, b) => {
       const aVotes =
@@ -930,7 +1036,8 @@ const movieMatchesRuntimeV2 = (
 
 const applyMovieSortV2 = (
   movies,
-  sort
+  sort,
+  query = ""
 ) => {
   const output = [
     ...(movies || []),
@@ -1498,7 +1605,8 @@ const searchMoviesWithFiltersV2 =
 
     return applyMovieSortV2(
       movies,
-      filters.sort
+      filters.sort,
+      query
     );
   };
 
