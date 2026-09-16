@@ -100,7 +100,10 @@ const loadForceAllowedMatches = async (
           query
         )
       ) {
-        fetched.push(item);
+        fetched.push({
+          ...item,
+          __sceneForceAllow: true,
+        });
       }
     } catch (error) {
       console.warn(
@@ -191,10 +194,8 @@ const searchTmdbMedia =
         query
       );
 
-    const combined =
+    const normalCandidates =
       uniqById([
-        ...forceAllowed,
-
         ...(
           page1.data?.results ||
           []
@@ -206,10 +207,16 @@ const searchTmdbMedia =
         ),
       ]);
 
-    return filterMediaSearchResults(
-      combined,
-      mediaType
-    );
+    const normallyFiltered =
+      filterMediaSearchResults(
+        normalCandidates,
+        mediaType
+      );
+
+    return uniqById([
+      ...forceAllowed,
+      ...normallyFiltered,
+    ]);
   };
 
 
