@@ -1283,8 +1283,16 @@ const enrichMovieDetailsV2 =
              * involvement is required.
              */
             if (country === "SA") {
+              /*
+               * Scene Saudi Cinema:
+               * use production country as the authoritative
+               * classification source.
+               *
+               * origin_country is intentionally ignored because
+               * third-party metadata can incorrectly label
+               * Arabic films as Saudi.
+               */
               const hasSaudiCountry =
-                origins.includes("SA") ||
                 productionCountries.includes(
                   "SA"
                 );
