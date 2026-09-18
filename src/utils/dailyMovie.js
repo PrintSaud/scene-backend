@@ -7,6 +7,7 @@ dayjs.extend(utc);
 dayjs.extend(tz);
 
 const ShownDailyMovie = require("../models/ShownDailyMovie");
+const DailyMovieSelection = require("../models/DailyMovieSelection");
 
 const TMDB_KEY = process.env.TMDB_KEY || process.env.TMDB_API_KEY;
 
@@ -115,6 +116,47 @@ async function pickRandomQualityMovie() {
   return null;
 }
 
+async function saveDailySelection(movie, source = "random") {
+  const today = todayKSA();
+
+  await DailyMovieSelection.findOneAndUpdate(
+    { date: today },
+    {
+      $set: {
+        date: today,
+        tmdbId: movie.tmdbId,
+        title: movie.title,
+        overview: movie.overview || "",
+        poster_path: movie.poster_path || null,
+        backdrop_path: movie.backdrop_path || null,
+        rating: movie.rating || 0,
+        votes: movie.votes || 0,
+        release_date: movie.release_date || null,
+        source,
+      },
+    },
+    {
+      upsert: true,
+      new: true,
+      setDefaultsOnInsert: true,
+    }
+  );
+}
+
+function normalizeStoredMovie(stored) {
+  return {
+    date: stored.date,
+    tmdbId: stored.tmdbId,
+    title: stored.title,
+    overview: stored.overview || "",
+    poster_path: stored.poster_path || null,
+    backdrop_path: stored.backdrop_path || null,
+    rating: stored.rating || 0,
+    votes: stored.votes || 0,
+    release_date: stored.release_date || null,
+  };
+}
+
 async function getDailyMovie({ force = false } = {}) {
   const today = todayKSA();
 
@@ -122,10 +164,25 @@ async function getDailyMovie({ force = false } = {}) {
     return cachedMovie;
   }
 
-  if (!TMDB_KEY) throw new Error("TMDB_KEY/TMDB_API_KEY missing");
+  if (!TMDB_KEY) {
+    throw new Error("TMDB_KEY/TMDB_API_KEY missing");
+  }
+
+  if (!force) {
+    const stored = await DailyMovieSelection.findOne({ date: today }).lean();
+
+    if (stored) {
+      cachedMovie = normalizeStoredMovie(stored);
+      cachedDate = today;
+      return cachedMovie;
+    }
+  }
 
   const chosen = await pickRandomQualityMovie();
-  if (!chosen) throw new Error("No suitable daily movie found");
+
+  if (!chosen) {
+    throw new Error("No suitable daily movie found");
+  }
 
   await ShownDailyMovie.updateOne(
     { tmdbId: chosen.tmdbId },
@@ -133,9 +190,74 @@ async function getDailyMovie({ force = false } = {}) {
     { upsert: true }
   );
 
-  cachedMovie = { date: today, ...chosen };
+  const movie = {
+    date: today,
+    ...chosen,
+  };
+
+  await saveDailySelection(movie, force ? "skip" : "random");
+
+  cachedMovie = movie;
   cachedDate = today;
+
   return cachedMovie;
+}
+
+async function skipDailyMovie() {
+  clearDailyCache();
+  return getDailyMovie({ force: true });
+}
+
+async function setDailyMovie(tmdbId) {
+  if (!TMDB_KEY) {
+    throw new Error("TMDB_KEY/TMDB_API_KEY missing");
+  }
+
+  const id = Number(tmdbId);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error("Invalid TMDB movie ID");
+  }
+
+  const { data: full } = await axios.get(
+    `https://api.themoviedb.org/3/movie/${id}`,
+    {
+      params: {
+        api_key: TMDB_KEY,
+      },
+    }
+  );
+
+  if (!full?.id) {
+    throw new Error("Movie not found on TMDB");
+  }
+
+  const today = todayKSA();
+
+  const movie = {
+    date: today,
+    tmdbId: full.id,
+    title: full.title || full.original_title || "",
+    overview: full.overview || "",
+    poster_path: full.poster_path || null,
+    backdrop_path: full.backdrop_path || null,
+    rating: full.vote_average || 0,
+    votes: full.vote_count || 0,
+    release_date: full.release_date || null,
+  };
+
+  await ShownDailyMovie.updateOne(
+    { tmdbId: full.id },
+    { $setOnInsert: { shownAt: new Date() } },
+    { upsert: true }
+  );
+
+  await saveDailySelection(movie, "manual");
+
+  cachedMovie = movie;
+  cachedDate = today;
+
+  return movie;
 }
 
 function clearDailyCache() {
@@ -143,4 +265,9 @@ function clearDailyCache() {
   cachedDate = null;
 }
 
-module.exports = { getDailyMovie, clearDailyCache };
+module.exports = {
+  getDailyMovie,
+  skipDailyMovie,
+  setDailyMovie,
+  clearDailyCache,
+};
