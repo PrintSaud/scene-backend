@@ -1684,20 +1684,22 @@ const searchMoviesWithFiltersV2 =
         query
       );
 
-    let movies =
-      uniqById([
-        ...forceAllowed,
-
-        ...pages.flatMap(
+    /*
+     * Normal TMDB results still go through every
+     * automatic Scene filter.
+     */
+    let normalMovies =
+      uniqById(
+        pages.flatMap(
           (response) =>
             response.data
               ?.results ||
             []
-        ),
-      ]);
+        )
+      );
 
-    movies =
-      movies.filter(
+    normalMovies =
+      normalMovies.filter(
         (movie) =>
           movieMatchesGenreAndDecadeV2(
             movie,
@@ -1705,19 +1707,30 @@ const searchMoviesWithFiltersV2 =
           )
       );
 
-    movies =
+    normalMovies =
       await enrichMovieDetailsV2(
-        movies,
+        normalMovies,
         getEffectiveMovieFiltersV2(
           filters
         )
       );
 
-    movies =
+    normalMovies =
       await filterMediaSearchResults(
-        movies,
+        normalMovies,
         "movie"
       );
+
+    /*
+     * Mongo action:"allow" is the final authority.
+     * Manually-approved movies bypass ALL automatic
+     * filtering and are merged back afterwards.
+     */
+    const movies =
+      uniqById([
+        ...forceAllowed,
+        ...normalMovies,
+      ]);
 
     return applyMovieSortV2(
       movies,
