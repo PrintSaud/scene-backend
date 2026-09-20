@@ -29,6 +29,17 @@ const POOL_BASE = {
   with_runtime_gte: 70,        // avoid shorts/specials
 };
 
+// 🇸�� Saudi National Day 2026 — Daily Movie takeover
+const SPECIAL_DAILY_MOVIES = {
+  "2026-09-20": 674642,  // شمس المعارف
+  "2026-09-21": 1157577, // مندوب الليل
+
+  // Fill these after confirming exact TMDB IDs:
+  // "2026-09-22": TMDB_ID, // أحلام العصر
+  // "2026-09-23": TMDB_ID, // National Day 🇸��
+  // "2026-09-24": TMDB_ID, // final Saudi movie
+};
+
 function todayKSA() {
   return dayjs().tz("Asia/Riyadh").format("YYYY-MM-DD");
 }
@@ -143,6 +154,32 @@ async function saveDailySelection(movie, source = "random") {
   );
 }
 
+async function fetchMovieByTmdbId(tmdbId) {
+  const { data: full } = await axios.get(
+    `https://api.themoviedb.org/3/movie/${tmdbId}`,
+    {
+      params: {
+        api_key: TMDB_KEY,
+      },
+    }
+  );
+
+  if (!full?.id) {
+    throw new Error(`TMDB movie ${tmdbId} not found`);
+  }
+
+  return {
+    tmdbId: full.id,
+    title: full.title || full.original_title || "",
+    overview: full.overview || "",
+    poster_path: full.poster_path || null,
+    backdrop_path: full.backdrop_path || null,
+    rating: full.vote_average || 0,
+    votes: full.vote_count || 0,
+    release_date: full.release_date || null,
+  };
+}
+
 function normalizeStoredMovie(stored) {
   return {
     date: stored.date,
@@ -160,16 +197,69 @@ function normalizeStoredMovie(stored) {
 async function getDailyMovie({ force = false } = {}) {
   const today = todayKSA();
 
-  if (!force && cachedMovie && cachedDate === today) {
-    return cachedMovie;
-  }
-
   if (!TMDB_KEY) {
     throw new Error("TMDB_KEY/TMDB_API_KEY missing");
   }
 
+  // 🇸🇦 Special movies override cache + stored random selection
+  const specialTmdbId = SPECIAL_DAILY_MOVIES[today];
+
+  if (specialTmdbId) {
+    const cachedIsCorrectSpecial =
+      cachedMovie &&
+      cachedDate === today &&
+      Number(cachedMovie.tmdbId) === Number(specialTmdbId);
+
+    if (cachedIsCorrectSpecial) {
+      return cachedMovie;
+    }
+
+    const stored = await DailyMovieSelection.findOne({
+      date: today,
+    }).lean();
+
+    if (
+      stored &&
+      Number(stored.tmdbId) === Number(specialTmdbId)
+    ) {
+      cachedMovie = normalizeStoredMovie(stored);
+      cachedDate = today;
+      return cachedMovie;
+    }
+
+    console.log(
+      `🇸🇦 Saudi National Day override: ${today} → TMDB ${specialTmdbId}`
+    );
+
+    const chosen = await fetchMovieByTmdbId(specialTmdbId);
+
+    const movie = {
+      date: today,
+      ...chosen,
+    };
+
+    await ShownDailyMovie.updateOne(
+      { tmdbId: chosen.tmdbId },
+      { $setOnInsert: { shownAt: new Date() } },
+      { upsert: true }
+    );
+
+    await saveDailySelection(movie, "special");
+
+    cachedMovie = movie;
+    cachedDate = today;
+
+    return cachedMovie;
+  }
+
+  if (!force && cachedMovie && cachedDate === today) {
+    return cachedMovie;
+  }
+
   if (!force) {
-    const stored = await DailyMovieSelection.findOne({ date: today }).lean();
+    const stored = await DailyMovieSelection.findOne({
+      date: today,
+    }).lean();
 
     if (stored) {
       cachedMovie = normalizeStoredMovie(stored);
