@@ -29,15 +29,13 @@ const POOL_BASE = {
   with_runtime_gte: 70,        // avoid shorts/specials
 };
 
-// 🇸�� Saudi National Day 2026 — Daily Movie takeover
+// 🇸🇦 Saudi National Day 2026 — Daily Movie takeover
 const SPECIAL_DAILY_MOVIES = {
-  "2026-09-20": 674642,  // شمس المعارف
-  "2026-09-21": 1157577, // مندوب الليل
-
-  // Fill these after confirming exact TMDB IDs:
-  // "2026-09-22": TMDB_ID, // أحلام العصر
-  // "2026-09-23": TMDB_ID, // National Day 🇸��
-  // "2026-09-24": TMDB_ID, // final Saudi movie
+  "2026-09-20": 674642,   // شمس المعارف
+  "2026-09-21": 1157577,  // مندوب الليل
+  "2026-09-22": 1114740,  // أحلام العصر
+  "2026-09-23": 1173720,  // هوبال 🇸🇦 National Day
+  "2026-09-24": 1418982,  // مسألة حياة أو موت
 };
 
 function todayKSA() {
