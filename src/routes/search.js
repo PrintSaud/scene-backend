@@ -208,7 +208,7 @@ const searchTmdbMedia =
       ]);
 
     const normallyFiltered =
-      filterMediaSearchResults(
+      await filterMediaSearchResults(
         normalCandidates,
         mediaType
       );
