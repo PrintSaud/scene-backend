@@ -1333,6 +1333,96 @@ router.get("/:username/top-four", async (req, res) => {
 // Keep the generic username route after all specific routes.
 // ======================================================
 
+
+// SCENE_TV_TIMELINE_HISTORY_112
+// Public profile activity, matching the existing public TV profile visibility.
+// Month details are paginated; annual totals are calculated independently.
+router.get('/:username/timeline', async (req, res) => {
+  try {
+    const user = await findUserByUsername(req.params.username);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const year = Number(req.query.year);
+    const month = Number(req.query.month);
+    const page = Math.max(1, Math.min(100000, Number(req.query.page) || 1));
+    const limit = 100;
+    const offset = Number(req.query.offsetMinutes ?? 0);
+    if (!Number.isInteger(year) || year < 1900 || year > 2200 ||
+        !Number.isInteger(month) || month < 1 || month > 12 ||
+        !Number.isInteger(offset) || Math.abs(offset) > 840) {
+      return res.status(400).json({ error: 'Invalid timeline date' });
+    }
+
+    // JavaScript getTimezoneOffset() is UTC minus local time.
+    // Apply that offset to each local calendar boundary.
+    const boundary = (y, m) => new Date(Date.UTC(y, m, 1) + offset * 60000);
+    const yearStart = boundary(year, 0);
+    const yearEnd = boundary(year + 1, 0);
+    const monthStart = boundary(year, month - 1);
+    const monthEnd = boundary(year, month);
+    const dateExpr = { $ifNull: ['$watchedAt', '$createdAt'] };
+
+    const [annual, monthLogs] = await Promise.all([
+      TVLog.aggregate([
+        { $match: { user: user._id } },
+        { $addFields: { timelineDate: dateExpr } },
+        { $match: { timelineDate: { $gte: yearStart, $lt: yearEnd } } },
+        { $bucket: {
+          groupBy: '$timelineDate',
+          boundaries: Array.from({ length: 13 }, (_, i) => boundary(year, i)),
+          output: {
+            count: { $sum: 1 },
+            ratingSum: { $sum: {
+              $cond: [
+                { $gt: [{ $ifNull: ['$rating', 0] }, 0] },
+                { $ifNull: ['$rating', 0] }, 0
+              ]
+            } },
+            rated: { $sum: {
+              $cond: [{ $gt: [{ $ifNull: ['$rating', 0] }, 0] }, 1, 0]
+            } }
+          }
+        } }
+      ]),
+      TVLog.aggregate([
+        { $match: { user: user._id } },
+        { $addFields: { timelineDate: dateExpr } },
+        { $match: { timelineDate: { $gte: monthStart, $lt: monthEnd } } },
+        { $sort: { timelineDate: -1, _id: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit + 1 },
+        { $project: {
+          _id: 1, showTmdbId: 1, showName: 1, showPoster: 1,
+          customShowPoster: 1, seasonNumber: 1, episodeNumber: 1,
+          episodeName: 1, watchedAt: 1, createdAt: 1,
+          rating: 1, isRewatch: 1, watchNumber: 1, rewatch: 1
+        } }
+      ])
+    ]);
+
+    const months = Array.from({ length: 12 }, (_, index) => {
+      const hit = annual.find(entry =>
+        new Date(entry._id).getTime() === boundary(year, index).getTime()
+      );
+      return {
+        index,
+        count: hit?.count || 0,
+        average: hit?.rated ? hit.ratingSum / hit.rated : null
+      };
+    });
+    const hasMore = monthLogs.length > limit;
+    return res.json({
+      username: user.username,
+      year, month, months,
+      results: hasMore ? monthLogs.slice(0, limit) : monthLogs,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null
+    });
+  } catch (error) {
+    return handleError(error, res, 'Failed to fetch TV timeline');
+  }
+});
+
 router.get("/:username", async (req, res) => {
   try {
     const user = await findUserByUsername(req.params.username);
