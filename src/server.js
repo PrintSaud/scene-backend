@@ -34,6 +34,68 @@ const DB_URI =
 
 app.set("trust proxy", 1);
 
+// SCENE_AUTH_DIAGNOSTICS_START
+// Temporary, opt-in diagnostics. Never log request bodies or secrets.
+app.use((req, res, next) => {
+  if (process.env.SCENE_AUTH_DIAGNOSTICS !== "1") {
+    return next();
+  }
+
+  const requestPath = req.path.toLowerCase();
+  const isAuthRequest =
+    requestPath === "/api/auth" ||
+    requestPath.startsWith("/api/auth/") ||
+    (req.method === "POST" &&
+      (requestPath === "/api/users" ||
+       requestPath.startsWith("/api/users/")));
+
+  if (!isAuthRequest) return next();
+
+  const requestId = require("crypto").randomBytes(4).toString("hex");
+  const started = Date.now();
+  const agent = req.get("user-agent") || "";
+  const platform = /android/i.test(agent)
+    ? "android"
+    : /iphone|ipad|ios/i.test(agent)
+      ? "ios"
+      : "unknown";
+
+  const meta = {
+    id: requestId,
+    method: req.method,
+    path: req.path,
+    platform,
+    originPresent: Boolean(req.get("origin")),
+  };
+
+  console.log("[SCENE AUTH IN]", JSON.stringify(meta));
+
+  let finished = false;
+
+  res.on("finish", () => {
+    finished = true;
+    console.log("[SCENE AUTH OUT]", JSON.stringify({
+      ...meta,
+      status: res.statusCode,
+      durationMs: Date.now() - started,
+    }));
+  });
+
+  res.on("close", () => {
+    if (!finished) {
+      console.warn("[SCENE AUTH CLOSED]", JSON.stringify({
+        ...meta,
+        durationMs: Date.now() - started,
+      }));
+    }
+  });
+
+  next();
+});
+// SCENE_AUTH_DIAGNOSTICS_END
+
+
+
 // ============================================================
 // ROUTE IMPORTS — TV
 // ============================================================
