@@ -1395,6 +1395,11 @@ router.get('/:username/timeline', async (req, res) => {
           _id: 1, showTmdbId: 1, showName: 1, showPoster: 1,
           customShowPoster: 1, seasonNumber: 1, episodeNumber: 1,
           episodeName: 1, watchedAt: 1, createdAt: 1,
+          episodeStillPath: 1, customEpisodeBackdrop: 1,
+          review: 1, gif: 1, image: 1, images: 1,
+          favoriteCharacter: 1, favoriteCharacterTag: 1,
+          character: 1,
+          showBackdrop: 1, episodeBackdrop: 1,
           rating: 1, isRewatch: 1, watchNumber: 1, rewatch: 1
         } }
       ])
