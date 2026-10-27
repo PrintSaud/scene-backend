@@ -2979,7 +2979,7 @@ router.delete("/:logId",protect,async (req, res) => {
   }
 );
 
-router.get("/user/:userId",protect,async (req, res) => {
+router.get("/user/:userId", async (req, res) => {
     try {
       const profileUserId =
         req.params.userId;
