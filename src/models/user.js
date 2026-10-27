@@ -378,6 +378,9 @@ const UserSchema = new Schema(
       default: [],
     },
 
+    // SCENE_ONE_TIME_CLEANUP_V2: persists across devices and reinstalls.
+    watchlistCleanupCompletedAt: { type: Date, default: null },
+
     // Existing lightweight favorite Movie IDs.
     favorites: {
       type: [Number],

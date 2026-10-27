@@ -197,9 +197,16 @@ async function findLoggedWatchlistIds(userId) {
 // GET /api/watchlist/cleanup-preview — read-only; returns a count, never personal logs.
 router.get("/cleanup-preview", protect, async (req, res) => {
   try {
+    // SCENE_ONE_TIME_CLEANUP_V2
+    const user = await User.findById(req.user._id)
+      .select("watchlistCleanupCompletedAt").lean();
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (user.watchlistCleanupCompletedAt) {
+      return res.json({ count: 0, completed: true });
+    }
     const ids = await findLoggedWatchlistIds(req.user._id);
     if (ids === null) return res.status(404).json({ message: "User not found" });
-    return res.json({ count: ids.length });
+    return res.json({ count: ids.length, completed: false });
   } catch (error) {
     console.error("❌ Watchlist cleanup preview failed:", error?.message || error);
     return res.status(500).json({ message: "Could not preview watchlist cleanup" });
@@ -209,9 +216,22 @@ router.get("/cleanup-preview", protect, async (req, res) => {
 // POST /api/watchlist/cleanup-watched — run only after client confirmation.
 router.post("/cleanup-watched", protect, async (req, res) => {
   try {
+    // SCENE_ONE_TIME_CLEANUP_V2: never offer another cleanup after completion.
+    const user = await User.findById(req.user._id)
+      .select("watchlistCleanupCompletedAt").lean();
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (user.watchlistCleanupCompletedAt) {
+      return res.json({ removedCount: 0, completed: true });
+    }
     const ids = await findLoggedWatchlistIds(req.user._id);
     if (ids === null) return res.status(404).json({ message: "User not found" });
-    if (!ids.length) return res.json({ removedCount: 0 });
+    if (!ids.length) {
+      await User.updateOne(
+        { _id: req.user._id, watchlistCleanupCompletedAt: null },
+        { $set: { watchlistCleanupCompletedAt: new Date() } }
+      );
+      return res.json({ removedCount: 0, completed: true });
+    }
 
     const result = await User.updateOne(
       { _id: req.user._id },
@@ -222,7 +242,12 @@ router.post("/cleanup-watched", protect, async (req, res) => {
     const after = await User.findById(req.user._id).select("watchlist").lean();
     const remaining = new Set(normalizeWatchlist(after?.watchlist).map((m) => m.tmdbId));
     const removedCount = ids.filter((id) => !remaining.has(id)).length;
-    return res.json({ removedCount, matchedCount: ids.length });
+    // Mark complete only once the removal operation has succeeded.
+    await User.updateOne(
+      { _id: req.user._id, watchlistCleanupCompletedAt: null },
+      { $set: { watchlistCleanupCompletedAt: new Date() } }
+    );
+    return res.json({ removedCount, matchedCount: ids.length, completed: true });
   } catch (error) {
     console.error("❌ Watchlist cleanup failed:", error?.message || error);
     return res.status(500).json({ message: "Could not clean watchlist" });
