@@ -2352,6 +2352,21 @@ router.post("/full",protect,upload.single("image"),async (req, res) => {
         importedFrom: "manual",
       });
 
+      // SCENE_WATCHLIST_LOG_SYNC_20261027
+      // The log exists at this point. A watchlist failure must not turn
+      // a successful log into an apparent failure (and cause duplicate logs).
+      try {
+        await User.updateOne(
+          { _id: req.user._id },
+          { $pull: { watchlist: { tmdbId: movie.tmdbId } } }
+        );
+      } catch (watchlistError) {
+        console.warn(
+          "⚠️ Movie was logged, but watchlist removal failed:",
+          watchlistError?.message || watchlistError
+        );
+      }
+
       await synchronizeTotalLogs(
         req.user._id
       );

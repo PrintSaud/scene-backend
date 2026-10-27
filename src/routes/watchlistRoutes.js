@@ -174,6 +174,61 @@ async function getCustomPosterMap(
   );
 }
 
+// SCENE_WATCHLIST_CLEANUP_20261027
+// Preview/cleanup are always scoped to the signed-in user's MOVIE watchlist.
+const Log = require("../models/log");
+
+async function findLoggedWatchlistIds(userId) {
+  const user = await User.findById(userId).select("watchlist").lean();
+  if (!user) return null;
+
+  const movieIds = [...new Set(
+    normalizeWatchlist(user.watchlist).map((m) => m.tmdbId)
+  )];
+  if (!movieIds.length) return [];
+
+  const loggedIds = await Log.distinct("tmdbId", {
+    user: userId,
+    tmdbId: { $in: movieIds },
+  });
+  return loggedIds.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+}
+
+// GET /api/watchlist/cleanup-preview — read-only; returns a count, never personal logs.
+router.get("/cleanup-preview", protect, async (req, res) => {
+  try {
+    const ids = await findLoggedWatchlistIds(req.user._id);
+    if (ids === null) return res.status(404).json({ message: "User not found" });
+    return res.json({ count: ids.length });
+  } catch (error) {
+    console.error("❌ Watchlist cleanup preview failed:", error?.message || error);
+    return res.status(500).json({ message: "Could not preview watchlist cleanup" });
+  }
+});
+
+// POST /api/watchlist/cleanup-watched — run only after client confirmation.
+router.post("/cleanup-watched", protect, async (req, res) => {
+  try {
+    const ids = await findLoggedWatchlistIds(req.user._id);
+    if (ids === null) return res.status(404).json({ message: "User not found" });
+    if (!ids.length) return res.json({ removedCount: 0 });
+
+    const result = await User.updateOne(
+      { _id: req.user._id },
+      { $pull: { watchlist: { tmdbId: { $in: ids } } } }
+    );
+    // Count is from a fresh query to avoid claiming every candidate was removed
+    // when another request has modified the watchlist concurrently.
+    const after = await User.findById(req.user._id).select("watchlist").lean();
+    const remaining = new Set(normalizeWatchlist(after?.watchlist).map((m) => m.tmdbId));
+    const removedCount = ids.filter((id) => !remaining.has(id)).length;
+    return res.json({ removedCount, matchedCount: ids.length });
+  } catch (error) {
+    console.error("❌ Watchlist cleanup failed:", error?.message || error);
+    return res.status(500).json({ message: "Could not clean watchlist" });
+  }
+});
+
 // ============================================================
 // STATUS
 // ============================================================
