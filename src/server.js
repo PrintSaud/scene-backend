@@ -726,6 +726,12 @@ app.use(
   require("./routes/organizationApplications")
 );
 
+
+app.use(
+  "/api/organization-auth",
+  require("./routes/organizationAuthRoutes")
+);
+
 // ============================================================
 // API ROUTES — EXISTING SCENE
 // ============================================================
