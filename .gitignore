@@ -14,3 +14,11 @@ node_modules/
 # Local backup files
 *.backup-*
 *.bak
+
+# Local backups and temporary exports
+.scene114-rating-backup-*/
+*.before-*
+*.bak-*
+scene-android-launch.csv
+export-android-emails.cjs
+Scene_Backend_Public_Profile_Audit.txt
