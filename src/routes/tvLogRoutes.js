@@ -5,6 +5,35 @@ const mongoose = require("mongoose");
 
 const router = express.Router();
 
+// SCENE_114_TV_COMMUNITY_STATS_V1
+// Public community distribution: no review text, personal information, or TMDB averages.
+router.get("/episode/:showTmdbId/:seasonNumber/:episodeNumber/community-rating", async (req, res) => {
+  try {
+    const id = Number(req.params.showTmdbId);
+  const season = Number(req.params.seasonNumber);
+  const episode = Number(req.params.episodeNumber);
+  if (!Number.isSafeInteger(id) || id < 1 || !Number.isSafeInteger(season) || season < 0 || !Number.isSafeInteger(episode) || episode < 1) return res.status(400).json({ error: "Invalid episode identity" });
+    const validRatings = Array.from({length: 10}, (_, i) => (i + 1) / 2);
+    const rows = await TVLog.aggregate([
+      { $match: { showTmdbId: id, seasonNumber: season, episodeNumber: episode, rating: { $in: validRatings } } },
+      { $sort: { createdAt: -1, _id: -1 } },
+      { $group: { _id: "$user", rating: { $first: "$rating" } } },
+      { $group: { _id: "$rating", count: { $sum: 1 } } },
+      { $sort: { _id: 1 } }
+    ]);
+    const distribution = validRatings.map(value => rows.find(row => row._id === value)?.count || 0);
+    const count = distribution.reduce((sum, n) => sum + n, 0);
+    const total = distribution.reduce((sum, n, i) => sum + n * validRatings[i], 0);
+    res.set("Cache-Control", "public, max-age=30");
+    return res.json({ average: count ? total / count : null, count, distribution });
+  } catch (error) {
+    console.error("TV community rating query failed", error);
+    return res.status(500).json({ error: "Unable to load community ratings" });
+  }
+});
+
+
+
 const protect = require(
   "../middleware/authMiddleware"
 );
