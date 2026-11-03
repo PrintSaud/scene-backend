@@ -2611,20 +2611,46 @@ router.get("/feed/:id",protect,async (req, res) => {
         1000
       );
 
-      const logs = await Log.find({
-        user: { $in: feedUserIds },
-      })
-        .populate(
-          "user",
-          "username avatar"
-        )
-        .sort({
-          createdAt: -1,
-          _id: -1,
-        })
-        .skip(skip)
-        .limit(limit)
-        .lean();
+      // SCENE_114_LETTERBOXD_FEED_DEDUP_V1
+      // IMPORTANT: group before skip/limit, otherwise import floods pagination.
+      // Manual logs are unique by _id; imports collapse by (user,batch).
+      // For imported logs with no batch, use a legacy group per user.
+      const feedUserObjectIds = feedUserIds.map((id) =>
+        new mongoose.Types.ObjectId(String(id))
+      );
+
+      const logs = await Log.aggregate([
+        { $match: { user: { $in: feedUserObjectIds } } },
+        { $sort: { createdAt: -1, _id: -1 } },
+        {
+          $group: {
+            _id: {
+              $cond: [
+                { $eq: [{ $toLower: { $ifNull: ["$importedFrom", ""] } }, "letterboxd"] },
+                {
+                  type: "import",
+                  user: "$user",
+                  batch: {
+                    $cond: [
+                      { $gt: [{ $strLenCP: { $ifNull: ["$importBatchId", ""] } }, 0] },
+                      "$importBatchId",
+                      "legacy",
+                    ],
+                  },
+                },
+                { type: "manual", id: "$_id" },
+              ],
+            },
+            log: { $first: "$$ROOT" },
+          },
+        },
+        { $replaceRoot: { newRoot: "$log" } },
+        { $sort: { createdAt: -1, _id: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+      ]);
+
+      await Log.populate(logs, { path: "user", select: "username avatar" });
 
       const tmdbIds = logs
         .map(getLogTmdbId)

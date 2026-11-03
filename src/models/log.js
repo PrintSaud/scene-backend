@@ -237,6 +237,20 @@ const logSchema = new Schema(
       default: [],
     },
 
+    // SCENE_114_LETTERBOXD_FEED_DEDUP_V1: import provenance is persisted.
+    // These fields do NOT change profile, diary, reviews or statistics.
+    importedFrom: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+    importBatchId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
     customBackdrop: {
       type: String,
       default: "",

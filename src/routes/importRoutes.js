@@ -2094,6 +2094,7 @@ router.post(
 
           importedFrom:
             "letterboxd",
+          importBatchId: sessionId,
         });
 
         movieUpserts.push(
@@ -2901,6 +2902,7 @@ router.post(
               sameDayLog
                 .importedFrom =
                 "letterboxd";
+              sameDayLog.importBatchId = sessionId;
 
               await sameDayLog.save();
 
@@ -3037,6 +3039,7 @@ router.post(
 
                 importedFrom:
                   "letterboxd",
+          importBatchId: sessionId,
               });
 
             imported += 1;
@@ -3215,6 +3218,7 @@ router.post(
               newestLog
                 .importedFrom =
                 "letterboxd";
+              newestLog.importBatchId = sessionId;
 
               await newestLog.save();
 
@@ -3286,6 +3290,7 @@ router.post(
 
                 importedFrom:
                   "letterboxd",
+          importBatchId: sessionId,
               });
 
             imported += 1;
@@ -3971,6 +3976,7 @@ router.post(
 
             existingLog.importedFrom =
               "letterboxd";
+              existingLog.importBatchId = sessionId;
 
             await existingLog.save();
 
@@ -4054,6 +4060,7 @@ router.post(
 
               importedFrom:
                 "letterboxd",
+          importBatchId: sessionId,
             });
 
           created += 1;
