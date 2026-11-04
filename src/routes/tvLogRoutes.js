@@ -2342,6 +2342,20 @@ router.post(
 // Public episode review/log page.
 // ======================================================
 
+// SCENE114_EPISODE_VIEWER_LIKES_V1
+// Authenticated variant: public review GET cannot resolve likedByViewer.
+router.get("/viewer/:logId", protect, async (req, res) => {
+  try {
+    const log = await getEpisodeLogById({ logId: req.params.logId });
+    await enrichEpisodeRepliesWithReviewerData(log);
+    return res.status(200).json({
+      log: serializeEpisodeReview(log, getAuthenticatedUserId(req)),
+    });
+  } catch (error) {
+    return handleServiceError(error, res, "Failed to fetch episode review");
+  }
+});
+
 router.get(
   "/:logId",
   async (req, res) => {
