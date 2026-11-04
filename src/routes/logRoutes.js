@@ -1,3 +1,4 @@
+// SCENE_114_PRIVATE_LOGS_BACKEND_V1
 const express = require('express');
 const router = express.Router();
 const Log = require('../models/log');
@@ -17,6 +18,13 @@ const Notification = require('../models/notification');
 const Movie = require("../models/movieModel");
 const sendNotification = require("../utils/sendNotification");
 const mongoose = require("mongoose");
+
+
+const protectPrivateOwnerIfAuthenticated = (req, res, next) => {
+  const header = req.headers?.authorization || "";
+  if (!/^Bearer\s+/i.test(header)) return next();
+  return protect(req, res, next);
+};
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -403,7 +411,7 @@ router.post("/:logId/like",protect,async (req, res) => {
           "username avatar"
         );
 
-      if (!log) {
+      if (!log || log.isPrivate === true) {
         return res.status(404).json({
           message: "Log not found",
         });
@@ -790,7 +798,7 @@ router.get("/:logId/replies",async (req, res) => {
         .select("tmdbId movie replies")
         .lean();
 
-      if (!log) {
+      if (!log || log.isPrivate === true) {
         return res.status(404).json({
           message: "Log not found",
         });
@@ -958,7 +966,19 @@ router.get("/:logId/replies",async (req, res) => {
   }
 );
 
-router.get("/:logId",async (req, res) => {
+// Authenticated owner-only retrieval, including private log editing.
+router.get("/owner/:logId", protect, async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.logId)) return res.status(400).json({ message: "Invalid log ID" });
+  const log = await Log.findOne({ _id: req.params.logId, user: req.user._id }).lean();
+  if (!log) return res.status(404).json({ message: "Log not found" });
+  return res.json({
+    ...log,
+    movie: { id: log.tmdbId, tmdbId: log.tmdbId, title: log.title, poster: log.poster,
+      poster_path: log.poster, backdrop_path: log.backdrop },
+  });
+});
+
+router.get("/:logId",protectPrivateOwnerIfAuthenticated,async (req, res) => {
     try {
       const { logId } = req.params;
 
@@ -975,7 +995,8 @@ router.get("/:logId",async (req, res) => {
         )
         .lean();
 
-      if (!log) {
+      if (!log || (log.isPrivate === true &&
+        String(req.user?._id || req.user?.id || "") !== String(log.user?._id || log.user))) {
         return res.status(404).json({
           message: "Log not found",
         });
@@ -1388,7 +1409,7 @@ router.post("/:id/reply",protect,upload.single("image"),async (req, res) => {
 
       const log = await Log.findById(logId);
 
-      if (!log) {
+      if (!log || log.isPrivate === true) {
         return res.status(404).json({
           message: "Log not found",
         });
@@ -1716,6 +1737,7 @@ router.get("/movie/:id/popular",protect,async (req, res) => {
         {
           $match: {
             tmdbId: movieId,
+            isPrivate: { $ne: true },
             review: {
               $exists: true,
               $nin: ["", "__media__"],
@@ -2023,6 +2045,7 @@ router.get("/movie/:id/friends",protect,async (req, res) => {
 
       const logs = await Log.find({
         tmdbId: movieId,
+        isPrivate: { $ne: true },
         user: {
           $in: followingIds,
         },
@@ -2108,6 +2131,7 @@ router.get("/movie/:id/all",protect,async (req, res) => {
 
       const logs = await Log.find({
         tmdbId: movieId,
+        isPrivate: { $ne: true },
       })
         .populate(
           "user",
@@ -2350,6 +2374,7 @@ router.post("/full",protect,upload.single("image"),async (req, res) => {
           ),
 
         importedFrom: "manual",
+        isPrivate: parseBooleanValue(req.body?.isPrivate),
       });
 
       // SCENE_WATCHLIST_LOG_SYNC_20261027
@@ -2422,6 +2447,9 @@ router.patch("/:logId",protect,upload.single("image"),async (req, res) => {
         });
       }
 
+      if (req.body?.isPrivate !== undefined) {
+        log.isPrivate = parseBooleanValue(req.body.isPrivate);
+      }
       const {
         review,
         rating,
@@ -2620,7 +2648,7 @@ router.get("/feed/:id",protect,async (req, res) => {
       );
 
       const logs = await Log.aggregate([
-        { $match: { user: { $in: feedUserObjectIds } } },
+        { $match: { user: { $in: feedUserObjectIds }, isPrivate: { $ne: true } } },
         { $sort: { createdAt: -1, _id: -1 } },
         {
           $group: {
@@ -3005,7 +3033,7 @@ router.delete("/:logId",protect,async (req, res) => {
   }
 );
 
-router.get("/user/:userId", async (req, res) => {
+router.get("/user/:userId", protectPrivateOwnerIfAuthenticated, async (req, res) => {
     try {
       const profileUserId =
         req.params.userId;
@@ -3042,6 +3070,8 @@ router.get("/user/:userId", async (req, res) => {
 
       const logs = await Log.find({
         user: profileUserId,
+        ...(String(req.user?._id || req.user?.id || "") === String(profileUserId)
+          ? {} : { isPrivate: { $ne: true } }),
       })
         .populate(
           "user",
@@ -3158,7 +3188,7 @@ router.post("/:id/share",protect,async (req, res) => {
       const log = await Log.findById(logId)
         .select("_id tmdbId movie");
 
-      if (!log) {
+      if (!log || log.isPrivate === true) {
         return res.status(404).json({
           message: "Review not found",
         });
@@ -3314,7 +3344,7 @@ router.post("/:logId/replies/:replyId/like",protect,async (req, res) => {
 
       const log = await Log.findById(logId);
 
-      if (!log) {
+      if (!log || log.isPrivate === true) {
         return res.status(404).json({
           message: "Log not found",
         });
@@ -3528,6 +3558,7 @@ router.get("/user/:userId/movie/:movieId",async (req, res) => {
       const logs = await Log.find({
         user: userId,
         tmdbId,
+        isPrivate: { $ne: true },
       })
         .populate(
           "user",

@@ -1,3 +1,4 @@
+// SCENE_114_PRIVATE_LOGS_BACKEND_V1
 // src/routes/tvLogRoutes.js
 
 const express = require("express");
@@ -15,7 +16,7 @@ router.get("/episode/:showTmdbId/:seasonNumber/:episodeNumber/community-rating",
   if (!Number.isSafeInteger(id) || id < 1 || !Number.isSafeInteger(season) || season < 0 || !Number.isSafeInteger(episode) || episode < 1) return res.status(400).json({ error: "Invalid episode identity" });
     const validRatings = Array.from({length: 10}, (_, i) => (i + 1) / 2);
     const rows = await TVLog.aggregate([
-      { $match: { showTmdbId: id, seasonNumber: season, episodeNumber: episode, rating: { $in: validRatings } } },
+      { $match: { showTmdbId: id, seasonNumber: season, episodeNumber: episode, isPrivate: { $ne: true }, rating: { $in: validRatings } } },
       { $sort: { createdAt: -1, _id: -1 } },
       { $group: { _id: "$user", rating: { $first: "$rating" } } },
       { $group: { _id: "$rating", count: { $sum: 1 } } },
@@ -549,6 +550,8 @@ function serializeEpisodeReview(
         "",
     },
 
+    isPrivate: Boolean(log.isPrivate),
+
     rating:
       log.rating ??
       null,
@@ -783,6 +786,7 @@ router.post(
         rating,
         review,
         containsSpoilers,
+        isPrivate,
         watchedAt,
 
         gif,
@@ -799,6 +803,7 @@ router.post(
         rating,
         review,
         containsSpoilers,
+        isPrivate,
         watchedAt,
       
         gif,
@@ -1234,6 +1239,7 @@ router.get(
 
       const logs =
         await TVLog.find({
+          isPrivate: { $ne: true },
           showTmdbId,
           seasonNumber,
           episodeNumber,
@@ -1421,6 +1427,7 @@ router.get(
       }
 
       const match = {
+        isPrivate: { $ne: true },
         showTmdbId,
         seasonNumber,
         episodeNumber,
@@ -1722,7 +1729,7 @@ router.post(
           req.params.logId
         );
 
-      if (!log) {
+      if (!log || log.isPrivate === true) {
         return res
           .status(404)
           .json({
@@ -1843,7 +1850,7 @@ router.post(
           req.params.logId
         );
 
-      if (!log) {
+      if (!log || log.isPrivate === true) {
         return res
           .status(404)
           .json({
@@ -2231,7 +2238,7 @@ router.post(
           req.params.logId
         );
 
-      if (!log) {
+      if (!log || log.isPrivate === true) {
         return res
           .status(404)
           .json({
@@ -2347,6 +2354,9 @@ router.post(
 router.get("/viewer/:logId", protect, async (req, res) => {
   try {
     const log = await getEpisodeLogById({ logId: req.params.logId });
+    if (log.isPrivate === true && String(log.user?._id || log.user) !== String(getAuthenticatedUserId(req))) {
+      return res.status(404).json({ error: "TV log not found" });
+    }
     await enrichEpisodeRepliesWithReviewerData(log);
     return res.status(200).json({
       log: serializeEpisodeReview(log, getAuthenticatedUserId(req)),
@@ -2365,6 +2375,8 @@ router.get(
           logId:
             req.params.logId,
         });
+
+      if (log.isPrivate === true) return res.status(404).json({ error: "TV log not found" });
 
       await enrichEpisodeRepliesWithReviewerData(
         log
@@ -2409,6 +2421,7 @@ router.patch(
         "rating",
         "review",
         "containsSpoilers",
+        "isPrivate",
         "watchedAt",
         "customEpisodeBackdrop",
         "customShowPoster",

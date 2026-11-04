@@ -904,6 +904,8 @@ function buildTVLogPayload({
       input.containsSpoilers ===
       true,
 
+    isPrivate: input.isPrivate === true,
+
     watchedAt,
 
     watchNumber,
@@ -2098,6 +2100,9 @@ async function updateEpisodeLog({
       );
   }
 
+  if (hasOwn(updates, "isPrivate")) {
+    log.isPrivate = updates.isPrivate === true;
+  }
   await log.save();
 
   const watchedAtChanged =

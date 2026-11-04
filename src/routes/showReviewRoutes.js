@@ -1,3 +1,4 @@
+// SCENE_114_PRIVATE_LOGS_BACKEND_V1
 // src/routes/showReviewRoutes.js
 
 const express = require("express");
@@ -13,7 +14,7 @@ router.get("/:showTmdbId/community-rating", async (req, res) => {
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Invalid show identity" });
     const validRatings = Array.from({length: 10}, (_, i) => (i + 1) / 2);
     const rows = await ShowReview.aggregate([
-      { $match: { showTmdbId: id, rating: { $in: validRatings } } },
+      { $match: { showTmdbId: id, isPrivate: { $ne: true }, rating: { $in: validRatings } } },
       { $sort: { createdAt: -1, _id: -1 } },
       { $group: { _id: "$user", rating: { $first: "$rating" } } },
       { $group: { _id: "$rating", count: { $sum: 1 } } },
@@ -35,6 +36,13 @@ router.get("/:showTmdbId/community-rating", async (req, res) => {
 const protect = require(
   "../middleware/authMiddleware"
 );
+
+
+const protectPrivateOwnerIfAuthenticated = (req, res, next) => {
+  const header = req.headers?.authorization || "";
+  if (!/^Bearer\s+/i.test(header)) return next();
+  return protect(req, res, next);
+};
 
 const sendNotification = require(
     "../utils/sendNotification"
@@ -650,6 +658,8 @@ function serializeReview(
         review.firstAirDate || "",
     },
 
+    isPrivate: Boolean(review.isPrivate),
+
     rating:
       review.rating ?? null,
 
@@ -846,6 +856,7 @@ router.get(
           {
             $match: {
               showTmdbId,
+              isPrivate: { $ne: true },
 
               rating: {
                 $ne: null,
@@ -872,6 +883,7 @@ router.get(
 
         ShowReview.countDocuments({
           showTmdbId,
+          isPrivate: { $ne: true },
         }),
       ]);
 
@@ -1018,6 +1030,7 @@ router.get(
 
       const match = {
         showTmdbId,
+        isPrivate: { $ne: true },
         user: {
           $in: following,
         },
@@ -1223,6 +1236,7 @@ router.get(
 
       const match = {
         showTmdbId,
+        isPrivate: { $ne: true },
       };
 
       let reviews;
@@ -1548,6 +1562,7 @@ router.post(
       const review =
         await ShowReview.create({
           user: userId,
+          isPrivate: req.body?.isPrivate === true,
 
           show:
             localShow._id,
@@ -1657,6 +1672,7 @@ router.post(
 
 router.get(
   "/:reviewId",
+  protectPrivateOwnerIfAuthenticated,
   async (req, res) => {
     try {
       if (
@@ -1686,7 +1702,8 @@ router.get(
             virtuals: true,
           });
 
-      if (!review) {
+      if (!review || (review.isPrivate === true &&
+          String(req.user?._id || req.user?.id || "") !== String(review.user?._id || review.user))) {
         return res.status(404).json({
           error:
             "Show review not found",
@@ -1863,6 +1880,9 @@ router.patch(
           );
       }
 
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, "isPrivate")) {
+        review.isPrivate = req.body.isPrivate === true;
+      }
       await review.save();
 
       await populateReviewDocument(
@@ -1983,7 +2003,7 @@ router.post(
             req.params.reviewId
           );
   
-        if (!review) {
+        if (!review || review.isPrivate === true) {
           return res.status(404).json({
             error:
               "Show review not found",
@@ -2117,7 +2137,7 @@ router.post(
             req.params.reviewId
           );
   
-        if (!review) {
+        if (!review || review.isPrivate === true) {
           return res.status(404).json({
             error:
               "Show review not found",
@@ -2447,7 +2467,7 @@ router.post(
             req.params.reviewId
           );
   
-        if (!review) {
+        if (!review || review.isPrivate === true) {
           return res.status(404).json({
             error:
               "Show review not found",

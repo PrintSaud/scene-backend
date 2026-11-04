@@ -5,6 +5,14 @@ const mongoose = require("mongoose");
 
 const router = express.Router();
 
+const protect = require("../middleware/authMiddleware");
+
+const protectPrivateOwnerIfAuthenticated = (req, res, next) => {
+  const header = req.headers?.authorization || "";
+  if (!/^Bearer\s+/i.test(header)) return next();
+  return protect(req, res, next);
+};
+
 const User = require("../models/user");
 
 const TVLog = require("../models/tvLog");
@@ -508,6 +516,7 @@ function serializeReview(log) {
 
   return {
     id: String(log._id),
+    isPrivate: log.isPrivate === true,
 
     navigation: {
       screen: "EpisodeReview",
@@ -758,6 +767,7 @@ function serializeProfileShowReview(
   const replies = Array.isArray(review.replies) ? review.replies : [];
 
   return {
+    isPrivate: review.isPrivate === true,
     id: String(review._id),
 
     _id: String(review._id),
@@ -963,7 +973,7 @@ router.get("/:username/shows", async (req, res) => {
 // - sort=recent|likes
 // ======================================================
 
-router.get("/:username/show-reviews", async (req, res) => {
+router.get("/:username/show-reviews", protectPrivateOwnerIfAuthenticated, async (req, res) => {
   try {
     const user = await findUserByUsername(req.params.username);
 
@@ -988,6 +998,8 @@ router.get("/:username/show-reviews", async (req, res) => {
 
     const match = {
       user: user._id,
+      ...(String(req.user?._id || req.user?.id || "") === String(user._id)
+        ? {} : { isPrivate: { $ne: true } }),
     };
 
     let reviews = [];
@@ -1176,7 +1188,7 @@ router.get("/:username/show-reviews", async (req, res) => {
 // TV Profile → Episode Reviews.
 // ======================================================
 
-router.get("/:username/reviews", async (req, res) => {
+router.get("/:username/reviews", protectPrivateOwnerIfAuthenticated, async (req, res) => {
   try {
     const user = await findUserByUsername(req.params.username);
 
@@ -1192,6 +1204,8 @@ router.get("/:username/reviews", async (req, res) => {
 
     const match = {
       user: user._id,
+      ...(String(req.user?._id || req.user?.id || "") === String(user._id)
+        ? {} : { isPrivate: { $ne: true } }),
 
       ...getReviewMatch(),
     };
@@ -1337,7 +1351,7 @@ router.get("/:username/top-four", async (req, res) => {
 // SCENE_TV_TIMELINE_HISTORY_112
 // Public profile activity, matching the existing public TV profile visibility.
 // Month details are paginated; annual totals are calculated independently.
-router.get('/:username/timeline', async (req, res) => {
+router.get('/:username/timeline', protectPrivateOwnerIfAuthenticated, async (req, res) => {
   try {
     const user = await findUserByUsername(req.params.username);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -1364,7 +1378,9 @@ router.get('/:username/timeline', async (req, res) => {
 
     const [annual, monthLogs] = await Promise.all([
       TVLog.aggregate([
-        { $match: { user: user._id } },
+        { $match: { user: user._id,
+          ...(String(req.user?._id || req.user?.id || "") === String(user._id)
+            ? {} : { isPrivate: { $ne: true } }) } },
         { $addFields: { timelineDate: dateExpr } },
         { $match: { timelineDate: { $gte: yearStart, $lt: yearEnd } } },
         { $bucket: {
@@ -1385,7 +1401,9 @@ router.get('/:username/timeline', async (req, res) => {
         } }
       ]),
       TVLog.aggregate([
-        { $match: { user: user._id } },
+        { $match: { user: user._id,
+          ...(String(req.user?._id || req.user?.id || "") === String(user._id)
+            ? {} : { isPrivate: { $ne: true } }) } },
         { $addFields: { timelineDate: dateExpr } },
         { $match: { timelineDate: { $gte: monthStart, $lt: monthEnd } } },
         { $sort: { timelineDate: -1, _id: -1 } },
@@ -1440,6 +1458,7 @@ router.get("/:username", async (req, res) => {
 
     const reviewMatch = {
       user: user._id,
+      isPrivate: { $ne: true },
 
       ...getReviewMatch(),
     };
@@ -1483,6 +1502,7 @@ router.get("/:username", async (req, res) => {
         {
           $match: {
             user: user._id,
+            isPrivate: { $ne: true },
           },
         },
 
@@ -1537,6 +1557,7 @@ router.get("/:username", async (req, res) => {
         {
           $match: {
             user: user._id,
+            isPrivate: { $ne: true },
 
             "favoriteCharacter.characterName": {
               $type: "string",

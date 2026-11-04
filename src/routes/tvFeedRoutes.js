@@ -850,6 +850,7 @@ router.get(
       }
 
       const baseMatch = {
+        isPrivate: { $ne: true },
         user: {
           $in:
             visibleUserIds,
@@ -1174,6 +1175,7 @@ router.get(
         await TVLog.aggregate([
           {
             $match: {
+              isPrivate: { $ne: true },
               user: {
                 $in:
                   visibleUserIds,
@@ -1409,6 +1411,7 @@ router.get(
         await TVLog.aggregate([
           {
             $match: {
+              isPrivate: { $ne: true },
               user: {
                 $in:
                   visibleUserIds,

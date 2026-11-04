@@ -102,6 +102,9 @@ const favoriteCharacterSchema = new Schema(
 
 const showReviewSchema = new Schema(
   {
+    // SCENE_114_PRIVATE_LOGS_V1: existing documents remain public.
+    isPrivate: { type: Boolean, default: false, index: true },
+
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
