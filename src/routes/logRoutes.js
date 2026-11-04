@@ -2495,19 +2495,14 @@ router.patch("/:logId",protect,upload.single("image"),async (req, res) => {
           parsedRewatchCount;
       }
 
-      if (watchedAt !== undefined) {
-        const parsedWatchedAt =
-          parseOptionalDate(watchedAt);
-
-        if (!parsedWatchedAt) {
-          return res.status(400).json({
-            message:
-              "Invalid watched date",
-          });
+      // Editing a log must not move it to the newest position.
+      // Only a deliberately requested watch-date change may modify watchedAt.
+      if (req.body?.changeWatchedAt === "true" || req.body?.changeWatchedAt === true) {
+        const parsedWatchedAt = watchedAt ? new Date(watchedAt) : null;
+        if (!parsedWatchedAt || Number.isNaN(parsedWatchedAt.getTime())) {
+          return res.status(400).json({ message: "Invalid watched date" });
         }
-
-        log.watchedAt =
-          parsedWatchedAt;
+        log.watchedAt = parsedWatchedAt;
       }
 
       if (review !== undefined) {
