@@ -3033,6 +3033,42 @@ router.delete("/:logId",protect,async (req, res) => {
   }
 );
 
+// SCENE_114_PRIVATE_WATCHED_TITLES_V1
+// Deliberately public: the owner has chosen to expose watched movie TITLES in Films.
+// Return no log IDs, ratings, reviews, watch dates, rewatch counts or engagement.
+router.get("/user/:userId/private-watched-titles", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ error: "Invalid user ID" });
+    }
+    if (!(await User.exists({ _id: userId }))) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const rows = await Log.aggregate([
+      { $match: { user: new mongoose.Types.ObjectId(userId), isPrivate: true } },
+      { $match: { tmdbId: { $exists: true, $ne: null } } },
+      { $sort: { createdAt: -1, _id: -1 } },
+      { $group: {
+          _id: "$tmdbId",
+          title: { $first: "$title" },
+          poster: { $first: "$poster" }
+      } },
+      { $project: { _id: 0, tmdbId: "$_id", title: 1, poster: 1 } },
+      { $limit: 5000 }
+    ]);
+    res.set("Cache-Control", "private, no-store");
+    return res.json({ results: rows.map(row => ({
+      tmdbId: row.tmdbId,
+      title: typeof row.title === "string" ? row.title : "",
+      poster: typeof row.poster === "string" ? row.poster : ""
+    })) });
+  } catch (error) {
+    console.error("Private watched title lookup failed", error);
+    return res.status(500).json({ error: "Unable to load watched titles" });
+  }
+});
+
 router.get("/user/:userId", protectPrivateOwnerIfAuthenticated, async (req, res) => {
     try {
       const profileUserId =
